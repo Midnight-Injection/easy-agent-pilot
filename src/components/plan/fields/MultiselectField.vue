@@ -37,7 +37,10 @@ function isSelected(value: string | number): boolean {
   <div class="form-field multiselect-field">
     <label class="field-label">
       {{ field.label }}
-      <span v-if="field.required" class="required-mark">*</span>
+      <span
+        v-if="field.required"
+        class="required-mark"
+      >*</span>
     </label>
     <div class="options-grid">
       <label
@@ -53,11 +56,14 @@ function isSelected(value: string | number): boolean {
           :checked="isSelected(option.value)"
           class="option-checkbox"
           @change="toggleOption(option.value)"
-        />
+        >
         <span class="option-text">{{ option.label }}</span>
       </label>
     </div>
-    <span v-if="error" class="error-message">{{ error }}</span>
+    <span
+      v-if="error"
+      class="error-message"
+    >{{ error }}</span>
   </div>
 </template>
 

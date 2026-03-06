@@ -247,6 +247,8 @@ const INIT_SQL: &str = r#"
         project_id TEXT NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
+        split_agent_id TEXT,
+        split_model_id TEXT,
         status TEXT NOT NULL DEFAULT 'draft',
         agent_team TEXT,
         created_at TEXT NOT NULL,
@@ -319,7 +321,6 @@ const INIT_SQL: &str = r#"
         locked_at INTEGER DEFAULT (strftime('%s', 'now'))
     );
 "#;
-
 
 /// 初始化数据库
 pub fn init_database() -> Result<()> {
@@ -469,6 +470,7 @@ pub fn init_database() -> Result<()> {
     let message_migrations = [
         "ALTER TABLE messages ADD COLUMN error_message TEXT",
         "ALTER TABLE messages ADD COLUMN tool_calls TEXT", // JSON string for tool calls
+        "ALTER TABLE messages ADD COLUMN thinking TEXT",   // 思考内容（扩展思维模型）
     ];
 
     for migration in message_migrations {
@@ -501,15 +503,15 @@ pub fn init_database() -> Result<()> {
     }
 
     // 创建索引
-    let agent_models_index_sql = "CREATE INDEX IF NOT EXISTS idx_agent_models_agent ON agent_models(agent_id)";
+    let agent_models_index_sql =
+        "CREATE INDEX IF NOT EXISTS idx_agent_models_agent ON agent_models(agent_id)";
     if let Err(e) = conn.execute(agent_models_index_sql, []) {
         println!("Agent models index migration warning: {}", e);
     }
 
     // agent_models 表添加 context_window 字段
-    let agent_models_migrations = [
-        "ALTER TABLE agent_models ADD COLUMN context_window INTEGER DEFAULT 128000",
-    ];
+    let agent_models_migrations =
+        ["ALTER TABLE agent_models ADD COLUMN context_window INTEGER DEFAULT 128000"];
 
     for migration in agent_models_migrations {
         if let Err(e) = conn.execute(migration, []) {
@@ -526,6 +528,8 @@ pub fn init_database() -> Result<()> {
         "ALTER TABLE plans ADD COLUMN max_retry_count INTEGER DEFAULT 3",
         "ALTER TABLE plans ADD COLUMN execution_status TEXT DEFAULT 'idle'",
         "ALTER TABLE plans ADD COLUMN current_task_id TEXT",
+        "ALTER TABLE plans ADD COLUMN split_agent_id TEXT",
+        "ALTER TABLE plans ADD COLUMN split_model_id TEXT",
     ];
 
     for migration in plans_migrations {

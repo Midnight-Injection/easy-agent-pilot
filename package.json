@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint src --fix"
+    "lint": "eslint src --fix",
+    "test:claude-json": "node scripts/test-claude-program-json-output.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

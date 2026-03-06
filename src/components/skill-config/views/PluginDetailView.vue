@@ -279,28 +279,47 @@ onMounted(() => {
     <!-- 头部工具栏 -->
     <div class="plugin-detail__toolbar">
       <div class="plugin-detail__toolbar-left">
-        <EaButton variant="ghost" size="small" @click="handleBack">
+        <EaButton
+          variant="ghost"
+          size="small"
+          @click="handleBack"
+        >
           <EaIcon name="lucide:arrow-left" />
           {{ t('common.back') }}
         </EaButton>
         <div class="plugin-detail__breadcrumb">
-          <EaIcon name="lucide:puzzle" class="plugin-detail__icon" />
+          <EaIcon
+            name="lucide:puzzle"
+            class="plugin-detail__icon"
+          />
           <span class="plugin-detail__name">{{ plugin.name }}</span>
-          <span v-if="plugin.version" class="plugin-detail__version">v{{ plugin.version }}</span>
+          <span
+            v-if="plugin.version"
+            class="plugin-detail__version"
+          >v{{ plugin.version }}</span>
           <template v-if="selectedItem">
-            <EaIcon name="lucide:chevron-right" class="plugin-detail__chevron" />
-            <EaIcon :name="getItemIcon(selectedItem.item_type)" class="plugin-detail__type-icon" />
+            <EaIcon
+              name="lucide:chevron-right"
+              class="plugin-detail__chevron"
+            />
+            <EaIcon
+              :name="getItemIcon(selectedItem.item_type)"
+              class="plugin-detail__type-icon"
+            />
             <span class="plugin-detail__current-file">{{ selectedItem.name }}</span>
           </template>
         </div>
       </div>
       <div class="plugin-detail__toolbar-right">
         <!-- 列表数量提示 -->
-        <div v-if="hasListItems && !selectedItem" class="plugin-detail__list-hint">
+        <div
+          v-if="hasListItems && !selectedItem"
+          class="plugin-detail__list-hint"
+        >
           <EaIcon name="lucide:list" />
           <span>{{ currentList.length }} {{ activeSection === 'skills' ? t('settings.plugins.internalSkills') :
-             activeSection === 'commands' ? t('settings.plugins.internalCommands') :
-             t('settings.plugins.internalAgents') }}</span>
+            activeSection === 'commands' ? t('settings.plugins.internalCommands') :
+            t('settings.plugins.internalAgents') }}</span>
           <span class="plugin-detail__list-hint-text">{{ t('settings.plugins.hoverToExpand') }}</span>
         </div>
 
@@ -371,13 +390,22 @@ onMounted(() => {
     </div>
 
     <!-- 加载中 -->
-    <div v-if="isLoading" class="plugin-detail__loading">
-      <EaIcon name="lucide:loader-2" class="plugin-detail__spinner" />
+    <div
+      v-if="isLoading"
+      class="plugin-detail__loading"
+    >
+      <EaIcon
+        name="lucide:loader-2"
+        class="plugin-detail__spinner"
+      />
       {{ t('common.loading') }}
     </div>
 
     <!-- 主体 -->
-    <div v-else class="plugin-detail__body">
+    <div
+      v-else
+      class="plugin-detail__body"
+    >
       <!-- 文件列表侧边栏 - 悬停展开 -->
       <div
         v-if="hasListItems"
@@ -389,8 +417,8 @@ onMounted(() => {
         <div class="plugin-detail__sidebar-header">
           <h3>
             {{ activeSection === 'skills' ? t('settings.plugins.internalSkills') :
-               activeSection === 'commands' ? t('settings.plugins.internalCommands') :
-               t('settings.plugins.internalAgents') }}
+              activeSection === 'commands' ? t('settings.plugins.internalCommands') :
+              t('settings.plugins.internalAgents') }}
           </h3>
         </div>
         <div class="plugin-detail__sidebar-content">
@@ -401,10 +429,16 @@ onMounted(() => {
             :class="{ 'plugin-detail__file-item--active': selectedItem?.path === item.path }"
             @click="selectItem(item)"
           >
-            <EaIcon :name="getItemIcon(item.item_type)" class="plugin-detail__file-icon" />
+            <EaIcon
+              :name="getItemIcon(item.item_type)"
+              class="plugin-detail__file-icon"
+            />
             <div class="plugin-detail__file-info">
               <span class="plugin-detail__file-name">{{ item.name }}</span>
-              <span v-if="item.description" class="plugin-detail__file-desc">{{ item.description }}</span>
+              <span
+                v-if="item.description"
+                class="plugin-detail__file-desc"
+              >{{ item.description }}</span>
             </div>
           </div>
         </div>
@@ -415,13 +449,22 @@ onMounted(() => {
         <!-- 有选中项时显示内容 -->
         <template v-if="selectedItem">
           <!-- 加载文件中 -->
-          <div v-if="isLoadingFile" class="plugin-detail__loading-content">
-            <EaIcon name="lucide:loader-2" class="plugin-detail__spinner" />
+          <div
+            v-if="isLoadingFile"
+            class="plugin-detail__loading-content"
+          >
+            <EaIcon
+              name="lucide:loader-2"
+              class="plugin-detail__spinner"
+            />
             {{ t('common.loading') }}
           </div>
 
           <!-- 编辑模式 -->
-          <div v-else-if="isEditMode && fileContent" class="plugin-detail__editor">
+          <div
+            v-else-if="isEditMode && fileContent"
+            class="plugin-detail__editor"
+          >
             <textarea
               v-model="editContent"
               class="plugin-detail__textarea"
@@ -437,13 +480,22 @@ onMounted(() => {
           />
 
           <!-- 代码预览 -->
-          <div v-else-if="fileContent" class="plugin-detail__code">
+          <div
+            v-else-if="fileContent"
+            class="plugin-detail__code"
+          >
             <pre class="plugin-detail__code-content"><code>{{ fileContent.content }}</code></pre>
           </div>
 
           <!-- 无内容 -->
-          <div v-else class="plugin-detail__no-content">
-            <EaIcon name="lucide:file-x" class="plugin-detail__no-content-icon" />
+          <div
+            v-else
+            class="plugin-detail__no-content"
+          >
+            <EaIcon
+              name="lucide:file-x"
+              class="plugin-detail__no-content-icon"
+            />
             <p>{{ t('settings.skills.noContent') }}</p>
           </div>
         </template>
@@ -451,16 +503,25 @@ onMounted(() => {
         <!-- 无选中项时显示插件信息 -->
         <template v-else>
           <!-- 元信息 -->
-          <div v-if="pluginDetails" class="plugin-detail__info">
+          <div
+            v-if="pluginDetails"
+            class="plugin-detail__info"
+          >
             <div class="plugin-detail__info-grid">
-              <div v-if="pluginDetails.author" class="plugin-detail__info-item">
+              <div
+                v-if="pluginDetails.author"
+                class="plugin-detail__info-item"
+              >
                 <span class="plugin-detail__info-label">
                   <EaIcon name="lucide:user" />
                   {{ t('settings.plugins.author') }}
                 </span>
                 <span class="plugin-detail__info-value">{{ pluginDetails.author }}</span>
               </div>
-              <div v-if="pluginDetails.install_source" class="plugin-detail__info-item">
+              <div
+                v-if="pluginDetails.install_source"
+                class="plugin-detail__info-item"
+              >
                 <span class="plugin-detail__info-label">
                   <EaIcon name="lucide:download" />
                   {{ t('settings.plugins.installedFrom') }}
@@ -476,7 +537,10 @@ onMounted(() => {
               </div>
             </div>
 
-            <div v-if="pluginDetails.description" class="plugin-detail__description">
+            <div
+              v-if="pluginDetails.description"
+              class="plugin-detail__description"
+            >
               {{ pluginDetails.description }}
             </div>
 
@@ -497,19 +561,31 @@ onMounted(() => {
             </div>
 
             <!-- 有内容时显示选择提示 -->
-            <div v-if="currentList.length > 0" class="plugin-detail__select-hint">
-              <EaIcon name="lucide:mouse-pointer-click" class="plugin-detail__select-hint-icon" />
+            <div
+              v-if="currentList.length > 0"
+              class="plugin-detail__select-hint"
+            >
+              <EaIcon
+                name="lucide:mouse-pointer-click"
+                class="plugin-detail__select-hint-icon"
+              />
               <p>{{ t('settings.plugins.selectFromList') }}</p>
             </div>
           </div>
 
           <!-- 无内容时显示空状态提示 -->
-          <div v-else class="plugin-detail__empty-section">
-            <EaIcon name="lucide:inbox" class="plugin-detail__empty-icon" />
+          <div
+            v-else
+            class="plugin-detail__empty-section"
+          >
+            <EaIcon
+              name="lucide:inbox"
+              class="plugin-detail__empty-icon"
+            />
             <p>
               {{ activeSection === 'skills' ? t('settings.plugins.noInternalSkills') :
-                 activeSection === 'commands' ? t('settings.plugins.noInternalCommands') :
-                 t('settings.plugins.noInternalAgents') }}
+                activeSection === 'commands' ? t('settings.plugins.noInternalCommands') :
+                t('settings.plugins.noInternalAgents') }}
             </p>
           </div>
         </template>

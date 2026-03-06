@@ -8,7 +8,9 @@ use crate::commands::get_persistence_dir_path;
 /// 获取数据库连接
 fn get_db_connection() -> Result<Connection> {
     let persistence_dir = get_persistence_dir_path()?;
-    Ok(Connection::open(persistence_dir.join("data").join("easy-agent.db"))?)
+    Ok(Connection::open(
+        persistence_dir.join("data").join("easy-agent.db"),
+    )?)
 }
 /// 窗口上下文信息
 #[derive(Debug, Serialize, Deserialize)]

@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 /// 获取数据库连接
 fn get_db_connection() -> Result<Connection> {
     let persistence_dir = super::get_persistence_dir_path()?;
-    Ok(Connection::open(persistence_dir.join("data").join("easy-agent.db"))?)
+    Ok(Connection::open(
+        persistence_dir.join("data").join("easy-agent.db"),
+    )?)
 }
 
 /// 应用状态键值
@@ -60,7 +62,8 @@ pub fn get_app_states(keys: Vec<String>) -> Result<Vec<AppStateEntry>, String> {
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
-    let params: Vec<&dyn rusqlite::ToSql> = keys.iter().map(|k| k as &dyn rusqlite::ToSql).collect();
+    let params: Vec<&dyn rusqlite::ToSql> =
+        keys.iter().map(|k| k as &dyn rusqlite::ToSql).collect();
 
     let entries = stmt
         .query_map(params.as_slice(), |row| {

@@ -1,10 +1,10 @@
+use anyhow::Result;
+use chrono::Utc;
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use rusqlite::{Connection, params, OptionalExtension};
-use chrono::Utc;
 use uuid::Uuid;
 
 /// CLI 工具信息
@@ -44,8 +44,7 @@ pub struct CliPathEntry {
 
 /// 获取数据库连接
 fn get_db_connection() -> Result<Connection, String> {
-    let persistence_dir = crate::commands::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = crate::commands::get_persistence_dir_path().map_err(|e| e.to_string())?;
     let db_path = persistence_dir.join("data").join("easy-agent.db");
     Connection::open(&db_path).map_err(|e| e.to_string())
 }
@@ -145,10 +144,7 @@ fn is_executable(path: &PathBuf) -> bool {
 
 /// 获取 CLI 版本号
 fn get_cli_version(cli_path: &PathBuf) -> Option<String> {
-    let output = Command::new(cli_path)
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = Command::new(cli_path).arg("--version").output().ok()?;
 
     if output.status.success() {
         let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -199,12 +195,12 @@ pub fn detect_cli_tools() -> Result<DetectionResult, String> {
         tools.push(tool);
     }
 
-    let total_found = tools.iter().filter(|t| t.status == CliStatus::Available).count();
+    let total_found = tools
+        .iter()
+        .filter(|t| t.status == CliStatus::Available)
+        .count();
 
-    Ok(DetectionResult {
-        tools,
-        total_found,
-    })
+    Ok(DetectionResult { tools, total_found })
 }
 
 /// 手动验证 CLI 路径 (Tauri 命令)

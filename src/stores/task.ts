@@ -25,55 +25,44 @@ interface RustTask {
   assignee?: string
   session_id?: string
   progress_file?: string
-  dependencies?: string // JSON 字符串
-  task_order: number
+  dependencies?: string | string[] // JSON 字符串或数组
+  task_order?: number
+  order?: number
   retry_count: number
   max_retries: number
   error_message?: string
-  implementation_steps?: string // JSON 字符串
-  test_steps?: string // JSON 字符串
-  acceptance_criteria?: string // JSON 字符串
+  implementation_steps?: string | string[] // JSON 字符串或数组
+  test_steps?: string | string[] // JSON 字符串或数组
+  acceptance_criteria?: string | string[] // JSON 字符串或数组
   created_at: string
   updated_at: string
 }
 
 // 将 Rust 返回的 snake_case 转换为 camelCase
 function transformTask(rustTask: RustTask): Task {
-  let dependencies: string[] | undefined
-  if (rustTask.dependencies) {
-    try {
-      dependencies = JSON.parse(rustTask.dependencies)
-    } catch {
-      // ignore parse error
+  const parseStringArray = (value?: string | string[] | null): string[] | undefined => {
+    if (Array.isArray(value)) {
+      return value
     }
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value)
+        if (Array.isArray(parsed)) return parsed
+      } catch {
+        // ignore parse error
+      }
+    }
+    return undefined
   }
 
-  let implementationSteps: string[] | undefined
-  if (rustTask.implementation_steps) {
-    try {
-      implementationSteps = JSON.parse(rustTask.implementation_steps)
-    } catch {
-      // ignore parse error
-    }
-  }
+  const order = typeof rustTask.order === 'number'
+    ? rustTask.order
+    : (typeof rustTask.task_order === 'number' ? rustTask.task_order : 0)
 
-  let testSteps: string[] | undefined
-  if (rustTask.test_steps) {
-    try {
-      testSteps = JSON.parse(rustTask.test_steps)
-    } catch {
-      // ignore parse error
-    }
-  }
-
-  let acceptanceCriteria: string[] | undefined
-  if (rustTask.acceptance_criteria) {
-    try {
-      acceptanceCriteria = JSON.parse(rustTask.acceptance_criteria)
-    } catch {
-      // ignore parse error
-    }
-  }
+  const dependencies = parseStringArray(rustTask.dependencies)
+  const implementationSteps = parseStringArray(rustTask.implementation_steps)
+  const testSteps = parseStringArray(rustTask.test_steps)
+  const acceptanceCriteria = parseStringArray(rustTask.acceptance_criteria)
 
   return {
     id: rustTask.id,
@@ -87,7 +76,7 @@ function transformTask(rustTask: RustTask): Task {
     sessionId: rustTask.session_id,
     progressFile: rustTask.progress_file,
     dependencies,
-    order: rustTask.task_order,
+    order,
     retryCount: rustTask.retry_count,
     maxRetries: rustTask.max_retries,
     errorMessage: rustTask.error_message,
@@ -99,12 +88,31 @@ function transformTask(rustTask: RustTask): Task {
   }
 }
 
+function collectTaskAndDescendantIds(taskId: string, taskList: Task[]): Set<string> {
+  const ids = new Set<string>([taskId])
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const task of taskList) {
+      if (task.parentId && ids.has(task.parentId) && !ids.has(task.id)) {
+        ids.add(task.id)
+        changed = true
+      }
+    }
+  }
+
+  return ids
+}
+
 export const useTaskStore = defineStore('task', () => {
   // State
   const tasks = ref<Task[]>([])
   const currentTaskId = ref<string | null>(null)
   const isLoading = ref(false)
   const loadError = ref<string | null>(null)
+  // 拖拽状态 - 全局共享
+  const draggingTaskId = ref<string | null>(null)
 
   // Getters
   const currentTask = computed(() =>
@@ -299,18 +307,33 @@ export const useTaskStore = defineStore('task', () => {
   async function deleteTask(id: string): Promise<void> {
     const notificationStore = useNotificationStore()
 
+    const previousTasks = [...tasks.value]
+    const previousCurrentTaskId = currentTaskId.value
+    const previousEditDialogVisible = editDialogVisible.value
+    const previousEditingTask = editingTask.value ? { ...editingTask.value } : null
+
+    const deletedIds = collectTaskAndDescendantIds(id, previousTasks)
+
+    // 乐观更新：立即从本地移除任务及其子任务
+    tasks.value = tasks.value.filter(task => !deletedIds.has(task.id))
+
+    if (currentTaskId.value && deletedIds.has(currentTaskId.value)) {
+      currentTaskId.value = null
+    }
+
+    if (editingTask.value && deletedIds.has(editingTask.value.id)) {
+      closeEditDialog()
+    }
+
     try {
       await invoke('delete_task', { id })
-
-      const index = tasks.value.findIndex(t => t.id === id)
-      if (index !== -1) {
-        tasks.value.splice(index, 1)
-      }
-
-      if (currentTaskId.value === id) {
-        currentTaskId.value = null
-      }
     } catch (error) {
+      // 回滚本地状态
+      tasks.value = previousTasks
+      currentTaskId.value = previousCurrentTaskId
+      editDialogVisible.value = previousEditDialogVisible
+      editingTask.value = previousEditingTask
+
       console.error('Failed to delete task:', error)
       notificationStore.databaseError(
         '删除任务失败',
@@ -376,6 +399,22 @@ export const useTaskStore = defineStore('task', () => {
 
   function setCurrentTask(id: string | null) {
     currentTaskId.value = id
+  }
+
+  // 编辑对话框状态
+  const editDialogVisible = ref(false)
+  const editingTask = ref<Task | null>(null)
+
+  // 打开编辑对话框
+  function openEditDialog(task: Task) {
+    editingTask.value = { ...task }
+    editDialogVisible.value = true
+  }
+
+  // 关闭编辑对话框
+  function closeEditDialog() {
+    editDialogVisible.value = false
+    editingTask.value = null
   }
 
   // 内部排序函数
@@ -543,6 +582,7 @@ export const useTaskStore = defineStore('task', () => {
     currentTaskId,
     isLoading,
     loadError,
+    draggingTaskId,
     // Getters
     currentTask,
     tasksByPlan,
@@ -565,6 +605,11 @@ export const useTaskStore = defineStore('task', () => {
     batchStartTasks,
     retryTask,
     stopTask,
-    createTasksFromSplit
+    createTasksFromSplit,
+    // 编辑对话框
+    editDialogVisible,
+    editingTask,
+    openEditDialog,
+    closeEditDialog
   }
 })

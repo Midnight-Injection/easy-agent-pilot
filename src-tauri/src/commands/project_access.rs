@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 /// 获取数据库连接
 fn get_db_connection() -> Result<Connection> {
     let persistence_dir = super::get_persistence_dir_path()?;
-    Ok(Connection::open(persistence_dir.join("data").join("easy-agent.db"))?)
+    Ok(Connection::open(
+        persistence_dir.join("data").join("easy-agent.db"),
+    )?)
 }
 
 /// 项目访问记录
@@ -36,7 +38,9 @@ pub fn get_recent_projects(limit: i32) -> Result<Vec<String>, String> {
     let conn = get_db_connection().map_err(|e| e.to_string())?;
 
     let mut stmt = conn
-        .prepare("SELECT project_id FROM project_access_log ORDER BY last_accessed_at DESC LIMIT ?1")
+        .prepare(
+            "SELECT project_id FROM project_access_log ORDER BY last_accessed_at DESC LIMIT ?1",
+        )
         .map_err(|e| e.to_string())?;
 
     let project_ids = stmt

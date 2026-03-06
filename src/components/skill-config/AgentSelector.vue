@@ -53,22 +53,36 @@ function getAgentTypeLabel(type: string) {
     </div>
 
     <div class="agent-selector__dropdown">
-      <div class="agent-selector__current" :class="{ 'agent-selector__current--placeholder': !modelValue }">
+      <div
+        class="agent-selector__current"
+        :class="{ 'agent-selector__current--placeholder': !modelValue }"
+      >
         <template v-if="modelValue">
-          <EaIcon :name="getAgentIcon(modelValue.type)" class="agent-selector__icon" />
+          <EaIcon
+            :name="getAgentIcon(modelValue.type)"
+            class="agent-selector__icon"
+          />
           <span class="agent-selector__name">{{ modelValue.name }}</span>
           <span class="agent-selector__type">{{ getAgentTypeLabel(modelValue.type) }}</span>
         </template>
         <template v-else>
           <span class="agent-selector__placeholder">{{ t('settings.agentConfig.selectAgentPlaceholder') }}</span>
         </template>
-        <EaIcon name="lucide:chevron-down" class="agent-selector__chevron" />
+        <EaIcon
+          name="lucide:chevron-down"
+          class="agent-selector__chevron"
+        />
       </div>
 
       <div class="agent-selector__menu">
         <!-- CLI 类型智能体 -->
-        <div v-if="cliAgents.length > 0" class="agent-selector__group">
-          <div class="agent-selector__group-label">{{ t('settings.agentConfig.cliAgents') }}</div>
+        <div
+          v-if="cliAgents.length > 0"
+          class="agent-selector__group"
+        >
+          <div class="agent-selector__group-label">
+            {{ t('settings.agentConfig.cliAgents') }}
+          </div>
           <div
             v-for="agent in cliAgents"
             :key="agent.id"
@@ -76,15 +90,23 @@ function getAgentTypeLabel(type: string) {
             :class="{ 'agent-selector__option--active': modelValue?.id === agent.id }"
             @click="selectAgent(agent)"
           >
-            <EaIcon :name="getAgentIcon(agent.type)" class="agent-selector__option-icon" />
+            <EaIcon
+              :name="getAgentIcon(agent.type)"
+              class="agent-selector__option-icon"
+            />
             <span class="agent-selector__option-name">{{ agent.name }}</span>
             <span class="agent-selector__option-provider">{{ agent.provider }}</span>
           </div>
         </div>
 
         <!-- SDK 类型智能体 -->
-        <div v-if="sdkAgents.length > 0" class="agent-selector__group">
-          <div class="agent-selector__group-label">{{ t('settings.agentConfig.sdkAgents') }}</div>
+        <div
+          v-if="sdkAgents.length > 0"
+          class="agent-selector__group"
+        >
+          <div class="agent-selector__group-label">
+            {{ t('settings.agentConfig.sdkAgents') }}
+          </div>
           <div
             v-for="agent in sdkAgents"
             :key="agent.id"
@@ -92,15 +114,24 @@ function getAgentTypeLabel(type: string) {
             :class="{ 'agent-selector__option--active': modelValue?.id === agent.id }"
             @click="selectAgent(agent)"
           >
-            <EaIcon :name="getAgentIcon(agent.type)" class="agent-selector__option-icon" />
+            <EaIcon
+              :name="getAgentIcon(agent.type)"
+              class="agent-selector__option-icon"
+            />
             <span class="agent-selector__option-name">{{ agent.name }}</span>
             <span class="agent-selector__option-provider">{{ agent.provider }}</span>
           </div>
         </div>
 
         <!-- 无智能体提示 -->
-        <div v-if="noAgents" class="agent-selector__empty">
-          <EaIcon name="lucide:inbox" class="agent-selector__empty-icon" />
+        <div
+          v-if="noAgents"
+          class="agent-selector__empty"
+        >
+          <EaIcon
+            name="lucide:inbox"
+            class="agent-selector__empty-icon"
+          />
           <span>{{ t('settings.agentConfig.noAgents') }}</span>
         </div>
       </div>

@@ -3,6 +3,7 @@ import type { AgentStrategy, ConversationContext, StreamEvent } from './strategi
 import { ClaudeCliStrategy } from './strategies/ClaudeCliStrategy'
 import { CodexCliStrategy } from './strategies/CodexCliStrategy'
 import { ClaudeSdkStrategy } from './strategies/ClaudeSdkStrategy'
+import { CodexSdkStrategy } from './strategies/CodexSdkStrategy'
 
 /**
  * 智能体执行器
@@ -17,6 +18,7 @@ export class AgentExecutor {
     this.registerStrategy(new ClaudeCliStrategy())
     this.registerStrategy(new CodexCliStrategy())
     this.registerStrategy(new ClaudeSdkStrategy())
+    this.registerStrategy(new CodexSdkStrategy())
   }
 
   /**

@@ -116,11 +116,17 @@ function handleSave() {
 </script>
 
 <template>
-  <EaModal :visible="visible" @update:visible="emit('update:visible', $event)">
+  <EaModal
+    :visible="visible"
+    @update:visible="emit('update:visible', $event)"
+  >
     <div class="mcp-edit-modal">
       <div class="mcp-edit-modal__header">
         <h2>{{ title }}</h2>
-        <button class="mcp-edit-modal__close" @click="close">
+        <button
+          class="mcp-edit-modal__close"
+          @click="close"
+        >
           <EaIcon name="lucide:x" />
         </button>
       </div>
@@ -133,24 +139,42 @@ function handleSave() {
             type="text"
             :placeholder="t('settings.sdkConfig.mcp.namePlaceholder')"
             :disabled="isReadOnly"
-          />
+          >
         </div>
 
         <div class="form-row">
           <div class="form-group">
             <label>{{ t('settings.sdkConfig.mcp.transportType') }}</label>
-            <select v-model="form.transportType" :disabled="isReadOnly">
-              <option value="stdio">STDIO</option>
-              <option value="sse">SSE</option>
-              <option value="http">HTTP</option>
+            <select
+              v-model="form.transportType"
+              :disabled="isReadOnly"
+            >
+              <option value="stdio">
+                STDIO
+              </option>
+              <option value="sse">
+                SSE
+              </option>
+              <option value="http">
+                HTTP
+              </option>
             </select>
           </div>
           <div class="form-group">
             <label>{{ t('settings.sdkConfig.mcp.scope') }}</label>
-            <select v-model="form.scope" :disabled="isReadOnly">
-              <option value="user">{{ t('settings.agent.scan.scopeTypes.user') }}</option>
-              <option value="local">{{ t('settings.agent.scan.scopeTypes.local') }}</option>
-              <option value="project">{{ t('settings.agent.scan.scopeTypes.project') }}</option>
+            <select
+              v-model="form.scope"
+              :disabled="isReadOnly"
+            >
+              <option value="user">
+                {{ t('settings.agent.scan.scopeTypes.user') }}
+              </option>
+              <option value="local">
+                {{ t('settings.agent.scan.scopeTypes.local') }}
+              </option>
+              <option value="project">
+                {{ t('settings.agent.scan.scopeTypes.project') }}
+              </option>
             </select>
           </div>
         </div>
@@ -163,7 +187,7 @@ function handleSave() {
               type="text"
               :placeholder="t('settings.sdkConfig.mcp.commandPlaceholder')"
               :disabled="isReadOnly"
-            />
+            >
           </div>
           <div class="form-group">
             <label>{{ t('settings.sdkConfig.mcp.args') }}</label>
@@ -172,7 +196,7 @@ function handleSave() {
               :placeholder="t('settings.sdkConfig.mcp.argsPlaceholder')"
               :disabled="isReadOnly"
               rows="3"
-            ></textarea>
+            />
           </div>
           <div class="form-group">
             <label>{{ t('settings.sdkConfig.mcp.env') }}</label>
@@ -181,7 +205,7 @@ function handleSave() {
               :placeholder="t('settings.sdkConfig.mcp.envPlaceholder')"
               :disabled="isReadOnly"
               rows="3"
-            ></textarea>
+            />
           </div>
         </template>
 
@@ -193,23 +217,33 @@ function handleSave() {
               type="text"
               placeholder="https://example.com/mcp"
               :disabled="isReadOnly"
-            />
+            >
           </div>
           <div class="form-group">
             <label>{{ t('settings.sdkConfig.mcp.headers') }}</label>
             <textarea
               v-model="form.headers"
-              placeholder='{"Authorization": "Bearer token"}'
+              placeholder="{&quot;Authorization&quot;: &quot;Bearer token&quot;}"
               :disabled="isReadOnly"
               rows="3"
-            ></textarea>
+            />
           </div>
         </template>
       </div>
 
       <div class="mcp-edit-modal__footer">
-        <EaButton variant="ghost" @click="close">{{ t('common.cancel') }}</EaButton>
-        <EaButton v-if="!isReadOnly" @click="handleSave">{{ t('common.save') }}</EaButton>
+        <EaButton
+          variant="ghost"
+          @click="close"
+        >
+          {{ t('common.cancel') }}
+        </EaButton>
+        <EaButton
+          v-if="!isReadOnly"
+          @click="handleSave"
+        >
+          {{ t('common.save') }}
+        </EaButton>
       </div>
     </div>
   </EaModal>

@@ -131,13 +131,22 @@ const handleClose = () => {
 
 <template>
   <div class="model-edit-modal">
-    <div class="modal-overlay" @click="handleClose">
-      <div class="modal-container" @click.stop>
+    <div
+      class="modal-overlay"
+      @click="handleClose"
+    >
+      <div
+        class="modal-container"
+        @click.stop
+      >
         <div class="modal-header">
           <h3 class="modal-title">
             {{ isEditMode ? '编辑模型' : '添加模型' }}
           </h3>
-          <button class="modal-close" @click="handleClose">
+          <button
+            class="modal-close"
+            @click="handleClose"
+          >
             <span>&times;</span>
           </button>
         </div>
@@ -151,7 +160,7 @@ const handleClose = () => {
               class="form-input"
               :placeholder="isBuiltinDefaultModel ? '使用系统默认模型' : '例如: gpt-4o, claude-3-5-sonnet-20241022'"
               :disabled="isBuiltinDefaultModel"
-            />
+            >
             <p class="form-hint">
               {{ isBuiltinDefaultModel ? '此配置使用系统默认模型，无需指定模型 ID' : '模型在 API 中的唯一标识符' }}
             </p>
@@ -164,8 +173,10 @@ const handleClose = () => {
               type="text"
               class="form-input"
               placeholder="例如: GPT-4o, Claude 3.5 Sonnet"
-            />
-            <p class="form-hint">在界面上显示的友好名称</p>
+            >
+            <p class="form-hint">
+              在界面上显示的友好名称
+            </p>
           </div>
 
           <div class="form-group">
@@ -190,13 +201,18 @@ const handleClose = () => {
               placeholder="输入自定义大小"
               min="1000"
               step="1000"
-            />
-            <p class="form-hint">模型的最大上下文长度（token 数）</p>
+            >
+            <p class="form-hint">
+              模型的最大上下文长度（token 数）
+            </p>
           </div>
         </div>
 
         <div class="modal-footer">
-          <EaButton variant="secondary" @click="handleClose">
+          <EaButton
+            variant="secondary"
+            @click="handleClose"
+          >
             取消
           </EaButton>
           <EaButton

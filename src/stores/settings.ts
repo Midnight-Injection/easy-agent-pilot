@@ -756,9 +756,9 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function testMarketSourceConnection(sourceId: string): Promise<TestConnectionResult> {
+  async function testMarketSourceConnection(type: MarketSourceType, urlOrPath: string): Promise<TestConnectionResult> {
     try {
-      const result = await invoke<TestConnectionResult>('test_market_source_connection', { sourceId })
+      const result = await invoke<TestConnectionResult>('test_market_source_connection', { type, urlOrPath })
       return result
     } catch (error) {
       console.error('Failed to test market source connection:', error)
@@ -766,14 +766,12 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function testAndUpdateMarketSource(sourceId: string): Promise<MarketSource> {
+  async function testAndUpdateMarketSource(sourceId: string): Promise<TestConnectionResult> {
     try {
-      const source = await invoke<MarketSource>('test_and_update_market_source', { sourceId })
-      const index = marketSources.value.findIndex(s => s.id === sourceId)
-      if (index !== -1) {
-        marketSources.value[index] = source
-      }
-      return source
+      const result = await invoke<TestConnectionResult>('test_and_update_market_source', { sourceId })
+      // Reload market sources to get updated data
+      await loadMarketSources()
+      return result
     } catch (error) {
       console.error('Failed to test and update market source:', error)
       throw error
@@ -791,9 +789,9 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  async function updateMarketSource(sourceId: string, input: MarketSourceInput): Promise<MarketSource> {
+  async function updateMarketSource(sourceId: string, input: MarketSourceInput, enabled?: boolean): Promise<MarketSource> {
     try {
-      const source = await invoke<MarketSource>('update_market_source', { sourceId, input })
+      const source = await invoke<MarketSource>('update_market_source', { sourceId, input, enabled })
       const index = marketSources.value.findIndex(s => s.id === sourceId)
       if (index !== -1) {
         marketSources.value[index] = source
@@ -895,6 +893,14 @@ export const useSettingsStore = defineStore('settings', () => {
     cancelInstallSession,
     loadPendingInstallSessions,
     cleanupInstallSession,
-    clearPendingInstallSessions
+    clearPendingInstallSessions,
+    // Market Source actions
+    loadMarketSources,
+    testMarketSourceConnection,
+    testAndUpdateMarketSource,
+    addMarketSource,
+    updateMarketSource,
+    toggleMarketSource,
+    deleteMarketSource
   }
 })

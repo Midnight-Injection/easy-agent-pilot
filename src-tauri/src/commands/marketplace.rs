@@ -1,7 +1,7 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use rusqlite::{Connection, params};
 use chrono::Utc;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Market source type
@@ -110,8 +110,7 @@ pub struct TestConnectionResult {
 
 /// Get database connection
 fn get_db_connection() -> Result<Connection, String> {
-    let persistence_dir = crate::commands::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = crate::commands::get_persistence_dir_path().map_err(|e| e.to_string())?;
     let db_path = persistence_dir.join("data").join("easy-agent.db");
     Connection::open(&db_path).map_err(|e| e.to_string())
 }
@@ -149,7 +148,11 @@ pub fn list_market_sources() -> Result<Vec<MarketSource>, String> {
 }
 
 /// Check if name is duplicate
-fn check_name_duplicate(conn: &Connection, name: &str, exclude_id: Option<&str>) -> Result<bool, String> {
+fn check_name_duplicate(
+    conn: &Connection,
+    name: &str,
+    exclude_id: Option<&str>,
+) -> Result<bool, String> {
     let count = match exclude_id {
         Some(id) => {
             let mut stmt = conn
@@ -370,7 +373,10 @@ async fn test_market_source_connection_impl(
                     } else {
                         TestConnectionResult {
                             success: false,
-                            message: format!("无法访问 marketplace.json: HTTP {}", response.status()),
+                            message: format!(
+                                "无法访问 marketplace.json: HTTP {}",
+                                response.status()
+                            ),
                         }
                     }
                 }
@@ -392,18 +398,16 @@ async fn test_market_source_connection_impl(
                     if response.status().is_success() {
                         // Validate JSON format
                         match response.text().await {
-                            Ok(text) => {
-                                match serde_json::from_str::<serde_json::Value>(&text) {
-                                    Ok(_) => TestConnectionResult {
-                                        success: true,
-                                        message: "成功获取并验证 JSON 配置".to_string(),
-                                    },
-                                    Err(e) => TestConnectionResult {
-                                        success: false,
-                                        message: format!("JSON 解析失败: {}", e),
-                                    },
-                                }
-                            }
+                            Ok(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+                                Ok(_) => TestConnectionResult {
+                                    success: true,
+                                    message: "成功获取并验证 JSON 配置".to_string(),
+                                },
+                                Err(e) => TestConnectionResult {
+                                    success: false,
+                                    message: format!("JSON 解析失败: {}", e),
+                                },
+                            },
                             Err(e) => TestConnectionResult {
                                 success: false,
                                 message: format!("读取响应失败: {}", e),
@@ -449,18 +453,16 @@ async fn test_market_source_connection_impl(
 
             // Try to read and validate JSON
             match std::fs::read_to_string(&marketplace_path) {
-                Ok(content) => {
-                    match serde_json::from_str::<serde_json::Value>(&content) {
-                        Ok(_) => TestConnectionResult {
-                            success: true,
-                            message: "成功读取并验证 marketplace.json".to_string(),
-                        },
-                        Err(e) => TestConnectionResult {
-                            success: false,
-                            message: format!("JSON 解析失败: {}", e),
-                        },
-                    }
-                }
+                Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(_) => TestConnectionResult {
+                        success: true,
+                        message: "成功读取并验证 marketplace.json".to_string(),
+                    },
+                    Err(e) => TestConnectionResult {
+                        success: false,
+                        message: format!("JSON 解析失败: {}", e),
+                    },
+                },
                 Err(e) => TestConnectionResult {
                     success: false,
                     message: format!("读取文件失败: {}", e),

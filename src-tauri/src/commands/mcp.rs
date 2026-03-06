@@ -1,16 +1,16 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use rusqlite::{Connection, params};
 use chrono::Utc;
-use uuid::Uuid;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
+use uuid::Uuid;
 // MCP SDK (官方 Rust 实现)
 use rmcp::{
-    ServiceExt,
     model::CallToolRequestParams,
-    transport::{TokioChildProcess, StreamableHttpClientTransport},
+    transport::{StreamableHttpClientTransport, TokioChildProcess},
+    ServiceExt,
 };
 use tokio::process::Command as TokioCommand;
 
@@ -70,8 +70,7 @@ pub struct UpdateMcpServerInput {
 
 /// 获取数据库连接
 fn get_db_connection() -> Result<Connection, String> {
-    let persistence_dir = crate::commands::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = crate::commands::get_persistence_dir_path().map_err(|e| e.to_string())?;
     let db_path = persistence_dir.join("data").join("easy-agent.db");
     Connection::open(&db_path).map_err(|e| e.to_string())
 }
@@ -80,8 +79,7 @@ fn get_db_connection() -> Result<Connection, String> {
 /// stdio 类型写入 ~/.claude.json
 /// http 类型写入 ~/.config/easy-agent/mcp-http.json
 fn get_mcp_config_path(server_type: &str) -> Result<PathBuf, String> {
-    let home = dirs::home_dir()
-        .ok_or("Cannot determine home directory")?;
+    let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
 
     match server_type {
         "stdio" => Ok(home.join(".claude.json")),
@@ -102,10 +100,9 @@ fn write_mcp_to_config_file(server: &McpServer) -> Result<(), String> {
 
     // 读取现有配置或创建新配置
     let mut config: Value = if config_path.exists() {
-        let content = fs::read_to_string(&config_path)
-            .map_err(|e| format!("读取配置文件失败: {}", e))?;
-        serde_json::from_str(&content)
-            .unwrap_or_else(|_| json!({"mcpServers": {}}))
+        let content =
+            fs::read_to_string(&config_path).map_err(|e| format!("读取配置文件失败: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_else(|_| json!({"mcpServers": {}}))
     } else {
         json!({"mcpServers": {}})
     };
@@ -160,16 +157,14 @@ fn write_mcp_to_config_file(server: &McpServer) -> Result<(), String> {
     // 确保父目录存在
     if let Some(parent) = config_path.parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("创建配置目录失败: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
         }
     }
 
     // 写入文件
-    let content = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("序列化配置失败: {}", e))?;
-    fs::write(&config_path, content)
-        .map_err(|e| format!("写入配置文件失败: {}", e))?;
+    let content =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    fs::write(&config_path, content).map_err(|e| format!("写入配置文件失败: {}", e))?;
 
     Ok(())
 }
@@ -184,10 +179,9 @@ fn remove_mcp_from_config_file(server_type: &str, server_name: &str) -> Result<(
 
     // 读取现有配置
     let mut config: Value = {
-        let content = fs::read_to_string(&config_path)
-            .map_err(|e| format!("读取配置文件失败: {}", e))?;
-        serde_json::from_str(&content)
-            .unwrap_or_else(|_| json!({"mcpServers": {}}))
+        let content =
+            fs::read_to_string(&config_path).map_err(|e| format!("读取配置文件失败: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_else(|_| json!({"mcpServers": {}}))
     };
 
     // 从 mcpServers 中删除指定服务器
@@ -198,10 +192,9 @@ fn remove_mcp_from_config_file(server_type: &str, server_name: &str) -> Result<(
     }
 
     // 写入文件
-    let content = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("序列化配置失败: {}", e))?;
-    fs::write(&config_path, content)
-        .map_err(|e| format!("写入配置文件失败: {}", e))?;
+    let content =
+        serde_json::to_string_pretty(&config).map_err(|e| format!("序列化配置失败: {}", e))?;
+    fs::write(&config_path, content).map_err(|e| format!("写入配置文件失败: {}", e))?;
 
     Ok(())
 }
@@ -245,7 +238,11 @@ pub fn list_mcp_servers() -> Result<Vec<McpServer>, String> {
 }
 
 /// 检查名称是否重复
-fn check_name_duplicate(conn: &Connection, name: &str, exclude_id: Option<&str>) -> Result<bool, String> {
+fn check_name_duplicate(
+    conn: &Connection,
+    name: &str,
+    exclude_id: Option<&str>,
+) -> Result<bool, String> {
     let count = match exclude_id {
         Some(id) => {
             let mut stmt = conn
@@ -288,7 +285,13 @@ pub fn add_mcp_server(input: CreateMcpServerInput) -> Result<McpServer, String> 
     }
 
     // http 类型需要 URL
-    if server_type == "http" && input.url.as_ref().map(|u| u.trim().is_empty()).unwrap_or(true) {
+    if server_type == "http"
+        && input
+            .url
+            .as_ref()
+            .map(|u| u.trim().is_empty())
+            .unwrap_or(true)
+    {
         return Err("URL不能为空".to_string());
     }
 
@@ -353,7 +356,14 @@ pub fn update_mcp_server(input: UpdateMcpServerInput) -> Result<McpServer, Strin
         return Err("命令不能为空".to_string());
     }
 
-    if server_type == "http" && input.url.as_ref().map(|u| u.trim()).unwrap_or("").is_empty() {
+    if server_type == "http"
+        && input
+            .url
+            .as_ref()
+            .map(|u| u.trim())
+            .unwrap_or("")
+            .is_empty()
+    {
         return Err("URL不能为空".to_string());
     }
 
@@ -487,7 +497,11 @@ pub async fn test_mcp_connection(id: String) -> Result<McpTestResult, String> {
 
     // 保存测试结果到数据库
     let now = Utc::now().to_rfc3339();
-    let status = if test_result.success { "success" } else { "failed" };
+    let status = if test_result.success {
+        "success"
+    } else {
+        "failed"
+    };
 
     // 重新获取连接来更新数据库
     let conn = get_db_connection()?;
@@ -513,7 +527,10 @@ async fn test_http_mcp(name: &str, url: Option<String>, _headers: Option<String>
         }
     };
 
-    eprintln!("[MCP] Using rmcp HTTP transport to test HTTP MCP server: {}", url);
+    eprintln!(
+        "[MCP] Using rmcp HTTP transport to test HTTP MCP server: {}",
+        url
+    );
 
     // 使用 rmcp 的 StreamableHttpClientTransport 连接到 HTTP MCP 服务器
     let transport = StreamableHttpClientTransport::from_uri(url.as_str());
@@ -556,7 +573,12 @@ async fn test_http_mcp(name: &str, url: Option<String>, _headers: Option<String>
 }
 
 /// 测试 stdio 类型 MCP 服务器（使用官方 rmcp SDK）
-async fn test_stdio_mcp(name: &str, command: &str, args: Option<String>, env: Option<String>) -> McpTestResult {
+async fn test_stdio_mcp(
+    name: &str,
+    command: &str,
+    args: Option<String>,
+    env: Option<String>,
+) -> McpTestResult {
     eprintln!("[MCP] Using rmcp SDK to test stdio MCP server: {}", name);
 
     // 解析参数
@@ -567,11 +589,13 @@ async fn test_stdio_mcp(name: &str, command: &str, args: Option<String>, env: Op
     // 解析环境变量
     let env_map: std::collections::HashMap<String, String> = env
         .and_then(|e| serde_json::from_str::<serde_json::Value>(&e).ok())
-        .and_then(|v| v.as_object().map(|obj| {
-            obj.iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                .collect()
-        }))
+        .and_then(|v| {
+            v.as_object().map(|obj| {
+                obj.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+        })
         .unwrap_or_default();
 
     // 构建命令
@@ -663,48 +687,52 @@ fn format_call_tool_result(call_result: &rmcp::model::CallToolResult) -> Value {
     use rmcp::model::RawContent;
 
     // 提取内容
-    let content: Vec<Value> = call_result.content.iter().map(|c| {
-        match &c.raw {
-            RawContent::Text(text_content) => {
-                // 尝试解析为 JSON，如果成功则返回解析后的值
-                if let Ok(parsed) = serde_json::from_str::<Value>(&text_content.text) {
-                    parsed
-                } else {
+    let content: Vec<Value> = call_result
+        .content
+        .iter()
+        .map(|c| {
+            match &c.raw {
+                RawContent::Text(text_content) => {
+                    // 尝试解析为 JSON，如果成功则返回解析后的值
+                    if let Ok(parsed) = serde_json::from_str::<Value>(&text_content.text) {
+                        parsed
+                    } else {
+                        json!({
+                            "type": "text",
+                            "text": text_content.text
+                        })
+                    }
+                }
+                RawContent::Image(image_content) => {
                     json!({
-                        "type": "text",
-                        "text": text_content.text
+                        "type": "image",
+                        "mime_type": image_content.mime_type,
+                        "data": image_content.data
+                    })
+                }
+                RawContent::Resource(resource_content) => {
+                    json!({
+                        "type": "resource",
+                        "resource": resource_content.resource
+                    })
+                }
+                RawContent::Audio(audio_content) => {
+                    json!({
+                        "type": "audio",
+                        "mime_type": audio_content.mime_type,
+                        "data": audio_content.data
+                    })
+                }
+                RawContent::ResourceLink(resource_link) => {
+                    json!({
+                        "type": "resource_link",
+                        "uri": resource_link.uri,
+                        "name": resource_link.name
                     })
                 }
             }
-            RawContent::Image(image_content) => {
-                json!({
-                    "type": "image",
-                    "mime_type": image_content.mime_type,
-                    "data": image_content.data
-                })
-            }
-            RawContent::Resource(resource_content) => {
-                json!({
-                    "type": "resource",
-                    "resource": resource_content.resource
-                })
-            }
-            RawContent::Audio(audio_content) => {
-                json!({
-                    "type": "audio",
-                    "mime_type": audio_content.mime_type,
-                    "data": audio_content.data
-                })
-            }
-            RawContent::ResourceLink(resource_link) => {
-                json!({
-                    "type": "resource_link",
-                    "uri": resource_link.uri,
-                    "name": resource_link.name
-                })
-            }
-        }
-    }).collect();
+        })
+        .collect();
 
     // 构建格式化的结果
     let mut result = json!({
@@ -756,7 +784,11 @@ pub async fn list_mcp_tools(server_id: String) -> Result<McpToolsListResult, Str
 }
 
 /// 列出 HTTP 类型 MCP 服务器的工具
-async fn list_http_mcp_tools(_name: &str, url: Option<String>, _headers: Option<String>) -> Result<McpToolsListResult, String> {
+async fn list_http_mcp_tools(
+    _name: &str,
+    url: Option<String>,
+    _headers: Option<String>,
+) -> Result<McpToolsListResult, String> {
     let url = match url {
         Some(u) if !u.trim().is_empty() => u,
         _ => {
@@ -768,7 +800,10 @@ async fn list_http_mcp_tools(_name: &str, url: Option<String>, _headers: Option<
         }
     };
 
-    eprintln!("[MCP] Using rmcp HTTP transport to connect to HTTP MCP server: {}", url);
+    eprintln!(
+        "[MCP] Using rmcp HTTP transport to connect to HTTP MCP server: {}",
+        url
+    );
 
     // 使用 rmcp 的 StreamableHttpClientTransport 连接到 HTTP MCP 服务器
     let transport = StreamableHttpClientTransport::from_uri(url.as_str());
@@ -806,8 +841,8 @@ async fn list_http_mcp_tools(_name: &str, url: Option<String>, _headers: Option<
         .tools
         .into_iter()
         .map(|tool| {
-            let input_schema = serde_json::to_value(&tool.input_schema)
-                .unwrap_or_else(|_| json!({}));
+            let input_schema =
+                serde_json::to_value(&tool.input_schema).unwrap_or_else(|_| json!({}));
             McpTool {
                 name: tool.name.to_string(),
                 description: tool.description.unwrap_or_default().to_string(),
@@ -829,7 +864,12 @@ async fn list_http_mcp_tools(_name: &str, url: Option<String>, _headers: Option<
 }
 
 /// 列出 stdio 类型 MCP 服务器的工具（使用官方 rmcp SDK）
-async fn list_stdio_mcp_tools(_name: &str, command: &str, args: Option<String>, env: Option<String>) -> Result<McpToolsListResult, String> {
+async fn list_stdio_mcp_tools(
+    _name: &str,
+    command: &str,
+    args: Option<String>,
+    env: Option<String>,
+) -> Result<McpToolsListResult, String> {
     eprintln!("[MCP] Using rmcp SDK to connect to stdio MCP server");
 
     // 解析参数
@@ -840,13 +880,13 @@ async fn list_stdio_mcp_tools(_name: &str, command: &str, args: Option<String>, 
     // 解析环境变量
     let env_map: std::collections::HashMap<String, String> = env
         .and_then(|e| serde_json::from_str::<Value>(&e).ok())
-        .and_then(|v| v.as_object().map(|obj| {
-            obj.iter()
-                .filter_map(|(k, v)| {
-                    v.as_str().map(|s| (k.clone(), s.to_string()))
-                })
-                .collect()
-        }))
+        .and_then(|v| {
+            v.as_object().map(|obj| {
+                obj.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+        })
         .unwrap_or_default();
 
     // 构建命令
@@ -872,10 +912,7 @@ async fn list_stdio_mcp_tools(_name: &str, command: &str, args: Option<String>, 
 
     // 使用 rmcp 连接到服务器
     eprintln!("[MCP] Connecting to MCP server...");
-    let service = match ()
-        .serve(transport)
-        .await
-    {
+    let service = match ().serve(transport).await {
         Ok(s) => s,
         Err(e) => {
             return Ok(McpToolsListResult {
@@ -906,8 +943,8 @@ async fn list_stdio_mcp_tools(_name: &str, command: &str, args: Option<String>, 
         .tools
         .into_iter()
         .map(|tool| {
-            let input_schema = serde_json::to_value(&tool.input_schema)
-                .unwrap_or_else(|_| json!({}));
+            let input_schema =
+                serde_json::to_value(&tool.input_schema).unwrap_or_else(|_| json!({}));
             McpTool {
                 name: tool.name.to_string(),
                 description: tool.description.unwrap_or_default().to_string(),
@@ -984,7 +1021,10 @@ async fn call_http_mcp_tool(
         }
     };
 
-    eprintln!("[MCP] Using rmcp HTTP transport to call tool: {}", tool_name);
+    eprintln!(
+        "[MCP] Using rmcp HTTP transport to call tool: {}",
+        tool_name
+    );
 
     // 使用 rmcp 的 StreamableHttpClientTransport 连接到 HTTP MCP 服务器
     let transport = StreamableHttpClientTransport::from_uri(url.as_str());
@@ -1059,11 +1099,13 @@ async fn call_stdio_mcp_tool(
     // 解析环境变量
     let env_map: std::collections::HashMap<String, String> = env
         .and_then(|e| serde_json::from_str::<Value>(&e).ok())
-        .and_then(|v| v.as_object().map(|obj| {
-            obj.iter()
-                .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                .collect()
-        }))
+        .and_then(|v| {
+            v.as_object().map(|obj| {
+                obj.iter()
+                    .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                    .collect()
+            })
+        })
         .unwrap_or_default();
 
     // 构建命令
@@ -1158,7 +1200,9 @@ pub struct McpConfigInput {
 
 /// 根据配置参数获取 MCP 工具列表
 #[tauri::command]
-pub async fn list_mcp_tools_by_config(config: McpConfigInput) -> Result<McpToolsListResult, String> {
+pub async fn list_mcp_tools_by_config(
+    config: McpConfigInput,
+) -> Result<McpToolsListResult, String> {
     let name = config.name;
     let server_type = config.transport_type;
 
@@ -1166,19 +1210,29 @@ pub async fn list_mcp_tools_by_config(config: McpConfigInput) -> Result<McpTools
     let args_str = config.args.map(|a| a.join(" "));
 
     // 将 env HashMap 转换为 JSON 字符串
-    let env_str = config.env.as_ref().map(|e| {
-        serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string())
-    });
+    let env_str = config
+        .env
+        .as_ref()
+        .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string()));
 
     // 将 headers HashMap 转换为 JSON 字符串
-    let headers_str = config.headers.as_ref().map(|h| {
-        serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string())
-    });
+    let headers_str = config
+        .headers
+        .as_ref()
+        .map(|h| serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string()));
 
     // 根据服务器类型执行不同的获取工具列表逻辑
     match server_type.as_str() {
         "http" | "sse" => list_http_mcp_tools(&name, config.url, headers_str).await,
-        _ => list_stdio_mcp_tools(&name, &config.command.unwrap_or_default(), args_str, env_str).await,
+        _ => {
+            list_stdio_mcp_tools(
+                &name,
+                &config.command.unwrap_or_default(),
+                args_str,
+                env_str,
+            )
+            .await
+        }
     }
 }
 
@@ -1196,18 +1250,32 @@ pub async fn call_mcp_tool_by_config(
     let args_str = config.args.map(|a| a.join(" "));
 
     // 将 env HashMap 转换为 JSON 字符串
-    let env_str = config.env.as_ref().map(|e| {
-        serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string())
-    });
+    let env_str = config
+        .env
+        .as_ref()
+        .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "{}".to_string()));
 
     // 将 headers HashMap 转换为 JSON 字符串
-    let headers_str = config.headers.as_ref().map(|h| {
-        serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string())
-    });
+    let headers_str = config
+        .headers
+        .as_ref()
+        .map(|h| serde_json::to_string(h).unwrap_or_else(|_| "{}".to_string()));
 
     // 根据服务器类型执行不同的调用逻辑
     match server_type.as_str() {
-        "http" | "sse" => call_http_mcp_tool(&name, config.url, headers_str, &tool_name, params).await,
-        _ => call_stdio_mcp_tool(&name, &config.command.unwrap_or_default(), args_str, env_str, &tool_name, params).await,
+        "http" | "sse" => {
+            call_http_mcp_tool(&name, config.url, headers_str, &tool_name, params).await
+        }
+        _ => {
+            call_stdio_mcp_tool(
+                &name,
+                &config.command.unwrap_or_default(),
+                args_str,
+                env_str,
+                &tool_name,
+                params,
+            )
+            .await
+        }
     }
 }

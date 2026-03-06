@@ -632,8 +632,8 @@ const formatDate = (dateStr: string): string => {
                 <EaButton
                   type="ghost"
                   size="small"
-                  @click="handleOpenModelManage(agent)"
                   title="模型列表"
+                  @click="handleOpenModelManage(agent)"
                 >
                   <EaIcon
                     name="cpu"

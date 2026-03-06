@@ -24,7 +24,10 @@ function onChange(value: string | number) {
   <div class="form-field radio-field">
     <label class="field-label">
       {{ field.label }}
-      <span v-if="field.required" class="required-mark">*</span>
+      <span
+        v-if="field.required"
+        class="required-mark"
+      >*</span>
     </label>
     <div class="radio-group">
       <label
@@ -39,11 +42,14 @@ function onChange(value: string | number) {
           :checked="modelValue === option.value"
           class="radio"
           @change="onChange(option.value)"
-        />
+        >
         <span class="label-text">{{ option.label }}</span>
       </label>
     </div>
-    <span v-if="error" class="error-message">{{ error }}</span>
+    <span
+      v-if="error"
+      class="error-message"
+    >{{ error }}</span>
   </div>
 </template>
 

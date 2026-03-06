@@ -588,8 +588,14 @@ export const useAgentConfigStore = defineStore('agentConfig', () => {
       })
       const newConfig = transformModelConfig(rawConfig)
       const configs = modelConfigs.value.get(config.agentId) || []
-      configs.push(newConfig)
-      modelConfigs.value.set(config.agentId, configs)
+
+      // 本地缓存保持与后端一致：仅允许一个默认模型
+      const nextConfigs = config.isDefault
+        ? configs.map(c => ({ ...c, isDefault: false }))
+        : [...configs]
+
+      nextConfigs.push(newConfig)
+      modelConfigs.value.set(config.agentId, nextConfigs)
       return newConfig
     } catch (error) {
       console.error('Failed to create model config:', error)
@@ -643,8 +649,18 @@ export const useAgentConfigStore = defineStore('agentConfig', () => {
       const configs = modelConfigs.value.get(agentId) || []
       const index = configs.findIndex(c => c.id === id)
       if (index !== -1) {
-        configs[index] = updatedConfig
-        modelConfigs.value.set(agentId, [...configs])
+        const nextConfigs = [...configs]
+        nextConfigs[index] = updatedConfig
+
+        // 本地缓存保持与后端一致：设置默认时重置其它默认标记
+        if (updates.isDefault === true) {
+          modelConfigs.value.set(
+            agentId,
+            nextConfigs.map(c => (c.id === id ? c : { ...c, isDefault: false }))
+          )
+        } else {
+          modelConfigs.value.set(agentId, nextConfigs)
+        }
       }
       return updatedConfig
     } catch (error) {

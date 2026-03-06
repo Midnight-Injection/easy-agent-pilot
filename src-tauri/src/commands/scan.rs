@@ -100,8 +100,7 @@ pub struct ClaudeConfigScanResult {
 
 /// 根据 CLI 路径获取配置目录和信息
 fn get_cli_config_dir(cli_path: Option<&str>) -> Result<(PathBuf, PathBuf, String), String> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     // 如果没有提供 cliPath，默认使用 Claude
     let cli_name = if let Some(path) = cli_path {
@@ -146,8 +145,8 @@ fn get_cli_config_dir(cli_path: Option<&str>) -> Result<(PathBuf, PathBuf, Strin
 /// 获取 Claude 配置目录路径
 #[allow(dead_code)]
 fn get_claude_config_dir() -> Result<PathBuf> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
     Ok(home_dir.join(".claude"))
 }
 
@@ -200,44 +199,42 @@ fn parse_mcp_server_config(
         });
 
     // 推断传输类型
-    let transport = if let Some(transport_str) = config_obj
-        .get("transport")
-        .and_then(|v| v.as_str())
-    {
-        // 如果配置中明确指定了 transport 字段
-        match transport_str.to_lowercase().as_str() {
-            "sse" => McpTransportType::Sse,
-            "http" => McpTransportType::Http,
-            "stdio" => McpTransportType::Stdio,
-            _ => {
-                // 未知类型，根据其他字段推断
-                if url.is_some() {
-                    McpTransportType::Http
-                } else if command.is_some() {
-                    McpTransportType::Stdio
-                } else {
-                    return None; // 无法推断传输类型
+    let transport =
+        if let Some(transport_str) = config_obj.get("transport").and_then(|v| v.as_str()) {
+            // 如果配置中明确指定了 transport 字段
+            match transport_str.to_lowercase().as_str() {
+                "sse" => McpTransportType::Sse,
+                "http" => McpTransportType::Http,
+                "stdio" => McpTransportType::Stdio,
+                _ => {
+                    // 未知类型，根据其他字段推断
+                    if url.is_some() {
+                        McpTransportType::Http
+                    } else if command.is_some() {
+                        McpTransportType::Stdio
+                    } else {
+                        return None; // 无法推断传输类型
+                    }
                 }
             }
-        }
-    } else if url.is_some() {
-        // 有 url 字段，检查 URL 是否包含 sse
-        if let Some(ref url_str) = url {
-            if url_str.contains("/sse") || url_str.contains("sse") {
-                McpTransportType::Sse
+        } else if url.is_some() {
+            // 有 url 字段，检查 URL 是否包含 sse
+            if let Some(ref url_str) = url {
+                if url_str.contains("/sse") || url_str.contains("sse") {
+                    McpTransportType::Sse
+                } else {
+                    McpTransportType::Http
+                }
             } else {
                 McpTransportType::Http
             }
+        } else if command.is_some() {
+            // 有 command 字段，为 stdio 类型
+            McpTransportType::Stdio
         } else {
-            McpTransportType::Http
-        }
-    } else if command.is_some() {
-        // 有 command 字段，为 stdio 类型
-        McpTransportType::Stdio
-    } else {
-        // 无法推断传输类型
-        return None;
-    };
+            // 无法推断传输类型
+            return None;
+        };
 
     Some(ScannedMcpServer {
         name: name.to_string(),
@@ -340,7 +337,10 @@ fn parse_yaml_frontmatter(content: &str) -> (Option<String>, Option<String>) {
     // 查找 frontmatter 边界
     let start_idx = lines.iter().position(|line| line.trim() == "---");
     let end_idx = if let Some(start) = start_idx {
-        lines.iter().skip(start + 1).position(|line| line.trim() == "---")
+        lines
+            .iter()
+            .skip(start + 1)
+            .position(|line| line.trim() == "---")
             .map(|idx| start + 1 + idx)
     } else {
         None
@@ -484,14 +484,18 @@ fn scan_skills_directory(claude_dir: &PathBuf) -> Result<Vec<ScannedSkill>> {
 }
 
 /// 解析 plugin.json 文件
-fn parse_plugin_json(plugin_json_path: &PathBuf) -> (Option<String>, Option<String>, Option<String>) {
+fn parse_plugin_json(
+    plugin_json_path: &PathBuf,
+) -> (Option<String>, Option<String>, Option<String>) {
     if let Ok(content) = fs::read_to_string(plugin_json_path) {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            let version = json.get("version")
+            let version = json
+                .get("version")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
-            let description = json.get("description")
+            let description = json
+                .get("description")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
@@ -500,7 +504,8 @@ fn parse_plugin_json(plugin_json_path: &PathBuf) -> (Option<String>, Option<Stri
                 if let Some(author_str) = author_obj.as_str() {
                     Some(author_str.to_string())
                 } else if let Some(author_obj) = author_obj.as_object() {
-                    author_obj.get("name")
+                    author_obj
+                        .get("name")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                 } else {
@@ -549,22 +554,29 @@ fn scan_plugins_directory(claude_dir: &PathBuf) -> Result<Vec<ScannedPlugin>> {
                         if let Some(entries) = plugin_entries.as_array() {
                             if let Some(first_entry) = entries.first() {
                                 // 获取安装路径
-                                if let Some(install_path_str) = first_entry.get("installPath").and_then(|v| v.as_str()) {
+                                if let Some(install_path_str) =
+                                    first_entry.get("installPath").and_then(|v| v.as_str())
+                                {
                                     let install_path = PathBuf::from(install_path_str);
 
                                     if install_path.exists() {
                                         // 解析 plugin.json（位于 .claude-plugin/plugin.json）
-                                        let plugin_json_path = install_path.join(".claude-plugin").join("plugin.json");
-                                        let (version, description, author) = parse_plugin_json(&plugin_json_path);
+                                        let plugin_json_path =
+                                            install_path.join(".claude-plugin").join("plugin.json");
+                                        let (version, description, author) =
+                                            parse_plugin_json(&plugin_json_path);
 
                                         // 检查子目录
-                                        let subdirectories = check_plugin_subdirectories(&install_path);
+                                        let subdirectories =
+                                            check_plugin_subdirectories(&install_path);
 
                                         // 从 plugin_key 中提取名称（格式: name@source）
-                                        let display_name = plugin_key.split('@').next().unwrap_or(plugin_key);
+                                        let display_name =
+                                            plugin_key.split('@').next().unwrap_or(plugin_key);
 
                                         // 检查是否启用（检查 scope 是否为 user）
-                                        let enabled = first_entry.get("scope")
+                                        let enabled = first_entry
+                                            .get("scope")
                                             .and_then(|v| v.as_str())
                                             .map(|s| s == "user")
                                             .unwrap_or(true);
@@ -806,8 +818,11 @@ fn extract_session_info(session_path: &PathBuf) -> Option<ScannedCliSession> {
                                     } else if let Some(arr) = content.as_array() {
                                         // 处理数组格式的content
                                         for item in arr {
-                                            if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                                                first_message = Some(text.chars().take(100).collect());
+                                            if let Some(text) =
+                                                item.get("text").and_then(|t| t.as_str())
+                                            {
+                                                first_message =
+                                                    Some(text.chars().take(100).collect());
                                                 break;
                                             }
                                         }
@@ -820,7 +835,8 @@ fn extract_session_info(session_path: &PathBuf) -> Option<ScannedCliSession> {
 
                 // 获取项目路径
                 if project_path.is_none() {
-                    project_path = json.get("cwd")
+                    project_path = json
+                        .get("cwd")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
                 }
@@ -840,7 +856,9 @@ fn extract_session_info(session_path: &PathBuf) -> Option<ScannedCliSession> {
 
         // 获取文件元数据作为备选时间
         let metadata = fs::metadata(session_path).ok()?;
-        let modified = metadata.modified().ok()
+        let modified = metadata
+            .modified()
+            .ok()
             .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
         let modified_str = chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339();
 
@@ -921,8 +939,14 @@ pub fn scan_cli_sessions(input: ScanCliSessionsInput) -> Result<ScanCliSessionsR
                                 if let Ok(session_entries) = fs::read_dir(&project_path) {
                                     for session_entry in session_entries.flatten() {
                                         let session_path = session_entry.path();
-                                        if session_path.extension().map(|e| e == "jsonl").unwrap_or(false) {
-                                            if let Some(session) = extract_session_info(&session_path) {
+                                        if session_path
+                                            .extension()
+                                            .map(|e| e == "jsonl")
+                                            .unwrap_or(false)
+                                        {
+                                            if let Some(session) =
+                                                extract_session_info(&session_path)
+                                            {
                                                 sessions.push(session);
                                             }
                                         }

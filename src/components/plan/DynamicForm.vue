@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, type Component } from 'vue'
 import type { DynamicFormSchema, FieldType } from '@/types/plan'
 import { formEngine } from '@/services/plan'
 import {
@@ -166,14 +166,25 @@ onMounted(() => {
 <template>
   <div class="dynamic-form">
     <div class="form-header">
-      <h3 class="form-title">{{ schema.title }}</h3>
-      <p v-if="schema.description" class="form-description">
+      <h3 class="form-title">
+        {{ schema.title }}
+      </h3>
+      <p
+        v-if="schema.description"
+        class="form-description"
+      >
         {{ schema.description }}
       </p>
     </div>
 
-    <form class="form-body" @submit.prevent="handleSubmit">
-      <template v-for="field in visibleFields" :key="field.name">
+    <form
+      class="form-body"
+      @submit.prevent="handleSubmit"
+    >
+      <template
+        v-for="field in visibleFields"
+        :key="field.name"
+      >
         <component
           :is="getFieldComponent(field.type)"
           :field="field"
@@ -185,10 +196,18 @@ onMounted(() => {
     </form>
 
     <div class="form-footer">
-      <button type="button" class="btn btn-secondary" @click="handleCancel">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        @click="handleCancel"
+      >
         取消
       </button>
-      <button type="button" class="btn btn-primary" @click="handleSubmit">
+      <button
+        type="button"
+        class="btn btn-primary"
+        @click="handleSubmit"
+      >
         {{ schema.submitText || '提交' }}
       </button>
     </div>

@@ -1,10 +1,10 @@
 use anyhow::Result;
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
-use chrono::Utc;
-use uuid::Uuid;
 use std::io::Write;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 /// 操作类型
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -125,7 +125,8 @@ fn log_operation(session: &mut InstallSession, operation: InstallOperation) -> R
         .open(&log_file)
         .map_err(|e| e.to_string())?;
 
-    file.write_all(log_entry.as_bytes()).map_err(|e| e.to_string())?;
+    file.write_all(log_entry.as_bytes())
+        .map_err(|e| e.to_string())?;
 
     // 添加到会话
     session.operations.push(operation);

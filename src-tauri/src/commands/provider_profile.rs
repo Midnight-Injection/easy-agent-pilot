@@ -84,7 +84,10 @@ pub fn list_provider_profiles(cli_type: Option<String>) -> Result<Vec<ProviderPr
                 id: row.get(0)?,
                 name: row.get(1)?,
                 cli_type: row.get(2)?,
-                is_active: row.get::<_, Option<i32>>(3)?.map(|v| v != 0).unwrap_or(false),
+                is_active: row
+                    .get::<_, Option<i32>>(3)?
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
                 api_key: row.get(4)?,
                 base_url: row.get(5)?,
                 provider_name: row.get(6)?,
@@ -107,7 +110,10 @@ pub fn list_provider_profiles(cli_type: Option<String>) -> Result<Vec<ProviderPr
                 id: row.get(0)?,
                 name: row.get(1)?,
                 cli_type: row.get(2)?,
-                is_active: row.get::<_, Option<i32>>(3)?.map(|v| v != 0).unwrap_or(false),
+                is_active: row
+                    .get::<_, Option<i32>>(3)?
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
                 api_key: row.get(4)?,
                 base_url: row.get(5)?,
                 provider_name: row.get(6)?,
@@ -166,7 +172,9 @@ pub fn get_provider_profile(id: String) -> Result<ProviderProfile, String> {
 
 /// 创建 Provider 配置
 #[tauri::command]
-pub fn create_provider_profile(input: CreateProviderProfileInput) -> Result<ProviderProfile, String> {
+pub fn create_provider_profile(
+    input: CreateProviderProfileInput,
+) -> Result<ProviderProfile, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -217,7 +225,10 @@ pub fn create_provider_profile(input: CreateProviderProfileInput) -> Result<Prov
 
 /// 更新 Provider 配置
 #[tauri::command]
-pub fn update_provider_profile(id: String, input: UpdateProviderProfileInput) -> Result<ProviderProfile, String> {
+pub fn update_provider_profile(
+    id: String,
+    input: UpdateProviderProfileInput,
+) -> Result<ProviderProfile, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -278,51 +289,63 @@ pub fn update_provider_profile(id: String, input: UpdateProviderProfileInput) ->
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref name) = input.name {
-        stmt.raw_bind_parameter(param_count, name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref api_key) = input.api_key {
-        stmt.raw_bind_parameter(param_count, api_key).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, api_key)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref base_url) = input.base_url {
-        stmt.raw_bind_parameter(param_count, base_url).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, base_url)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref provider_name) = input.provider_name {
-        stmt.raw_bind_parameter(param_count, provider_name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, provider_name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref main_model) = input.main_model {
-        stmt.raw_bind_parameter(param_count, main_model).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, main_model)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref reasoning_model) = input.reasoning_model {
-        stmt.raw_bind_parameter(param_count, reasoning_model).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, reasoning_model)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref haiku_model) = input.haiku_model {
-        stmt.raw_bind_parameter(param_count, haiku_model).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, haiku_model)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref sonnet_default) = input.sonnet_default {
-        stmt.raw_bind_parameter(param_count, sonnet_default).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, sonnet_default)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref opus_default) = input.opus_default {
-        stmt.raw_bind_parameter(param_count, opus_default).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, opus_default)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref codex_model) = input.codex_model {
-        stmt.raw_bind_parameter(param_count, codex_model).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, codex_model)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
 
     stmt.raw_execute().map_err(|e| e.to_string())?;
 
@@ -446,8 +469,7 @@ pub fn switch_provider_profile(id: String) -> Result<ProviderProfile, String> {
 
 /// 写入 CLI 配置文件
 fn write_to_cli_config(profile: &ProviderProfile) -> Result<(), String> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     match profile.cli_type.as_str() {
         "claude" => {
@@ -462,8 +484,7 @@ fn write_to_cli_config(profile: &ProviderProfile) -> Result<(), String> {
             let mut settings: serde_json::Value = if settings_path.exists() {
                 let content = fs::read_to_string(&settings_path)
                     .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-                serde_json::from_str(&content)
-                    .unwrap_or(serde_json::json!({}))
+                serde_json::from_str(&content).unwrap_or(serde_json::json!({}))
             } else {
                 serde_json::json!({})
             };
@@ -474,12 +495,18 @@ fn write_to_cli_config(profile: &ProviderProfile) -> Result<(), String> {
 
                 if let Some(ref api_key) = profile.api_key {
                     if !api_key.is_empty() {
-                        env.insert("ANTHROPIC_AUTH_TOKEN".to_string(), serde_json::json!(api_key));
+                        env.insert(
+                            "ANTHROPIC_AUTH_TOKEN".to_string(),
+                            serde_json::json!(api_key),
+                        );
                     }
                 }
                 if let Some(ref base_url) = profile.base_url {
                     if !base_url.is_empty() {
-                        env.insert("ANTHROPIC_BASE_URL".to_string(), serde_json::json!(base_url));
+                        env.insert(
+                            "ANTHROPIC_BASE_URL".to_string(),
+                            serde_json::json!(base_url),
+                        );
                     }
                 }
                 if let Some(ref main_model) = profile.main_model {
@@ -498,43 +525,102 @@ fn write_to_cli_config(profile: &ProviderProfile) -> Result<(), String> {
                 .map_err(|e| format!("Failed to write settings.json: {}", e))?;
         }
         "codex" => {
-            // 写入 ~/.codex/config.toml
+            // 写入 ~/.codex/config.toml 和 ~/.codex/auth.json
             let codex_dir = home_dir.join(".codex");
             fs::create_dir_all(&codex_dir)
                 .map_err(|e| format!("Failed to create .codex directory: {}", e))?;
 
             let config_path = codex_dir.join("config.toml");
+            let auth_path = codex_dir.join("auth.json");
 
-            // 读取现有配置
+            // 1. 读取并写入 auth.json (API Key)
+            let mut auth: serde_json::Map<String, serde_json::Value> = if auth_path.exists() {
+                let content = fs::read_to_string(&auth_path)
+                    .map_err(|e| format!("Failed to read auth.json: {}", e))?;
+                serde_json::from_str(&content).unwrap_or(serde_json::Map::new())
+            } else {
+                serde_json::Map::new()
+            };
+
+            // 更新 API Key
+            if let Some(ref api_key) = profile.api_key {
+                if !api_key.is_empty() {
+                    // 使用 OPENAI_API_KEY 作为 env_key (Codex CLI 标准格式)
+                    auth.insert("OPENAI_API_KEY".to_string(), serde_json::json!(api_key));
+                }
+            }
+
+            // 写入 auth.json
+            let auth_content = serde_json::to_string_pretty(&auth)
+                .map_err(|e| format!("Failed to serialize auth.json: {}", e))?;
+            fs::write(&auth_path, auth_content)
+                .map_err(|e| format!("Failed to write auth.json: {}", e))?;
+
+            // 2. 读取并写入 config.toml
             let mut toml_value: toml::Value = if config_path.exists() {
                 let content = fs::read_to_string(&config_path)
                     .map_err(|e| format!("Failed to read config.toml: {}", e))?;
-                toml::from_str(&content)
-                    .unwrap_or(toml::Value::Table(toml::map::Map::new()))
+                toml::from_str(&content).unwrap_or(toml::Value::Table(toml::map::Map::new()))
             } else {
                 toml::Value::Table(toml::map::Map::new())
             };
 
-            // 更新模型配置
+            // 更新配置
             if let toml::Value::Table(ref mut table) = toml_value {
+                // 更新模型
                 if let Some(ref codex_model) = profile.codex_model {
                     if !codex_model.is_empty() {
-                        table.insert("model".to_string(), toml::Value::String(codex_model.clone()));
+                        table.insert(
+                            "model".to_string(),
+                            toml::Value::String(codex_model.clone()),
+                        );
                     }
                 }
-                if let Some(ref api_key) = profile.api_key {
-                    if !api_key.is_empty() {
-                        table.insert("api_key".to_string(), toml::Value::String(api_key.clone()));
-                    }
-                }
+
+                // 更新或创建 model_providers 配置
                 if let Some(ref base_url) = profile.base_url {
                     if !base_url.is_empty() {
-                        table.insert("api_base_url".to_string(), toml::Value::String(base_url.clone()));
+                        // 获取或创建 model_providers 表
+                        let providers = table
+                            .entry("model_providers".to_string())
+                            .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+
+                        if let toml::Value::Table(ref mut providers_table) = providers {
+                            // 获取或创建 custom_provider 配置
+                            let custom_provider = providers_table
+                                .entry("custom_provider".to_string())
+                                .or_insert_with(|| toml::Value::Table(toml::map::Map::new()));
+
+                            if let toml::Value::Table(ref mut provider_table) = custom_provider {
+                                provider_table.insert(
+                                    "name".to_string(),
+                                    toml::Value::String("Custom Provider".to_string()),
+                                );
+                                provider_table.insert(
+                                    "base_url".to_string(),
+                                    toml::Value::String(base_url.clone()),
+                                );
+                                provider_table.insert(
+                                    "env_key".to_string(),
+                                    toml::Value::String("OPENAI_API_KEY".to_string()),
+                                );
+                                provider_table.insert(
+                                    "wire_api".to_string(),
+                                    toml::Value::String("responses".to_string()),
+                                );
+                            }
+                        }
+
+                        // 设置当前使用的 provider
+                        table.insert(
+                            "model_provider".to_string(),
+                            toml::Value::String("custom_provider".to_string()),
+                        );
                     }
                 }
             }
 
-            // 写入文件
+            // 写入 config.toml
             let content = toml::to_string_pretty(&toml_value)
                 .map_err(|e| format!("Failed to serialize TOML: {}", e))?;
             fs::write(&config_path, content)
@@ -551,8 +637,7 @@ fn write_to_cli_config(profile: &ProviderProfile) -> Result<(), String> {
 /// 从 CLI 配置文件读取当前配置
 #[tauri::command]
 pub fn read_current_cli_config(cli_type: String) -> Result<ProviderProfile, String> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -581,17 +666,20 @@ pub fn read_current_cli_config(cli_type: String) -> Result<ProviderProfile, Stri
             if settings_path.exists() {
                 let content = fs::read_to_string(&settings_path)
                     .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-                let settings: serde_json::Value = serde_json::from_str(&content)
-                    .unwrap_or(serde_json::json!({}));
+                let settings: serde_json::Value =
+                    serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
 
                 if let Some(env) = settings.get("env").and_then(|e| e.as_object()) {
-                    profile.api_key = env.get("ANTHROPIC_AUTH_TOKEN")
+                    profile.api_key = env
+                        .get("ANTHROPIC_AUTH_TOKEN")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    profile.base_url = env.get("ANTHROPIC_BASE_URL")
+                    profile.base_url = env
+                        .get("ANTHROPIC_BASE_URL")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    profile.main_model = env.get("ANTHROPIC_MODEL")
+                    profile.main_model = env
+                        .get("ANTHROPIC_MODEL")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
                 }
@@ -600,7 +688,9 @@ pub fn read_current_cli_config(cli_type: String) -> Result<ProviderProfile, Stri
             Ok(profile)
         }
         "codex" => {
-            let config_path = home_dir.join(".codex").join("config.toml");
+            let codex_dir = home_dir.join(".codex");
+            let config_path = codex_dir.join("config.toml");
+            let auth_path = codex_dir.join("auth.json");
 
             let mut profile = ProviderProfile {
                 id: "".to_string(),
@@ -620,30 +710,63 @@ pub fn read_current_cli_config(cli_type: String) -> Result<ProviderProfile, Stri
                 updated_at: now,
             };
 
+            // 1. 从 auth.json 读取 API Key
+            if auth_path.exists() {
+                if let Ok(content) = fs::read_to_string(&auth_path) {
+                    if let Ok(auth) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(obj) = auth.as_object() {
+                            // 尝试读取 OPENAI_API_KEY (标准格式)
+                            profile.api_key = obj
+                                .get("OPENAI_API_KEY")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                        }
+                    }
+                }
+            }
+
+            // 2. 从 config.toml 读取模型和 base_url
             if config_path.exists() {
                 let content = fs::read_to_string(&config_path)
                     .map_err(|e| format!("Failed to read config.toml: {}", e))?;
-                let config: toml::Value = toml::from_str(&content)
-                    .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+                let config: toml::Value =
+                    toml::from_str(&content).unwrap_or(toml::Value::Table(toml::map::Map::new()));
 
                 if let toml::Value::Table(ref table) = config {
-                    profile.codex_model = table.get("model")
+                    // 读取模型
+                    profile.codex_model = table
+                        .get("model")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    profile.api_key = table.get("api_key")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    profile.base_url = table.get("api_base_url")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
+
+                    // 从 model_providers 中读取 base_url
+                    if let Some(providers) = table.get("model_providers").and_then(|p| p.as_table())
+                    {
+                        // 获取当前使用的 provider 名称
+                        let provider_name = table
+                            .get("model_provider")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("custom_provider");
+
+                        if let Some(provider) =
+                            providers.get(provider_name).and_then(|p| p.as_table())
+                        {
+                            profile.base_url = provider
+                                .get("base_url")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                            profile.provider_name = provider
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
+                        }
+                    }
                 }
             }
 
             Ok(profile)
         }
-        _ => {
-            Err(format!("Unknown CLI type: {}", cli_type))
-        }
+        _ => Err(format!("Unknown CLI type: {}", cli_type)),
     }
 }
 
@@ -676,8 +799,7 @@ pub struct CliConnectionInfo {
 /// 读取 CLI 连接信息 (Tauri 命令)
 #[tauri::command]
 pub fn read_cli_connection_info(cli_type: String) -> Result<CliConnectionInfo, String> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     match cli_type.as_str() {
         "claude" => {
@@ -703,16 +825,22 @@ pub fn read_cli_connection_info(cli_type: String) -> Result<CliConnectionInfo, S
                     if let Ok(settings) = serde_json::from_str::<serde_json::Value>(&content) {
                         if let Some(env) = settings.get("env").and_then(|e| e.as_object()) {
                             // 读取 API Key (同时保存完整值和脱敏值)
-                            if let Some(api_key) = env.get("ANTHROPIC_AUTH_TOKEN").and_then(|v| v.as_str()) {
+                            if let Some(api_key) =
+                                env.get("ANTHROPIC_AUTH_TOKEN").and_then(|v| v.as_str())
+                            {
                                 info.api_key = Some(api_key.to_string());
                                 info.api_key_masked = Some(mask_api_key(api_key));
                             }
                             // 读取 Base URL
-                            if let Some(base_url) = env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str()) {
+                            if let Some(base_url) =
+                                env.get("ANTHROPIC_BASE_URL").and_then(|v| v.as_str())
+                            {
                                 info.base_url = Some(base_url.to_string());
                             }
                             // 读取主模型
-                            if let Some(main_model) = env.get("ANTHROPIC_MODEL").and_then(|v| v.as_str()) {
+                            if let Some(main_model) =
+                                env.get("ANTHROPIC_MODEL").and_then(|v| v.as_str())
+                            {
                                 info.main_model = Some(main_model.to_string());
                             }
                             info.is_valid = true;
@@ -739,13 +867,15 @@ pub fn read_cli_connection_info(cli_type: String) -> Result<CliConnectionInfo, S
             Ok(info)
         }
         "codex" => {
-            let config_file = home_dir.join(".codex").join("config.toml");
+            let codex_dir = home_dir.join(".codex");
+            let config_file = codex_dir.join("config.toml");
+            let auth_file = codex_dir.join("auth.json");
 
             let mut info = CliConnectionInfo {
                 cli_type: "codex".to_string(),
                 display_name: "Codex CLI".to_string(),
                 config_file: config_file.to_string_lossy().to_string(),
-                settings_file: config_file.to_string_lossy().to_string(),
+                settings_file: auth_file.to_string_lossy().to_string(),
                 base_url: None,
                 main_model: None,
                 api_key_masked: None,
@@ -754,6 +884,24 @@ pub fn read_cli_connection_info(cli_type: String) -> Result<CliConnectionInfo, S
                 error_message: None,
             };
 
+            // 1. 从 auth.json 读取 API Key
+            if auth_file.exists() {
+                if let Ok(content) = fs::read_to_string(&auth_file) {
+                    if let Ok(auth) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(obj) = auth.as_object() {
+                            // 读取 OPENAI_API_KEY (Codex CLI 标准格式)
+                            if let Some(api_key) =
+                                obj.get("OPENAI_API_KEY").and_then(|v| v.as_str())
+                            {
+                                info.api_key = Some(api_key.to_string());
+                                info.api_key_masked = Some(mask_api_key(api_key));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. 从 config.toml 读取模型和 base_url
             if config_file.exists() {
                 if let Ok(content) = fs::read_to_string(&config_file) {
                     if let Ok(config) = toml::from_str::<toml::Value>(&content) {
@@ -762,15 +910,28 @@ pub fn read_cli_connection_info(cli_type: String) -> Result<CliConnectionInfo, S
                             if let Some(model) = table.get("model").and_then(|v| v.as_str()) {
                                 info.main_model = Some(model.to_string());
                             }
-                            // 读取 API Key (同时保存完整值和脱敏值)
-                            if let Some(api_key) = table.get("api_key").and_then(|v| v.as_str()) {
-                                info.api_key = Some(api_key.to_string());
-                                info.api_key_masked = Some(mask_api_key(api_key));
+
+                            // 从 model_providers 中读取 base_url
+                            if let Some(providers) =
+                                table.get("model_providers").and_then(|p| p.as_table())
+                            {
+                                // 获取当前使用的 provider 名称
+                                let provider_name = table
+                                    .get("model_provider")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("custom_provider");
+
+                                if let Some(provider) =
+                                    providers.get(provider_name).and_then(|p| p.as_table())
+                                {
+                                    if let Some(base_url) =
+                                        provider.get("base_url").and_then(|v| v.as_str())
+                                    {
+                                        info.base_url = Some(base_url.to_string());
+                                    }
+                                }
                             }
-                            // 读取 Base URL
-                            if let Some(base_url) = table.get("api_base_url").and_then(|v| v.as_str()) {
-                                info.base_url = Some(base_url.to_string());
-                            }
+
                             info.is_valid = true;
                         }
                     }
@@ -783,9 +944,7 @@ pub fn read_cli_connection_info(cli_type: String) -> Result<CliConnectionInfo, S
 
             Ok(info)
         }
-        _ => {
-            Err(format!("Unknown CLI type: {}", cli_type))
-        }
+        _ => Err(format!("Unknown CLI type: {}", cli_type)),
     }
 }
 

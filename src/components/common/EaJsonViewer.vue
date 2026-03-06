@@ -86,8 +86,8 @@ onMounted(() => {
     <div class="json-viewer__toolbar">
       <button
         class="json-viewer__toggle"
-        @click="toggleExpand"
         :title="isExpanded ? '折叠' : '展开'"
+        @click="toggleExpand"
       >
         <svg
           :class="['toggle-icon', { 'toggle-icon--expanded': isExpanded }]"
@@ -96,7 +96,7 @@ onMounted(() => {
           stroke="currentColor"
           stroke-width="2"
         >
-          <polyline points="9 18 15 12 9 6"></polyline>
+          <polyline points="9 18 15 12 9 6" />
         </svg>
         <span>{{ isExpanded ? '折叠' : '展开' }}</span>
       </button>
@@ -104,23 +104,48 @@ onMounted(() => {
       <button
         v-if="showCopy"
         class="json-viewer__copy"
-        @click="copyToClipboard"
         :title="copied ? '已复制' : '复制'"
+        @click="copyToClipboard"
       >
-        <svg v-if="!copied" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        <svg
+          v-if="!copied"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <rect
+            x="9"
+            y="9"
+            width="13"
+            height="13"
+            rx="2"
+            ry="2"
+          />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"></polyline>
+        <svg
+          v-else
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <polyline points="20 6 9 17 4 12" />
         </svg>
         <span>{{ copied ? '已复制' : '复制' }}</span>
       </button>
     </div>
 
     <!-- JSON 内容 -->
-    <div class="json-viewer__content" v-show="isExpanded">
-      <pre class="json-viewer__pre"><code ref="codeRef" class="language-json"></code></pre>
+    <div
+      v-show="isExpanded"
+      class="json-viewer__content"
+    >
+      <pre class="json-viewer__pre"><code
+ref="codeRef"
+                                          class="language-json"
+      /></pre>
     </div>
   </div>
 </template>

@@ -2,6 +2,28 @@ import type { AgentConfig } from '@/stores/agent'
 import type { Message } from '@/stores/message'
 
 /**
+ * MCP 服务器配置
+ */
+export interface McpServerConfig {
+  /** MCP 配置 ID */
+  id: string
+  /** MCP 名称 */
+  name: string
+  /** 传输类型 */
+  transportType: 'stdio' | 'sse' | 'http'
+  /** 命令 (stdio 类型) */
+  command?: string
+  /** 参数 (stdio 类型) */
+  args?: string
+  /** 环境变量 (stdio 类型) */
+  env?: string
+  /** URL (sse/http 类型) */
+  url?: string
+  /** 请求头 (sse/http 类型) */
+  headers?: string
+}
+
+/**
  * 工具定义
  */
 export interface ToolDefinition {
@@ -36,6 +58,8 @@ export interface ConversationContext {
   permissions?: PermissionConfig
   /** 工作目录 */
   workingDirectory?: string
+  /** MCP 服务器配置列表 */
+  mcpServers?: McpServerConfig[]
 }
 
 /**
@@ -114,6 +138,8 @@ export interface CliExecutionRequest {
   workingDirectory?: string
   /** 允许的工具列表 */
   allowedTools?: string[]
+  /** MCP 服务器配置列表 */
+  mcpServers?: McpServerConfig[]
 }
 
 /**
@@ -139,6 +165,8 @@ export interface SdkExecutionRequest {
   maxTokens?: number
   /** 工具定义 */
   tools?: ToolDefinition[]
+  /** MCP 服务器配置列表 */
+  mcpServers?: McpServerConfig[]
 }
 
 /**

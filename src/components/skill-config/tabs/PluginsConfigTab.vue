@@ -23,26 +23,49 @@ const { t } = useI18n()
 <template>
   <div class="plugins-config-tab">
     <div class="plugins-config-tab__header">
-      <h3 class="plugins-config-tab__title">{{ t('settings.sdkConfig.plugins.title') }}</h3>
-      <div v-if="!isReadOnly" class="plugins-config-tab__actions">
-        <EaButton size="small" @click="emit('add')">
+      <h3 class="plugins-config-tab__title">
+        {{ t('settings.sdkConfig.plugins.title') }}
+      </h3>
+      <div
+        v-if="!isReadOnly"
+        class="plugins-config-tab__actions"
+      >
+        <EaButton
+          size="small"
+          @click="emit('add')"
+        >
           <EaIcon name="lucide:plus" />
           {{ t('settings.sdkConfig.plugins.add') }}
         </EaButton>
       </div>
     </div>
 
-    <div v-if="isLoading" class="plugins-config-tab__loading">
-      <EaIcon name="lucide:loader-2" class="plugins-config-tab__spinner" />
+    <div
+      v-if="isLoading"
+      class="plugins-config-tab__loading"
+    >
+      <EaIcon
+        name="lucide:loader-2"
+        class="plugins-config-tab__spinner"
+      />
       {{ t('common.loading') }}
     </div>
 
-    <div v-else-if="configs.length === 0" class="plugins-config-tab__empty">
-      <EaIcon name="lucide:puzzle" class="plugins-config-tab__empty-icon" />
+    <div
+      v-else-if="configs.length === 0"
+      class="plugins-config-tab__empty"
+    >
+      <EaIcon
+        name="lucide:puzzle"
+        class="plugins-config-tab__empty-icon"
+      />
       <p>{{ t('settings.sdkConfig.plugins.noConfigs') }}</p>
     </div>
 
-    <div v-else class="plugins-config-tab__list">
+    <div
+      v-else
+      class="plugins-config-tab__list"
+    >
       <PluginConfigItem
         v-for="config in configs"
         :key="config.id"

@@ -3,19 +3,22 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useTaskStore } from '@/stores/task'
 import { usePlanStore } from '@/stores/plan'
 import { useProjectStore } from '@/stores/project'
+import { useConfirmDialog } from '@/composables'
 import KanbanColumn from './KanbanColumn.vue'
+import TaskEditModal from './TaskEditModal.vue'
 import type { Task, TaskStatus } from '@/types/plan'
 
 const taskStore = useTaskStore()
 const planStore = usePlanStore()
 const projectStore = useProjectStore()
+const confirmDialog = useConfirmDialog()
 
 // 看板列配置
 const columns: Array<{ status: TaskStatus; label: string; color: string }> = [
   { status: 'pending', label: '待办', color: 'gray' },
   { status: 'in_progress', label: '进行中', color: 'blue' },
   { status: 'completed', label: '已完成', color: 'green' },
-  { status: 'blocked', label: '已阻塞', color: 'red' }
+  { status: 'blocked', label: '已取消', color: 'red' }
 ]
 
 // 当前计划
@@ -43,7 +46,7 @@ const taskStats = computed(() => {
     pending: tasks.filter(t => t.status === 'pending').length,
     inProgress: tasks.filter(t => t.status === 'in_progress').length,
     completed: tasks.filter(t => t.status === 'completed').length,
-    blocked: tasks.filter(t => t.status === 'blocked').length
+    cancelled: tasks.filter(t => t.status === 'blocked' || t.status === 'cancelled').length
   }
 })
 
@@ -166,8 +169,28 @@ async function handleTaskRetry(task: Task) {
 
 // 编辑任务
 function handleTaskEdit(task: Task) {
-  // TODO: 打开任务编辑对话框
-  console.log('Edit task:', task.id)
+  taskStore.openEditDialog(task)
+}
+
+// 删除任务
+async function handleTaskDelete(task: Task) {
+  const confirmed = await confirmDialog.danger(
+    `确定要删除任务「${task.title}」吗？`,
+    '删除任务'
+  )
+  if (!confirmed) return
+
+  try {
+    await taskStore.deleteTask(task.id)
+  } catch (error) {
+    console.error('Failed to delete task:', error)
+  }
+}
+
+function handleEditDialogVisibleChange(visible: boolean) {
+  if (!visible) {
+    taskStore.closeEditDialog()
+  }
 }
 
 // 处理任务拖放
@@ -176,6 +199,57 @@ async function handleTaskDrop(taskId: string, status: TaskStatus) {
     await taskStore.updateTask(taskId, { status })
   } catch (error) {
     console.error('Failed to update task status:', error)
+  }
+}
+
+// 处理任务重排序
+async function handleTaskReorder(taskId: string, targetIndex: number) {
+  if (!planStore.currentPlanId) return
+
+  try {
+    // 找到要移动的任务
+    const movedTask = taskStore.tasks.find(t => t.id === taskId)
+    if (!movedTask) return
+
+    // 获取同一状态下的任务列表，按 order 排序
+    const sameStatusTasks = taskStore.tasks
+      .filter(t => t.planId === planStore.currentPlanId && t.status === movedTask.status)
+      .sort((a, b) => a.order - b.order)
+
+    // 如果只有一个任务或没有任务，不需要排序
+    if (sameStatusTasks.length <= 1) return
+
+    // 找到被移动任务的当前位置
+    const currentIndex = sameStatusTasks.findIndex(t => t.id === taskId)
+    if (currentIndex === -1) return
+
+    const clampedTargetIndex = Math.max(0, Math.min(targetIndex, sameStatusTasks.length))
+
+    // targetIndex 是移除前索引，转换成移除后的插入索引
+    const insertIndex = currentIndex < clampedTargetIndex
+      ? clampedTargetIndex - 1
+      : clampedTargetIndex
+
+    // 创建新的任务数组，移除被移动的任务
+    const newTaskList = sameStatusTasks.filter(t => t.id !== taskId)
+    const finalInsertIndex = Math.max(0, Math.min(insertIndex, newTaskList.length))
+
+    // 如果目标位置和当前位置相同，不需要排序
+    if (currentIndex === finalInsertIndex) return
+
+    // 将被移动的任务插入到目标位置
+    newTaskList.splice(finalInsertIndex, 0, movedTask)
+
+    // 重新分配所有任务的 order 值
+    const taskOrders: { id: string; order: number }[] = newTaskList.map((task, index) => ({
+      id: task.id,
+      order: index
+    }))
+
+    // 调用后端更新排序
+    await taskStore.reorderTasks(taskOrders)
+  } catch (error) {
+    console.error('Failed to reorder tasks:', error)
   }
 }
 
@@ -206,22 +280,31 @@ watch(
   <div class="task-board">
     <div class="board-header">
       <div class="header-left">
-        <h3 class="title">任务看板</h3>
-        <div v-if="currentPlan" class="plan-status-badge" :class="currentPlan.status">
-          {{ currentPlan.status === 'ready' ? '待执行' :
-             currentPlan.status === 'executing' ? '执行中' :
-             currentPlan.status === 'planning' ? '规划中' :
-             currentPlan.status === 'completed' ? '已完成' :
-             currentPlan.status === 'paused' ? '已暂停' : currentPlan.status }}
+        <h3 class="title">
+          任务看板
+        </h3>
+        <div
+          v-if="currentPlan"
+          class="plan-status-badge"
+          :class="currentPlan.status"
+        >
+          {{ currentPlan.status === 'ready' ? '已拆分' :
+            currentPlan.status === 'executing' ? '执行中' :
+            currentPlan.status === 'planning' ? '规划中' :
+            currentPlan.status === 'completed' ? '已完成' :
+            currentPlan.status === 'paused' ? '已暂停' : currentPlan.status }}
         </div>
       </div>
       <div class="header-right">
         <!-- 任务统计 -->
-        <div v-if="taskStats.total > 0" class="task-stats">
+        <div
+          v-if="taskStats.total > 0"
+          class="task-stats"
+        >
           <span class="stat-item completed">{{ taskStats.completed }} 完成</span>
           <span class="stat-item in-progress">{{ taskStats.inProgress }} 进行中</span>
           <span class="stat-item pending">{{ taskStats.pending }} 待办</span>
-          <span class="stat-item blocked">{{ taskStats.blocked }} 阻塞</span>
+          <span class="stat-item cancelled">{{ taskStats.cancelled }} 已取消</span>
         </div>
 
         <!-- 执行控制按钮 -->
@@ -232,8 +315,15 @@ watch(
             class="control-btn start-btn"
             @click="handleStartExecution"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
             开始执行
           </button>
@@ -244,9 +334,26 @@ watch(
             class="control-btn pause-btn"
             @click="handlePauseExecution"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="6" y="4" width="4" height="16"/>
-              <rect x="14" y="4" width="4" height="16"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect
+                x="6"
+                y="4"
+                width="4"
+                height="16"
+              />
+              <rect
+                x="14"
+                y="4"
+                width="4"
+                height="16"
+              />
             </svg>
             暂停
           </button>
@@ -257,8 +364,15 @@ watch(
             class="control-btn resume-btn"
             @click="handleResumeExecution"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="5 3 19 12 5 21 5 3"/>
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <polygon points="5 3 19 12 5 21 5 3" />
             </svg>
             继续
           </button>
@@ -280,42 +394,87 @@ watch(
         @task-stop="handleTaskStop"
         @task-retry="handleTaskRetry"
         @task-edit="handleTaskEdit"
+        @task-delete="handleTaskDelete"
         @batch-start="handleBatchStart"
+        @task-reorder="handleTaskReorder"
       />
     </div>
 
+    <TaskEditModal
+      v-if="taskStore.editDialogVisible && taskStore.editingTask"
+      :visible="taskStore.editDialogVisible"
+      :task="taskStore.editingTask!"
+      @update:visible="handleEditDialogVisibleChange"
+    />
+
     <!-- 开始执行对话框 -->
     <Teleport to="body">
-      <div v-if="showProjectSelectDialog" class="dialog-overlay" @click.self="showProjectSelectDialog = false">
+      <div
+        v-if="showProjectSelectDialog"
+        class="dialog-overlay"
+        @click.self="showProjectSelectDialog = false"
+      >
         <div class="dialog">
           <div class="dialog-header">
             <h4>
               <span class="dialog-icon">🚀</span>
               开始执行计划
             </h4>
-            <button class="btn-close" @click="showProjectSelectDialog = false">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"/>
+            <button
+              class="btn-close"
+              @click="showProjectSelectDialog = false"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
           </div>
           <div class="dialog-body">
-            <p class="dialog-hint">选择执行任务时的项目路径,Claude 将在该目录下执行操作。</p>
+            <p class="dialog-hint">
+              选择执行任务时的项目路径,Claude 将在该目录下执行操作。
+            </p>
             <div class="form-field">
               <label>选择项目 <span class="required">*</span></label>
-              <select v-model="selectedProjectIdForExecution" class="project-select">
-                <option :value="null" disabled>请选择项目</option>
-                <option v-for="option in projectOptions" :key="option.value" :value="option.value">
+              <select
+                v-model="selectedProjectIdForExecution"
+                class="project-select"
+              >
+                <option
+                  :value="null"
+                  disabled
+                >
+                  请选择项目
+                </option>
+                <option
+                  v-for="option in projectOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
                   {{ option.label }}
                 </option>
               </select>
-              <p v-if="selectedProjectIdForExecution" class="project-path-hint">
+              <p
+                v-if="selectedProjectIdForExecution"
+                class="project-path-hint"
+              >
                 {{ projectOptions.find(o => o.value === selectedProjectIdForExecution)?.path }}
               </p>
             </div>
           </div>
           <div class="dialog-footer">
-            <button class="btn btn-secondary" @click="showProjectSelectDialog = false">取消</button>
+            <button
+              class="btn btn-secondary"
+              @click="showProjectSelectDialog = false"
+            >
+              取消
+            </button>
             <button
               class="btn btn-primary"
               :disabled="!selectedProjectIdForExecution"
@@ -426,7 +585,7 @@ watch(
   color: #64748b;
 }
 
-.stat-item.blocked {
+.stat-item.cancelled {
   color: #ef4444;
 }
 

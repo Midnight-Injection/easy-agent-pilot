@@ -11,7 +11,7 @@ const statusOptions: Array<{ value: TaskStatus; label: string }> = [
   { value: 'pending', label: '待办' },
   { value: 'in_progress', label: '进行中' },
   { value: 'completed', label: '已完成' },
-  { value: 'blocked', label: '已阻塞' },
+  { value: 'blocked', label: '已取消' },
   { value: 'cancelled', label: '已取消' }
 ]
 
@@ -133,7 +133,9 @@ const dependencies = computed(() => {
       <!-- 头部 -->
       <div class="detail-header">
         <div class="header-left">
-          <h3 class="title">任务详情</h3>
+          <h3 class="title">
+            任务详情
+          </h3>
           <button
             v-if="!isEditing"
             class="btn-edit"
@@ -156,11 +158,17 @@ const dependencies = computed(() => {
           <template v-if="isEditing">
             <div class="form-field">
               <label>任务标题</label>
-              <input v-model="editForm.title" type="text" />
+              <input
+                v-model="editForm.title"
+                type="text"
+              >
             </div>
             <div class="form-field">
               <label>任务描述</label>
-              <textarea v-model="editForm.description" rows="3"></textarea>
+              <textarea
+                v-model="editForm.description"
+                rows="3"
+              />
             </div>
             <div class="form-field">
               <label>优先级</label>
@@ -175,14 +183,29 @@ const dependencies = computed(() => {
               </select>
             </div>
             <div class="edit-actions">
-              <button class="btn btn-secondary" @click="cancelEdit">取消</button>
-              <button class="btn btn-primary" @click="saveEdit">保存</button>
+              <button
+                class="btn btn-secondary"
+                @click="cancelEdit"
+              >
+                取消
+              </button>
+              <button
+                class="btn btn-primary"
+                @click="saveEdit"
+              >
+                保存
+              </button>
             </div>
           </template>
 
           <template v-else>
-            <h4 class="task-title">{{ currentTask.title }}</h4>
-            <p v-if="currentTask.description" class="task-desc">
+            <h4 class="task-title">
+              {{ currentTask.title }}
+            </h4>
+            <p
+              v-if="currentTask.description"
+              class="task-desc"
+            >
               {{ currentTask.description }}
             </p>
           </template>
@@ -190,7 +213,9 @@ const dependencies = computed(() => {
 
         <!-- 状态 -->
         <div class="section">
-          <h5 class="section-title">状态</h5>
+          <h5 class="section-title">
+            状态
+          </h5>
           <div class="status-buttons">
             <button
               v-for="opt in statusOptions"
@@ -210,8 +235,20 @@ const dependencies = computed(() => {
               class="control-btn stop-btn"
               @click="stopTask"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <rect x="6" y="6" width="12" height="12"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect
+                  x="6"
+                  y="6"
+                  width="12"
+                  height="12"
+                />
               </svg>
               停止执行
             </button>
@@ -220,9 +257,16 @@ const dependencies = computed(() => {
               class="control-btn retry-btn"
               @click="retryTask"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M1 4v6h6"/>
-                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M1 4v6h6" />
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
               </svg>
               重试任务
             </button>
@@ -230,51 +274,93 @@ const dependencies = computed(() => {
         </div>
 
         <!-- 重试信息 -->
-        <div v-if="currentTask.retryCount > 0 || currentTask.errorMessage" class="section">
-          <h5 class="section-title">执行信息</h5>
-          <div v-if="currentTask.retryCount > 0" class="info-item">
+        <div
+          v-if="currentTask.retryCount > 0 || currentTask.errorMessage"
+          class="section"
+        >
+          <h5 class="section-title">
+            执行信息
+          </h5>
+          <div
+            v-if="currentTask.retryCount > 0"
+            class="info-item"
+          >
             <span class="info-label">重试次数</span>
             <span class="info-value">{{ currentTask.retryCount }} / {{ currentTask.maxRetries }}</span>
           </div>
-          <div v-if="currentTask.errorMessage" class="error-message">
+          <div
+            v-if="currentTask.errorMessage"
+            class="error-message"
+          >
             <span class="error-label">错误信息</span>
-            <p class="error-text">{{ currentTask.errorMessage }}</p>
+            <p class="error-text">
+              {{ currentTask.errorMessage }}
+            </p>
           </div>
         </div>
 
         <!-- 实现步骤 -->
-        <div v-if="currentTask.implementationSteps?.length" class="section">
-          <h5 class="section-title">实现步骤</h5>
+        <div
+          v-if="currentTask.implementationSteps?.length"
+          class="section"
+        >
+          <h5 class="section-title">
+            实现步骤
+          </h5>
           <ol class="steps-list">
-            <li v-for="(step, index) in currentTask.implementationSteps" :key="index">
+            <li
+              v-for="(step, index) in currentTask.implementationSteps"
+              :key="index"
+            >
               {{ step }}
             </li>
           </ol>
         </div>
 
         <!-- 测试步骤 -->
-        <div v-if="currentTask.testSteps?.length" class="section">
-          <h5 class="section-title">测试步骤</h5>
+        <div
+          v-if="currentTask.testSteps?.length"
+          class="section"
+        >
+          <h5 class="section-title">
+            测试步骤
+          </h5>
           <ol class="steps-list">
-            <li v-for="(step, index) in currentTask.testSteps" :key="index">
+            <li
+              v-for="(step, index) in currentTask.testSteps"
+              :key="index"
+            >
               {{ step }}
             </li>
           </ol>
         </div>
 
         <!-- 验收标准 -->
-        <div v-if="currentTask.acceptanceCriteria?.length" class="section">
-          <h5 class="section-title">验收标准</h5>
+        <div
+          v-if="currentTask.acceptanceCriteria?.length"
+          class="section"
+        >
+          <h5 class="section-title">
+            验收标准
+          </h5>
           <ul class="criteria-list">
-            <li v-for="(criteria, index) in currentTask.acceptanceCriteria" :key="index">
+            <li
+              v-for="(criteria, index) in currentTask.acceptanceCriteria"
+              :key="index"
+            >
               {{ criteria }}
             </li>
           </ul>
         </div>
 
         <!-- 依赖 -->
-        <div v-if="dependencies.length > 0" class="section">
-          <h5 class="section-title">依赖任务</h5>
+        <div
+          v-if="dependencies.length > 0"
+          class="section"
+        >
+          <h5 class="section-title">
+            依赖任务
+          </h5>
           <div class="dependency-list">
             <div
               v-for="dep in dependencies"
@@ -282,28 +368,41 @@ const dependencies = computed(() => {
               class="dependency-item"
               :class="dep.status"
             >
-              <span class="dep-status-dot"></span>
+              <span class="dep-status-dot" />
               <span class="dep-title">{{ dep.title }}</span>
             </div>
           </div>
         </div>
 
         <!-- 执行信息 -->
-        <div v-if="currentTask.sessionId" class="section">
-          <h5 class="section-title">执行信息</h5>
+        <div
+          v-if="currentTask.sessionId"
+          class="section"
+        >
+          <h5 class="section-title">
+            执行信息
+          </h5>
           <div class="info-item">
             <span class="info-label">会话 ID</span>
             <span class="info-value">{{ currentTask.sessionId }}</span>
           </div>
-          <div v-if="currentTask.progressFile" class="info-item">
+          <div
+            v-if="currentTask.progressFile"
+            class="info-item"
+          >
             <span class="info-label">进度文件</span>
-            <a href="#" class="info-link">查看进度</a>
+            <a
+              href="#"
+              class="info-link"
+            >查看进度</a>
           </div>
         </div>
 
         <!-- 时间信息 -->
         <div class="section">
-          <h5 class="section-title">时间信息</h5>
+          <h5 class="section-title">
+            时间信息
+          </h5>
           <div class="info-item">
             <span class="info-label">创建时间</span>
             <span class="info-value">{{ formatDate(currentTask.createdAt) }}</span>
@@ -317,7 +416,10 @@ const dependencies = computed(() => {
     </template>
 
     <!-- 空状态 -->
-    <div v-else class="empty-state">
+    <div
+      v-else
+      class="empty-state"
+    >
       <p>选择一个任务查看详情</p>
     </div>
   </div>

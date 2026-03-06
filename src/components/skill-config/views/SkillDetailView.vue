@@ -231,14 +231,24 @@ onMounted(() => {
     <!-- 头部工具栏 -->
     <div class="skill-detail__toolbar">
       <div class="skill-detail__toolbar-left">
-        <EaButton variant="ghost" size="small" @click="handleBack">
+        <EaButton
+          variant="ghost"
+          size="small"
+          @click="handleBack"
+        >
           <EaIcon name="lucide:arrow-left" />
           {{ t('common.back') }}
         </EaButton>
         <div class="skill-detail__breadcrumb">
-          <EaIcon name="lucide:book-open" class="skill-detail__icon" />
+          <EaIcon
+            name="lucide:book-open"
+            class="skill-detail__icon"
+          />
           <span class="skill-detail__name">{{ skill.name }}</span>
-          <EaIcon name="lucide:chevron-right" class="skill-detail__chevron" />
+          <EaIcon
+            name="lucide:chevron-right"
+            class="skill-detail__chevron"
+          />
           <span class="skill-detail__current-file">{{ currentFile?.name }}</span>
         </div>
       </div>
@@ -306,26 +316,48 @@ onMounted(() => {
     <div class="skill-detail__path-bar">
       <EaIcon name="lucide:folder" />
       <span>{{ skill.skillPath }}</span>
-      <span v-if="currentFile && currentFile.name !== 'SKILL.md'" class="skill-detail__path-separator">/</span>
-      <span v-if="currentFile && currentFile.name !== 'SKILL.md'" class="skill-detail__path-file">
+      <span
+        v-if="currentFile && currentFile.name !== 'SKILL.md'"
+        class="skill-detail__path-separator"
+      >/</span>
+      <span
+        v-if="currentFile && currentFile.name !== 'SKILL.md'"
+        class="skill-detail__path-file"
+      >
         {{ currentFile.name }}
       </span>
     </div>
 
     <!-- 加载中 -->
-    <div v-if="isLoading" class="skill-detail__loading">
-      <EaIcon name="lucide:loader-2" class="skill-detail__spinner" />
+    <div
+      v-if="isLoading"
+      class="skill-detail__loading"
+    >
+      <EaIcon
+        name="lucide:loader-2"
+        class="skill-detail__spinner"
+      />
       {{ t('common.loading') }}
     </div>
 
     <!-- 主内容区域 -->
-    <div v-else class="skill-detail__body">
+    <div
+      v-else
+      class="skill-detail__body"
+    >
       <!-- References 侧边栏 -->
       <Transition name="slide">
-        <div v-if="showReferences && referenceFiles.length > 0" class="skill-detail__sidebar">
+        <div
+          v-if="showReferences && referenceFiles.length > 0"
+          class="skill-detail__sidebar"
+        >
           <div class="skill-detail__sidebar-header">
             <h3>{{ t('settings.skills.references') }}</h3>
-            <EaButton variant="ghost" size="small" @click="showReferences = false">
+            <EaButton
+              variant="ghost"
+              size="small"
+              @click="showReferences = false"
+            >
               <EaIcon name="lucide:x" />
             </EaButton>
           </div>
@@ -336,7 +368,10 @@ onMounted(() => {
               :class="{ 'skill-detail__file-item--active': !selectedReference }"
               @click="showSkillMd"
             >
-              <EaIcon name="lucide:file-text" class="skill-detail__file-icon" />
+              <EaIcon
+                name="lucide:file-text"
+                class="skill-detail__file-icon"
+              />
               <div class="skill-detail__file-info">
                 <span class="skill-detail__file-name">SKILL.md</span>
                 <span class="skill-detail__file-type">Markdown</span>
@@ -353,7 +388,10 @@ onMounted(() => {
               :class="{ 'skill-detail__file-item--active': selectedReference?.path === file.path }"
               @click="selectReference(file)"
             >
-              <EaIcon :name="getFileIcon(file.file_type)" class="skill-detail__file-icon" />
+              <EaIcon
+                :name="getFileIcon(file.file_type)"
+                class="skill-detail__file-icon"
+              />
               <div class="skill-detail__file-info">
                 <span class="skill-detail__file-name">{{ file.name }}</span>
                 <span class="skill-detail__file-meta">
@@ -368,7 +406,10 @@ onMounted(() => {
       <!-- 主面板 -->
       <div class="skill-detail__main">
         <!-- 编辑模式 -->
-        <div v-if="isEditMode && currentFile" class="skill-detail__editor">
+        <div
+          v-if="isEditMode && currentFile"
+          class="skill-detail__editor"
+        >
           <textarea
             v-model="editContent"
             class="skill-detail__textarea"
@@ -377,8 +418,14 @@ onMounted(() => {
         </div>
 
         <!-- 加载文件中 -->
-        <div v-else-if="isLoadingFile" class="skill-detail__loading-content">
-          <EaIcon name="lucide:loader-2" class="skill-detail__spinner" />
+        <div
+          v-else-if="isLoadingFile"
+          class="skill-detail__loading-content"
+        >
+          <EaIcon
+            name="lucide:loader-2"
+            class="skill-detail__spinner"
+          />
           {{ t('common.loading') }}
         </div>
 
@@ -390,13 +437,22 @@ onMounted(() => {
         />
 
         <!-- 代码预览 -->
-        <div v-else-if="currentFile" class="skill-detail__code">
+        <div
+          v-else-if="currentFile"
+          class="skill-detail__code"
+        >
           <pre class="skill-detail__code-content"><code>{{ currentFile.content }}</code></pre>
         </div>
 
         <!-- 空状态 -->
-        <div v-else class="skill-detail__empty">
-          <EaIcon name="lucide:file-x" class="skill-detail__empty-icon" />
+        <div
+          v-else
+          class="skill-detail__empty"
+        >
+          <EaIcon
+            name="lucide:file-x"
+            class="skill-detail__empty-icon"
+          />
           <p>{{ t('settings.skills.noContent') }}</p>
         </div>
       </div>

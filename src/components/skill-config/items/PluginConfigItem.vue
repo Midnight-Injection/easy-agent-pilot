@@ -18,15 +18,28 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="plugin-config-item" :class="{ 'plugin-config-item--disabled': !config.enabled }">
+  <div
+    class="plugin-config-item"
+    :class="{ 'plugin-config-item--disabled': !config.enabled }"
+  >
     <div class="plugin-config-item__header">
       <div class="plugin-config-item__name">
-        <EaIcon name="lucide:puzzle" class="plugin-config-item__icon" />
+        <EaIcon
+          name="lucide:puzzle"
+          class="plugin-config-item__icon"
+        />
         <span>{{ config.name }}</span>
-        <span v-if="config.version" class="plugin-config-item__version">v{{ config.version }}</span>
+        <span
+          v-if="config.version"
+          class="plugin-config-item__version"
+        >v{{ config.version }}</span>
       </div>
       <div class="plugin-config-item__actions">
-        <EaButton size="small" variant="ghost" @click="emit('detail', config)">
+        <EaButton
+          size="small"
+          variant="ghost"
+          @click="emit('detail', config)"
+        >
           <EaIcon name="lucide:info" />
           {{ t('common.view') }}
         </EaButton>
@@ -52,7 +65,10 @@ const { t } = useI18n()
       </div>
     </div>
 
-    <div v-if="config.description" class="plugin-config-item__description">
+    <div
+      v-if="config.description"
+      class="plugin-config-item__description"
+    >
       {{ config.description }}
     </div>
 

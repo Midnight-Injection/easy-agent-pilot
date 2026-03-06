@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type SettingsTab = 'general' | 'agents' | 'agentConfig' | 'integration' | 'theme' | 'data' | 'providerSwitch'
+export type SettingsTab = 'general' | 'agents' | 'agentConfig' | 'integration' | 'theme' | 'data' | 'providerSwitch' | 'lsp'
 
 export type AppMode = 'chat' | 'plan'
+export type MainContentMode = 'chat' | 'fileEditor'
 
 export const useUIStore = defineStore('ui', () => {
   // State
@@ -13,6 +14,7 @@ export const useUIStore = defineStore('ui', () => {
   const projectCreateModalVisible = ref(false)
   const sessionCreateModalVisible = ref(false)
   const appMode = ref<AppMode>('chat')
+  const mainContentMode = ref<MainContentMode>('chat')
 
   // Actions
   function openSettings(tab?: SettingsTab) {
@@ -54,6 +56,10 @@ export const useUIStore = defineStore('ui', () => {
     appMode.value = mode
   }
 
+  function setMainContentMode(mode: MainContentMode) {
+    mainContentMode.value = mode
+  }
+
   function toggleAppMode() {
     appMode.value = appMode.value === 'chat' ? 'plan' : 'chat'
   }
@@ -74,6 +80,7 @@ export const useUIStore = defineStore('ui', () => {
     projectCreateModalVisible,
     sessionCreateModalVisible,
     appMode,
+    mainContentMode,
     // Actions
     openSettings,
     closeSettings,
@@ -86,6 +93,7 @@ export const useUIStore = defineStore('ui', () => {
     openSessionCreateModal,
     closeSessionCreateModal,
     setAppMode,
+    setMainContentMode,
     toggleAppMode
   }
 })

@@ -120,7 +120,10 @@ onMounted(() => {
   <div class="mcp-test-view">
     <!-- 头部 -->
     <div class="mcp-test-view__header">
-      <EaButton variant="ghost" @click="goBack">
+      <EaButton
+        variant="ghost"
+        @click="goBack"
+      >
         <EaIcon name="lucide:arrow-left" />
         {{ t('common.back') || '返回' }}
       </EaButton>
@@ -140,17 +143,32 @@ onMounted(() => {
           <span class="tools-count">{{ tools.length }}</span>
         </div>
 
-        <div v-if="isLoading" class="tools-loading">
-          <EaIcon name="lucide:loader-2" class="tools-loading__spinner" />
+        <div
+          v-if="isLoading"
+          class="tools-loading"
+        >
+          <EaIcon
+            name="lucide:loader-2"
+            class="tools-loading__spinner"
+          />
           {{ t('settings.mcp.toolTester.loadingTools') }}
         </div>
 
-        <div v-else-if="tools.length === 0" class="tools-empty">
-          <EaIcon name="lucide:wrench" class="tools-empty__icon" />
+        <div
+          v-else-if="tools.length === 0"
+          class="tools-empty"
+        >
+          <EaIcon
+            name="lucide:wrench"
+            class="tools-empty__icon"
+          />
           <p>{{ t('settings.mcp.toolTester.noTools') }}</p>
         </div>
 
-        <div v-else class="tools-list">
+        <div
+          v-else
+          class="tools-list"
+        >
           <button
             v-for="tool in tools"
             :key="tool.name"
@@ -158,7 +176,10 @@ onMounted(() => {
             :class="{ 'tool-item--active': selectedTool?.name === tool.name }"
             @click="selectTool(tool)"
           >
-            <EaIcon name="lucide:wrench" class="tool-item__icon" />
+            <EaIcon
+              name="lucide:wrench"
+              class="tool-item__icon"
+            />
             <div class="tool-item__info">
               <span class="tool-item__name">{{ tool.name }}</span>
               <span class="tool-item__desc">{{ tool.description || '-' }}</span>
@@ -169,8 +190,14 @@ onMounted(() => {
 
       <!-- 右侧参数和结果 -->
       <div class="mcp-test-view__detail">
-        <div v-if="!selectedTool" class="detail-empty">
-          <EaIcon name="lucide:mouse-pointer-click" class="detail-empty__icon" />
+        <div
+          v-if="!selectedTool"
+          class="detail-empty"
+        >
+          <EaIcon
+            name="lucide:mouse-pointer-click"
+            class="detail-empty__icon"
+          />
           <p>{{ t('settings.mcp.toolTester.selectTool') }}</p>
         </div>
 
@@ -194,17 +221,26 @@ onMounted(() => {
           </div>
 
           <!-- 参数配置 -->
-          <div v-show="activeTab === 'params'" class="detail-params">
+          <div
+            v-show="activeTab === 'params'"
+            class="detail-params"
+          >
             <div class="params-header">
               <h4>{{ selectedTool.name }}</h4>
               <p>{{ selectedTool.description }}</p>
             </div>
 
-            <div v-if="!selectedTool.inputSchema?.properties" class="params-empty">
+            <div
+              v-if="!selectedTool.inputSchema?.properties"
+              class="params-empty"
+            >
               {{ t('settings.mcp.toolTester.noParams') }}
             </div>
 
-            <div v-else class="params-form">
+            <div
+              v-else
+              class="params-form"
+            >
               <div
                 v-for="(_prop, key) in selectedTool.inputSchema.properties"
                 :key="key"
@@ -212,35 +248,41 @@ onMounted(() => {
               >
                 <label>
                   {{ key }}
-                  <span v-if="isRequired(key as string)" class="required">*</span>
+                  <span
+                    v-if="isRequired(key as string)"
+                    class="required"
+                  >*</span>
                   <span class="param-type">({{ getParamType(key as string) }})</span>
                 </label>
                 <input
                   v-if="getParamType(key as string) === 'string' || getParamType(key as string) === 'number'"
-                  :value="paramValues[key as string] as string | number | undefined"
-                  @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                  :value="paramValues[key as string]"
                   :type="getParamType(key as string) === 'number' ? 'number' : 'text'"
                   :placeholder="t('settings.mcp.toolTester.paramPlaceholder')"
-                />
+                  @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                >
                 <textarea
                   v-else-if="getParamType(key as string) === 'object' || getParamType(key as string) === 'array'"
                   :value="String(paramValues[key as string] ?? '')"
-                  @input="paramValues[key as string] = ($event.target as HTMLTextAreaElement).value"
                   :placeholder="t('settings.mcp.toolTester.jsonPlaceholder')"
                   rows="4"
-                ></textarea>
+                  @input="paramValues[key as string] = ($event.target as HTMLTextAreaElement).value"
+                />
                 <input
                   v-else
-                  :value="paramValues[key as string] as string | undefined"
-                  @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                  :value="paramValues[key as string]"
                   type="text"
                   :placeholder="t('settings.mcp.toolTester.paramPlaceholder')"
-                />
+                  @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                >
               </div>
             </div>
 
             <div class="params-actions">
-              <EaButton @click="handleCallTool" :loading="isCalling">
+              <EaButton
+                :loading="isCalling"
+                @click="handleCallTool"
+              >
                 <EaIcon name="lucide:play" />
                 {{ t('settings.mcp.toolTester.callTool') }}
               </EaButton>
@@ -248,22 +290,40 @@ onMounted(() => {
           </div>
 
           <!-- 执行结果 -->
-          <div v-show="activeTab === 'result'" class="detail-result">
-            <div v-if="isCalling" class="result-calling">
-              <EaIcon name="lucide:loader-2" class="result-calling__spinner" />
+          <div
+            v-show="activeTab === 'result'"
+            class="detail-result"
+          >
+            <div
+              v-if="isCalling"
+              class="result-calling"
+            >
+              <EaIcon
+                name="lucide:loader-2"
+                class="result-calling__spinner"
+              />
               {{ t('settings.mcp.toolTester.calling') }}
             </div>
 
-            <div v-else-if="!callResult" class="result-empty">
+            <div
+              v-else-if="!callResult"
+              class="result-empty"
+            >
               {{ t('settings.mcp.toolTester.noResult') }}
             </div>
 
             <template v-else>
-              <div v-if="callResult.success" class="result-success">
+              <div
+                v-if="callResult.success"
+                class="result-success"
+              >
                 <h4>{{ t('settings.mcp.toolTester.resultData') }}</h4>
                 <pre class="result-json">{{ JSON.stringify(callResult.data, null, 2) }}</pre>
               </div>
-              <div v-else class="result-error">
+              <div
+                v-else
+                class="result-error"
+              >
                 <h4>{{ t('settings.mcp.toolTester.errorDetails') }}</h4>
                 <pre class="result-json">{{ callResult.error }}</pre>
               </div>

@@ -48,7 +48,9 @@ pub fn get_all_app_settings() -> Result<HashMap<String, String>, String> {
         .map_err(|e| e.to_string())?;
 
     let settings = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(|e| e.to_string())?
         .collect::<Result<HashMap<String, String>, _>>()
         .map_err(|e| e.to_string())?;

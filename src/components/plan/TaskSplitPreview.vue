@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { AITaskItem, TaskPriority } from '@/types/plan'
+import { useConfirmDialog } from '@/composables'
 
 const props = defineProps<{
   tasks: AITaskItem[]
@@ -15,6 +16,7 @@ const emit = defineEmits<{
 // 编辑状态
 const editingIndex = ref<number | null>(null)
 const editForm = ref<Partial<AITaskItem>>({})
+const confirmDialog = useConfirmDialog()
 
 // 优先级选项
 const priorityOptions = [
@@ -52,8 +54,15 @@ function saveEdit() {
 }
 
 // 删除任务
-function removeTask(index: number) {
-  if (confirm('确定要删除这个任务吗？')) {
+async function removeTask(index: number) {
+  const task = props.tasks[index]
+  const taskName = task?.title?.trim() || `任务 ${index + 1}`
+  const confirmed = await confirmDialog.danger(
+    `确定要删除任务「${taskName}」吗？`,
+    '删除任务'
+  )
+
+  if (confirmed) {
     emit('remove', index)
   }
 }
@@ -98,9 +107,19 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
         任务列表
         <span class="task-count">{{ tasks.length }} 个任务</span>
       </h4>
-      <button class="btn-add" @click="addTask">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 5v14M5 12h14"/>
+      <button
+        class="btn-add"
+        @click="addTask"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M12 5v14M5 12h14" />
         </svg>
         添加任务
       </button>
@@ -116,30 +135,72 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
         <!-- 查看模式 -->
         <template v-if="editingIndex !== index">
           <div class="task-header">
-            <div class="task-number">{{ index + 1 }}</div>
-            <div class="task-title">{{ task.title }}</div>
-            <span class="priority-badge" :class="priorityColors[task.priority]">
+            <div class="task-number">
+              {{ index + 1 }}
+            </div>
+            <div class="task-title">
+              {{ task.title }}
+            </div>
+            <span
+              class="priority-badge"
+              :class="priorityColors[task.priority]"
+            >
               {{ task.priority === 'high' ? '高' : task.priority === 'medium' ? '中' : '低' }}
             </span>
             <div class="task-actions">
-              <button class="btn-icon" title="编辑" @click="startEdit(index)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              <button
+                class="btn-icon"
+                title="编辑"
+                @click="startEdit(index)"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
                 </svg>
               </button>
-              <button class="btn-icon btn-danger" title="删除" @click="removeTask(index)">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+              <button
+                class="btn-icon btn-danger"
+                title="删除"
+                @click="removeTask(index)"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
                 </svg>
               </button>
             </div>
           </div>
-          <p v-if="task.description" class="task-description">{{ task.description }}</p>
-          <div v-if="task.implementationSteps?.length" class="task-steps">
+          <p
+            v-if="task.description"
+            class="task-description"
+          >
+            {{ task.description }}
+          </p>
+          <div
+            v-if="task.implementationSteps?.length"
+            class="task-steps"
+          >
             <span class="steps-label">实现步骤:</span>
             <ul>
-              <li v-for="(step, i) in task.implementationSteps" :key="i">{{ step }}</li>
+              <li
+                v-for="(step, i) in task.implementationSteps"
+                :key="i"
+              >
+                {{ step }}
+              </li>
             </ul>
           </div>
         </template>
@@ -149,32 +210,75 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
           <div class="edit-form">
             <div class="form-row">
               <label>标题</label>
-              <input v-model="editForm.title" type="text" placeholder="任务标题" />
+              <input
+                v-model="editForm.title"
+                type="text"
+                placeholder="任务标题"
+              >
             </div>
 
             <div class="form-row">
               <label>描述</label>
-              <textarea v-model="editForm.description" placeholder="任务描述" rows="2"></textarea>
+              <textarea
+                v-model="editForm.description"
+                placeholder="任务描述"
+                rows="2"
+              />
             </div>
 
             <div class="form-row">
               <label>优先级</label>
-              <select v-model="editForm.priority">
-                <option v-for="opt in priorityOptions" :key="opt.value" :value="opt.value">
-                  {{ opt.label }}
-                </option>
-              </select>
+              <div class="priority-select-wrap">
+                <select
+                  v-model="editForm.priority"
+                  class="priority-select"
+                >
+                  <option
+                    v-for="opt in priorityOptions"
+                    :key="opt.value"
+                    :value="opt.value"
+                  >
+                    {{ opt.label }}
+                  </option>
+                </select>
+                <svg
+                  class="select-arrow"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
             </div>
 
             <div class="form-row">
               <label>
                 实现步骤
-                <button class="btn-add-step" @click="addStep('implementationSteps')">+ 添加</button>
+                <button
+                  class="btn-add-step"
+                  @click="addStep('implementationSteps')"
+                >+ 添加</button>
               </label>
               <div class="steps-list">
-                <div v-for="(_, i) in editForm.implementationSteps" :key="i" class="step-item">
-                  <input v-model="editForm.implementationSteps![i]" type="text" />
-                  <button class="btn-remove-step" @click="removeStep('implementationSteps', i)">×</button>
+                <div
+                  v-for="(_, i) in editForm.implementationSteps"
+                  :key="i"
+                  class="step-item"
+                >
+                  <input
+                    v-model="editForm.implementationSteps![i]"
+                    type="text"
+                  >
+                  <button
+                    class="btn-remove-step"
+                    @click="removeStep('implementationSteps', i)"
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
             </div>
@@ -182,12 +286,27 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
             <div class="form-row">
               <label>
                 测试步骤
-                <button class="btn-add-step" @click="addStep('testSteps')">+ 添加</button>
+                <button
+                  class="btn-add-step"
+                  @click="addStep('testSteps')"
+                >+ 添加</button>
               </label>
               <div class="steps-list">
-                <div v-for="(_, i) in editForm.testSteps" :key="i" class="step-item">
-                  <input v-model="editForm.testSteps![i]" type="text" />
-                  <button class="btn-remove-step" @click="removeStep('testSteps', i)">×</button>
+                <div
+                  v-for="(_, i) in editForm.testSteps"
+                  :key="i"
+                  class="step-item"
+                >
+                  <input
+                    v-model="editForm.testSteps![i]"
+                    type="text"
+                  >
+                  <button
+                    class="btn-remove-step"
+                    @click="removeStep('testSteps', i)"
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
             </div>
@@ -195,19 +314,44 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
             <div class="form-row">
               <label>
                 验收标准
-                <button class="btn-add-step" @click="addStep('acceptanceCriteria')">+ 添加</button>
+                <button
+                  class="btn-add-step"
+                  @click="addStep('acceptanceCriteria')"
+                >+ 添加</button>
               </label>
               <div class="steps-list">
-                <div v-for="(_, i) in editForm.acceptanceCriteria" :key="i" class="step-item">
-                  <input v-model="editForm.acceptanceCriteria![i]" type="text" />
-                  <button class="btn-remove-step" @click="removeStep('acceptanceCriteria', i)">×</button>
+                <div
+                  v-for="(_, i) in editForm.acceptanceCriteria"
+                  :key="i"
+                  class="step-item"
+                >
+                  <input
+                    v-model="editForm.acceptanceCriteria![i]"
+                    type="text"
+                  >
+                  <button
+                    class="btn-remove-step"
+                    @click="removeStep('acceptanceCriteria', i)"
+                  >
+                    ×
+                  </button>
                 </div>
               </div>
             </div>
 
             <div class="edit-actions">
-              <button class="btn btn-secondary" @click="cancelEdit">取消</button>
-              <button class="btn btn-primary" @click="saveEdit">保存</button>
+              <button
+                class="btn btn-secondary"
+                @click="cancelEdit"
+              >
+                取消
+              </button>
+              <button
+                class="btn btn-primary"
+                @click="saveEdit"
+              >
+                保存
+              </button>
             </div>
           </div>
         </template>
@@ -442,10 +586,11 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
 .form-row select {
   padding: var(--spacing-2, 0.5rem);
   border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius-md, 8px);
   font-size: var(--font-size-sm, 13px);
   background-color: var(--color-surface, #fff);
   color: var(--color-text-primary, #1e293b);
+  transition: border-color var(--transition-fast, 150ms), box-shadow var(--transition-fast, 150ms);
 }
 
 .form-row input:focus,
@@ -453,6 +598,44 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
 .form-row select:focus {
   outline: none;
   border-color: var(--color-primary, #60a5fa);
+}
+
+.priority-select-wrap {
+  position: relative;
+}
+
+.priority-select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  padding-right: 2rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.priority-select:hover {
+  border-color: #cbd5e1;
+  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+}
+
+.priority-select:focus {
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 15%);
+}
+
+.select-arrow {
+  position: absolute;
+  right: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  pointer-events: none;
+  transition: transform var(--transition-fast, 150ms), color var(--transition-fast, 150ms);
+}
+
+.priority-select-wrap:focus-within .select-arrow {
+  color: #3b82f6;
+  transform: translateY(-50%) rotate(180deg);
 }
 
 .btn-add-step {

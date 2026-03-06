@@ -120,7 +120,10 @@ pub fn list_agent_mcp_configs(agent_id: String) -> Result<Vec<AgentMcpConfig>, S
                 url: row.get(7)?,
                 headers: row.get(8)?,
                 scope: row.get(9)?,
-                enabled: row.get::<_, Option<i32>>(10)?.map(|v| v != 0).unwrap_or(true),
+                enabled: row
+                    .get::<_, Option<i32>>(10)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 created_at: row.get(11)?,
                 updated_at: row.get(12)?,
             })
@@ -183,7 +186,10 @@ pub fn create_agent_mcp_config(input: CreateAgentMcpConfigInput) -> Result<Agent
 
 /// 更新 MCP 配置
 #[tauri::command]
-pub fn update_agent_mcp_config(id: String, input: UpdateAgentMcpConfigInput) -> Result<AgentMcpConfig, String> {
+pub fn update_agent_mcp_config(
+    id: String,
+    input: UpdateAgentMcpConfigInput,
+) -> Result<AgentMcpConfig, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -240,48 +246,59 @@ pub fn update_agent_mcp_config(id: String, input: UpdateAgentMcpConfigInput) -> 
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref name) = input.name {
-        stmt.raw_bind_parameter(param_count, name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref transport_type) = input.transport_type {
-        stmt.raw_bind_parameter(param_count, transport_type).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, transport_type)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref command) = input.command {
-        stmt.raw_bind_parameter(param_count, command).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, command)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref args) = input.args {
-        stmt.raw_bind_parameter(param_count, args).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, args)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref env) = input.env {
-        stmt.raw_bind_parameter(param_count, env).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, env)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref url) = input.url {
-        stmt.raw_bind_parameter(param_count, url).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, url)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref headers) = input.headers {
-        stmt.raw_bind_parameter(param_count, headers).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, headers)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref scope) = input.scope {
-        stmt.raw_bind_parameter(param_count, scope).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, scope)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(enabled) = input.enabled {
         let val = if enabled { 1 } else { 0 };
-        stmt.raw_bind_parameter(param_count, val).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, val)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
 
     stmt.raw_execute().map_err(|e| e.to_string())?;
 
@@ -314,7 +331,10 @@ fn get_mcp_config_by_id(conn: &Connection, id: &str) -> Result<AgentMcpConfig, S
                 url: row.get(7)?,
                 headers: row.get(8)?,
                 scope: row.get(9)?,
-                enabled: row.get::<_, Option<i32>>(10)?.map(|v| v != 0).unwrap_or(true),
+                enabled: row
+                    .get::<_, Option<i32>>(10)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 created_at: row.get(11)?,
                 updated_at: row.get(12)?,
             })
@@ -408,7 +428,10 @@ pub fn list_agent_skills_configs(agent_id: String) -> Result<Vec<AgentSkillsConf
                 scripts_path: row.get(5)?,
                 references_path: row.get(6)?,
                 assets_path: row.get(7)?,
-                enabled: row.get::<_, Option<i32>>(8)?.map(|v| v != 0).unwrap_or(true),
+                enabled: row
+                    .get::<_, Option<i32>>(8)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
             })
@@ -422,7 +445,9 @@ pub fn list_agent_skills_configs(agent_id: String) -> Result<Vec<AgentSkillsConf
 
 /// 创建 Skills 配置
 #[tauri::command]
-pub fn create_agent_skills_config(input: CreateAgentSkillsConfigInput) -> Result<AgentSkillsConfig, String> {
+pub fn create_agent_skills_config(
+    input: CreateAgentSkillsConfigInput,
+) -> Result<AgentSkillsConfig, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -465,7 +490,10 @@ pub fn create_agent_skills_config(input: CreateAgentSkillsConfigInput) -> Result
 
 /// 更新 Skills 配置
 #[tauri::command]
-pub fn update_agent_skills_config(id: String, input: UpdateAgentSkillsConfigInput) -> Result<AgentSkillsConfig, String> {
+pub fn update_agent_skills_config(
+    id: String,
+    input: UpdateAgentSkillsConfigInput,
+) -> Result<AgentSkillsConfig, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -514,40 +542,49 @@ pub fn update_agent_skills_config(id: String, input: UpdateAgentSkillsConfigInpu
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref name) = input.name {
-        stmt.raw_bind_parameter(param_count, name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref description) = input.description {
-        stmt.raw_bind_parameter(param_count, description).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, description)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref skill_path) = input.skill_path {
-        stmt.raw_bind_parameter(param_count, skill_path).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, skill_path)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref scripts_path) = input.scripts_path {
-        stmt.raw_bind_parameter(param_count, scripts_path).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, scripts_path)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref references_path) = input.references_path {
-        stmt.raw_bind_parameter(param_count, references_path).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, references_path)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref assets_path) = input.assets_path {
-        stmt.raw_bind_parameter(param_count, assets_path).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, assets_path)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(enabled) = input.enabled {
         let val = if enabled { 1 } else { 0 };
-        stmt.raw_bind_parameter(param_count, val).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, val)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
 
     stmt.raw_execute().map_err(|e| e.to_string())?;
 
@@ -578,7 +615,10 @@ fn get_skills_config_by_id(conn: &Connection, id: &str) -> Result<AgentSkillsCon
                 scripts_path: row.get(5)?,
                 references_path: row.get(6)?,
                 assets_path: row.get(7)?,
-                enabled: row.get::<_, Option<i32>>(8)?.map(|v| v != 0).unwrap_or(true),
+                enabled: row
+                    .get::<_, Option<i32>>(8)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
             })
@@ -664,7 +704,10 @@ pub fn list_agent_plugins_configs(agent_id: String) -> Result<Vec<AgentPluginsCo
                 version: row.get(3)?,
                 description: row.get(4)?,
                 plugin_path: row.get(5)?,
-                enabled: row.get::<_, Option<i32>>(6)?.map(|v| v != 0).unwrap_or(true),
+                enabled: row
+                    .get::<_, Option<i32>>(6)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 created_at: row.get(7)?,
                 updated_at: row.get(8)?,
             })
@@ -678,7 +721,9 @@ pub fn list_agent_plugins_configs(agent_id: String) -> Result<Vec<AgentPluginsCo
 
 /// 创建 Plugins 配置
 #[tauri::command]
-pub fn create_agent_plugins_config(input: CreateAgentPluginsConfigInput) -> Result<AgentPluginsConfig, String> {
+pub fn create_agent_plugins_config(
+    input: CreateAgentPluginsConfigInput,
+) -> Result<AgentPluginsConfig, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -717,7 +762,10 @@ pub fn create_agent_plugins_config(input: CreateAgentPluginsConfigInput) -> Resu
 
 /// 更新 Plugins 配置
 #[tauri::command]
-pub fn update_agent_plugins_config(id: String, input: UpdateAgentPluginsConfigInput) -> Result<AgentPluginsConfig, String> {
+pub fn update_agent_plugins_config(
+    id: String,
+    input: UpdateAgentPluginsConfigInput,
+) -> Result<AgentPluginsConfig, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -758,32 +806,39 @@ pub fn update_agent_plugins_config(id: String, input: UpdateAgentPluginsConfigIn
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref name) = input.name {
-        stmt.raw_bind_parameter(param_count, name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref version) = input.version {
-        stmt.raw_bind_parameter(param_count, version).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, version)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref description) = input.description {
-        stmt.raw_bind_parameter(param_count, description).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, description)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref plugin_path) = input.plugin_path {
-        stmt.raw_bind_parameter(param_count, plugin_path).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, plugin_path)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(enabled) = input.enabled {
         let val = if enabled { 1 } else { 0 };
-        stmt.raw_bind_parameter(param_count, val).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, val)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
 
     stmt.raw_execute().map_err(|e| e.to_string())?;
 
@@ -812,7 +867,10 @@ fn get_plugins_config_by_id(conn: &Connection, id: &str) -> Result<AgentPluginsC
                 version: row.get(3)?,
                 description: row.get(4)?,
                 plugin_path: row.get(5)?,
-                enabled: row.get::<_, Option<i32>>(6)?.map(|v| v != 0).unwrap_or(true),
+                enabled: row
+                    .get::<_, Option<i32>>(6)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 created_at: row.get(7)?,
                 updated_at: row.get(8)?,
             })
@@ -908,10 +966,19 @@ pub fn list_agent_models(agent_id: String) -> Result<Vec<AgentModelConfig>, Stri
                 agent_id: row.get(1)?,
                 model_id: row.get(2)?,
                 display_name: row.get(3)?,
-                is_builtin: row.get::<_, Option<i32>>(4)?.map(|v| v != 0).unwrap_or(false),
-                is_default: row.get::< _, Option<i32>>(5)?.map(|v| v != 0).unwrap_or(false),
-                sort_order: row.get::< _, Option<i32>>(6)?.unwrap_or(0),
-                enabled: row.get::< _, Option<i32>>(7)?.map(|v| v != 0).unwrap_or(true),
+                is_builtin: row
+                    .get::<_, Option<i32>>(4)?
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+                is_default: row
+                    .get::<_, Option<i32>>(5)?
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+                sort_order: row.get::<_, Option<i32>>(6)?.unwrap_or(0),
+                enabled: row
+                    .get::<_, Option<i32>>(7)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 context_window: row.get(8)?,
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
@@ -982,7 +1049,9 @@ pub fn create_agent_model(input: CreateAgentModelInput) -> Result<AgentModelConf
 
 /// 批量创建内置模型
 #[tauri::command]
-pub fn create_builtin_models(input: CreateBuiltinModelsInput) -> Result<Vec<AgentModelConfig>, String> {
+pub fn create_builtin_models(
+    input: CreateBuiltinModelsInput,
+) -> Result<Vec<AgentModelConfig>, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -1007,9 +1076,27 @@ pub fn create_builtin_models(input: CreateBuiltinModelsInput) -> Result<Vec<Agen
         // Claude 默认模型列表
         vec![
             ("", "使用默认模型", 0, true, None),
-            ("claude-opus-4-6-20250514", "Claude Opus 4.6", 1, false, Some(200000)),
-            ("claude-sonnet-4-6-20250514", "Claude Sonnet 4.6", 2, false, Some(200000)),
-            ("claude-haiku-4-5-20250514", "Claude Haiku 4.5", 3, false, Some(200000)),
+            (
+                "claude-opus-4-6-20250514",
+                "Claude Opus 4.6",
+                1,
+                false,
+                Some(200000),
+            ),
+            (
+                "claude-sonnet-4-6-20250514",
+                "Claude Sonnet 4.6",
+                2,
+                false,
+                Some(200000),
+            ),
+            (
+                "claude-haiku-4-5-20250514",
+                "Claude Haiku 4.5",
+                3,
+                false,
+                Some(200000),
+            ),
         ]
     };
 
@@ -1059,7 +1146,10 @@ pub fn create_builtin_models(input: CreateBuiltinModelsInput) -> Result<Vec<Agen
 
 /// 更新模型配置
 #[tauri::command]
-pub fn update_agent_model(id: String, input: UpdateAgentModelInput) -> Result<AgentModelConfig, String> {
+pub fn update_agent_model(
+    id: String,
+    input: UpdateAgentModelInput,
+) -> Result<AgentModelConfig, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -1069,7 +1159,11 @@ pub fn update_agent_model(id: String, input: UpdateAgentModelInput) -> Result<Ag
     if input.is_default.unwrap_or(false) {
         // 获取当前模型的 agent_id
         let agent_id: String = conn
-            .query_row("SELECT agent_id FROM agent_models WHERE id = ?1", [&id], |row| row.get(0))
+            .query_row(
+                "SELECT agent_id FROM agent_models WHERE id = ?1",
+                [&id],
+                |row| row.get(0),
+            )
             .map_err(|e| e.to_string())?;
 
         conn.execute(
@@ -1118,37 +1212,45 @@ pub fn update_agent_model(id: String, input: UpdateAgentModelInput) -> Result<Ag
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref model_id) = input.model_id {
-        stmt.raw_bind_parameter(param_count, model_id).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, model_id)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref display_name) = input.display_name {
-        stmt.raw_bind_parameter(param_count, display_name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, display_name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(is_default) = input.is_default {
         let val = if is_default { 1 } else { 0 };
-        stmt.raw_bind_parameter(param_count, val).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, val)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(sort_order) = input.sort_order {
-        stmt.raw_bind_parameter(param_count, sort_order).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, sort_order)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(enabled) = input.enabled {
         let val = if enabled { 1 } else { 0 };
-        stmt.raw_bind_parameter(param_count, val).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, val)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(context_window) = input.context_window {
-        stmt.raw_bind_parameter(param_count, context_window).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, context_window)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
 
     stmt.raw_execute().map_err(|e| e.to_string())?;
 
@@ -1175,10 +1277,19 @@ fn get_model_config_by_id(conn: &Connection, id: &str) -> Result<AgentModelConfi
                 agent_id: row.get(1)?,
                 model_id: row.get(2)?,
                 display_name: row.get(3)?,
-                is_builtin: row.get::< _, Option<i32>>(4)?.map(|v| v != 0).unwrap_or(false),
-                is_default: row.get::< _, Option<i32>>(5)?.map(|v| v != 0).unwrap_or(false),
-                sort_order: row.get::< _, Option<i32>>(6)?.unwrap_or(0),
-                enabled: row.get::< _, Option<i32>>(7)?.map(|v| v != 0).unwrap_or(true),
+                is_builtin: row
+                    .get::<_, Option<i32>>(4)?
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+                is_default: row
+                    .get::<_, Option<i32>>(5)?
+                    .map(|v| v != 0)
+                    .unwrap_or(false),
+                sort_order: row.get::<_, Option<i32>>(6)?.unwrap_or(0),
+                enabled: row
+                    .get::<_, Option<i32>>(7)?
+                    .map(|v| v != 0)
+                    .unwrap_or(true),
                 context_window: row.get(8)?,
                 created_at: row.get(9)?,
                 updated_at: row.get(10)?,
@@ -1203,7 +1314,9 @@ pub fn delete_agent_model(id: String) -> Result<(), String> {
 
 /// 重置内置模型（删除所有模型并重新创建内置模型）
 #[tauri::command]
-pub fn reset_builtin_models(input: CreateBuiltinModelsInput) -> Result<Vec<AgentModelConfig>, String> {
+pub fn reset_builtin_models(
+    input: CreateBuiltinModelsInput,
+) -> Result<Vec<AgentModelConfig>, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -1213,8 +1326,11 @@ pub fn reset_builtin_models(input: CreateBuiltinModelsInput) -> Result<Vec<Agent
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // 删除该智能体的所有模型
-    tx.execute("DELETE FROM agent_models WHERE agent_id = ?1", [&input.agent_id])
-        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM agent_models WHERE agent_id = ?1",
+        [&input.agent_id],
+    )
+    .map_err(|e| e.to_string())?;
 
     // 根据提供商类型定义内置模型（包含上下文窗口大小）
     let builtin_models = if input.provider == "codex" {
@@ -1232,9 +1348,27 @@ pub fn reset_builtin_models(input: CreateBuiltinModelsInput) -> Result<Vec<Agent
         // Claude 默认模型列表
         vec![
             ("", "使用默认模型", 0, true, None),
-            ("claude-opus-4-6-20250514", "Claude Opus 4.6", 1, false, Some(200000)),
-            ("claude-sonnet-4-6-20250514", "Claude Sonnet 4.6", 2, false, Some(200000)),
-            ("claude-haiku-4-5-20250514", "Claude Haiku 4.5", 3, false, Some(200000)),
+            (
+                "claude-opus-4-6-20250514",
+                "Claude Opus 4.6",
+                1,
+                false,
+                Some(200000),
+            ),
+            (
+                "claude-sonnet-4-6-20250514",
+                "Claude Sonnet 4.6",
+                2,
+                false,
+                Some(200000),
+            ),
+            (
+                "claude-haiku-4-5-20250514",
+                "Claude Haiku 4.5",
+                3,
+                false,
+                Some(200000),
+            ),
         ]
     };
 

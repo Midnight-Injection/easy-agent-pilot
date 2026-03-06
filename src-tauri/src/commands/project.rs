@@ -1,6 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
@@ -278,27 +278,23 @@ const IGNORED_DIRS: &[&str] = &[
     ".env",
 ];
 
-const IGNORED_FILES: &[&str] = &[
-    ".DS_Store",
-    "Thumbs.db",
-    ".gitignore",
-    ".gitattributes",
-];
+const IGNORED_FILES: &[&str] = &[".DS_Store", "Thumbs.db", ".gitignore", ".gitattributes"];
 
 /// 递归扫描目录获取文件树
-fn scan_directory_recursive(dir_path: &PathBuf, max_depth: usize, current_depth: usize) -> Result<Vec<FileTreeNode>, String> {
+fn scan_directory_recursive(
+    dir_path: &PathBuf,
+    max_depth: usize,
+    current_depth: usize,
+) -> Result<Vec<FileTreeNode>, String> {
     if current_depth >= max_depth {
         return Ok(Vec::new());
     }
 
     let mut nodes = Vec::new();
 
-    let entries = fs::read_dir(dir_path)
-        .map_err(|e| format!("无法读取目录: {}", e))?;
+    let entries = fs::read_dir(dir_path).map_err(|e| format!("无法读取目录: {}", e))?;
 
-    let mut entries: Vec<_> = entries
-        .filter_map(|e| e.ok())
-        .collect();
+    let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
 
     // 排序：目录优先，然后按名称排序
     entries.sort_by(|a, b| {
@@ -333,7 +329,11 @@ fn scan_directory_recursive(dir_path: &PathBuf, max_depth: usize, current_depth:
 
             // 递归扫描子目录
             let children = if current_depth + 1 < max_depth {
-                Some(scan_directory_recursive(&path, max_depth, current_depth + 1)?)
+                Some(scan_directory_recursive(
+                    &path,
+                    max_depth,
+                    current_depth + 1,
+                )?)
             } else {
                 None
             };
@@ -390,12 +390,9 @@ fn resolve_path(path_str: &str) -> Result<PathBuf, String> {
 fn scan_single_directory(dir_path: &PathBuf) -> Result<Vec<FileTreeNode>, String> {
     let mut nodes = Vec::new();
 
-    let entries = fs::read_dir(dir_path)
-        .map_err(|e| format!("无法读取目录: {}", e))?;
+    let entries = fs::read_dir(dir_path).map_err(|e| format!("无法读取目录: {}", e))?;
 
-    let mut entries: Vec<_> = entries
-        .filter_map(|e| e.ok())
-        .collect();
+    let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
 
     // 排序：目录优先，然后按名称排序
     entries.sort_by(|a, b| {
@@ -493,6 +490,119 @@ pub fn load_directory_children(dir_path: String) -> Result<Vec<FileTreeNode>, St
     scan_single_directory(&resolved_path)
 }
 
+/// 扁平化的文件信息（用于 @ 文件引用）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlatFileInfo {
+    pub name: String,
+    pub path: String,
+    pub relative_path: String,
+    pub node_type: FileNodeType,
+    pub extension: Option<String>,
+}
+
+/// 递归收集所有文件到扁平列表
+fn collect_files_flat(
+    dir_path: &PathBuf,
+    base_path: &PathBuf,
+    result: &mut Vec<FlatFileInfo>,
+) -> Result<(), String> {
+    let entries = fs::read_dir(dir_path).map_err(|e| format!("无法读取目录: {}", e))?;
+
+    let mut entries: Vec<_> = entries.filter_map(|e| e.ok()).collect();
+
+    // 排序：目录优先，然后按名称排序
+    entries.sort_by(|a, b| {
+        let a_is_dir = a.path().is_dir();
+        let b_is_dir = b.path().is_dir();
+        if a_is_dir == b_is_dir {
+            a.file_name().cmp(&b.file_name())
+        } else if a_is_dir {
+            std::cmp::Ordering::Less
+        } else {
+            std::cmp::Ordering::Greater
+        }
+    });
+
+    for entry in entries {
+        let path = entry.path();
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        // 跳过隐藏文件和目录
+        if name.starts_with('.') {
+            continue;
+        }
+
+        // 计算相对路径
+        let relative_path = path
+            .strip_prefix(base_path)
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()
+            .trim_start_matches('/')
+            .to_string();
+
+        if path.is_dir() {
+            // 跳过忽略的目录
+            if IGNORED_DIRS.contains(&name.as_str()) {
+                continue;
+            }
+
+            // 添加目录项
+            result.push(FlatFileInfo {
+                name: name.clone(),
+                path: path.to_string_lossy().to_string(),
+                relative_path: relative_path.clone(),
+                node_type: FileNodeType::Directory,
+                extension: None,
+            });
+
+            // 递归处理子目录
+            collect_files_flat(&path, base_path, result)?;
+        } else if path.is_file() {
+            // 跳过忽略的文件
+            if IGNORED_FILES.contains(&name.as_str()) {
+                continue;
+            }
+
+            let extension = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|s| s.to_string());
+
+            result.push(FlatFileInfo {
+                name,
+                path: path.to_string_lossy().to_string(),
+                relative_path,
+                node_type: FileNodeType::File,
+                extension,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// 列出项目所有文件的扁平列表（用于 @ 文件引用）
+#[tauri::command]
+pub fn list_all_project_files_flat(project_path: String) -> Result<Vec<FlatFileInfo>, String> {
+    let resolved_path = resolve_path(&project_path)?;
+
+    if !resolved_path.exists() {
+        return Err(format!("项目路径不存在: {}", project_path));
+    }
+
+    if !resolved_path.is_dir() {
+        return Err(format!("项目路径不是目录: {}", project_path));
+    }
+
+    let mut result = Vec::new();
+    collect_files_flat(&resolved_path, &resolved_path, &mut result)?;
+    Ok(result)
+}
+
 /// 重命名文件/文件夹
 #[tauri::command]
 pub fn rename_file(input: RenameFileInput) -> Result<FileOperationResult, String> {
@@ -507,7 +617,9 @@ pub fn rename_file(input: RenameFileInput) -> Result<FileOperationResult, String
     }
 
     // 获取父目录和新路径
-    let parent = old_path.parent().ok_or_else(|| "无法获取父目录".to_string())?;
+    let parent = old_path
+        .parent()
+        .ok_or_else(|| "无法获取父目录".to_string())?;
     let new_path = parent.join(&input.new_name);
 
     // 检查新名称是否为空
@@ -529,8 +641,7 @@ pub fn rename_file(input: RenameFileInput) -> Result<FileOperationResult, String
     }
 
     // 执行重命名
-    fs::rename(&old_path, &new_path)
-        .map_err(|e| format!("重命名失败: {}", e))?;
+    fs::rename(&old_path, &new_path).map_err(|e| format!("重命名失败: {}", e))?;
 
     Ok(FileOperationResult {
         success: true,
@@ -554,12 +665,10 @@ pub fn delete_file(path: String) -> Result<FileOperationResult, String> {
 
     if resolved_path.is_dir() {
         // 递归删除目录
-        fs::remove_dir_all(&resolved_path)
-            .map_err(|e| format!("删除目录失败: {}", e))?;
+        fs::remove_dir_all(&resolved_path).map_err(|e| format!("删除目录失败: {}", e))?;
     } else {
         // 删除文件
-        fs::remove_file(&resolved_path)
-            .map_err(|e| format!("删除文件失败: {}", e))?;
+        fs::remove_file(&resolved_path).map_err(|e| format!("删除文件失败: {}", e))?;
     }
 
     Ok(FileOperationResult {
@@ -662,14 +771,16 @@ pub fn move_file(input: MoveFileInput) -> Result<FileOperationResult, String> {
     if new_path.exists() {
         return Ok(FileOperationResult {
             success: false,
-            message: Some(format!("目标目录已存在同名文件或目录: {}", file_name.to_string_lossy())),
+            message: Some(format!(
+                "目标目录已存在同名文件或目录: {}",
+                file_name.to_string_lossy()
+            )),
             new_path: None,
         });
     }
 
     // 执行移动
-    fs::rename(&source_path, &new_path)
-        .map_err(|e| format!("移动失败: {}", e))?;
+    fs::rename(&source_path, &new_path).map_err(|e| format!("移动失败: {}", e))?;
 
     Ok(FileOperationResult {
         success: true,

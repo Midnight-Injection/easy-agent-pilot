@@ -22,9 +22,15 @@ function onInput(event: Event) {
 
 <template>
   <div class="form-field textarea-field">
-    <label :for="inputId" class="field-label">
+    <label
+      :for="inputId"
+      class="field-label"
+    >
       {{ field.label }}
-      <span v-if="field.required" class="required-mark">*</span>
+      <span
+        v-if="field.required"
+        class="required-mark"
+      >*</span>
     </label>
     <textarea
       :id="inputId"
@@ -35,8 +41,11 @@ function onInput(event: Event) {
       class="textarea"
       :class="{ 'has-error': error }"
       @input="onInput"
-    ></textarea>
-    <span v-if="error" class="error-message">{{ error }}</span>
+    />
+    <span
+      v-if="error"
+      class="error-message"
+    >{{ error }}</span>
   </div>
 </template>
 

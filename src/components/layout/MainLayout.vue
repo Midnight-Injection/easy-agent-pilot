@@ -12,6 +12,7 @@ import MessageArea from './MessageArea.vue'
 import PanelResizer from './PanelResizer.vue'
 import WelcomePage from './WelcomePage.vue'
 import { PlanModePanel } from '@/components/plan'
+import { FileEditorWorkspace } from '@/modules/file-editor'
 
 const layoutStore = useLayoutStore()
 const uiStore = useUIStore()
@@ -103,8 +104,14 @@ onUnmounted(() => {
 
           <!-- 消息区域 -->
           <div class="main-layout__main">
-            <SessionTabs />
-            <MessageArea />
+            <template v-if="uiStore.mainContentMode === 'chat'">
+              <SessionTabs />
+              <MessageArea />
+            </template>
+            <FileEditorWorkspace
+              v-else
+              class="main-layout__file-editor"
+            />
           </div>
         </template>
       </div>
@@ -148,6 +155,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.main-layout__file-editor {
+  flex: 1;
+  min-height: 0;
 }
 
 .main-layout__plan-panel {

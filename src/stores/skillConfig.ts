@@ -94,6 +94,14 @@ export interface McpConfigInput {
   headers?: Record<string, string>
 }
 
+/** CLI 能力信息 */
+export interface CliCapabilities {
+  supportsMcp: boolean
+  supportsSkills: boolean
+  supportsPlugins: boolean
+  mcpAddCommand: string | null
+}
+
 // ============================================================================
 // CLI 扫描结果类型
 // ============================================================================
@@ -212,10 +220,23 @@ export const useSkillConfigStore = defineStore('skillConfig', () => {
   const isLoading = ref(false)
   const cliConfigPaths = ref<CliConfigPaths | null>(null)
   const testingMcpConfig = ref<UnifiedMcpConfig | null>(null)
+  const cliCapabilities = ref<CliCapabilities | null>(null)
 
   // Getters
   const isCliAgent = computed(() => selectedAgent.value?.type === 'cli')
   const isSdkAgent = computed(() => selectedAgent.value?.type === 'sdk')
+
+  /**
+   * 是否支持 Plugins（用于动态显示/隐藏 Plugins 标签页）
+   * - SDK 类型：始终支持
+   * - CLI 类型：根据能力信息判断
+   */
+  const supportsPlugins = computed(() => {
+    if (!selectedAgent.value || selectedAgent.value.type !== 'cli') {
+      return true // SDK类型始终支持
+    }
+    return cliCapabilities.value?.supportsPlugins ?? false
+  })
 
   // ============================================================================
   // 内部方法
@@ -369,11 +390,16 @@ export const useSkillConfigStore = defineStore('skillConfig', () => {
    */
   async function loadCliConfigs(agent: AgentConfig) {
     configSource.value = 'file'
-    isReadOnly.value = true
+    isReadOnly.value = false // 允许直接编辑 CLI 配置
 
     const notificationStore = useNotificationStore()
 
     try {
+      // 加载 CLI 能力信息
+      if (agent.cliPath) {
+        await loadCliCapabilities(agent.cliPath)
+      }
+
       // 获取配置路径
       const paths = await invoke<CliConfigPaths>('get_cli_config_paths', {
         cliPath: agent.cliPath,
@@ -449,6 +475,18 @@ export const useSkillConfigStore = defineStore('skillConfig', () => {
   }
 
   /**
+   * 加载 CLI 能力信息
+   */
+  async function loadCliCapabilities(cliPath: string) {
+    try {
+      cliCapabilities.value = await invoke<CliCapabilities>('get_cli_capabilities', { cliPath })
+    } catch (e) {
+      console.error('Failed to load CLI capabilities:', e)
+      cliCapabilities.value = null
+    }
+  }
+
+  /**
    * 清除配置
    */
   function clearConfigs() {
@@ -460,6 +498,7 @@ export const useSkillConfigStore = defineStore('skillConfig', () => {
     configSource.value = 'database'
     isReadOnly.value = false
     cliConfigPaths.value = null
+    cliCapabilities.value = null
   }
 
   // ============================================================================
@@ -1062,6 +1101,7 @@ export const useSkillConfigStore = defineStore('skillConfig', () => {
     isLoading,
     cliConfigPaths,
     testingMcpConfig,
+    cliCapabilities,
 
     // 详情视图状态
     selectedSkill,
@@ -1070,11 +1110,13 @@ export const useSkillConfigStore = defineStore('skillConfig', () => {
     // Getters
     isCliAgent,
     isSdkAgent,
+    supportsPlugins,
 
     // Actions - Agent
     selectAgent,
     clearConfigs,
     refreshCliConfigs,
+    loadCliCapabilities,
 
     // Actions - MCP
     createMcpConfig,

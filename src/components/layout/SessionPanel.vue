@@ -512,7 +512,10 @@ const formatDate = (date: string) => {
             class="session-filter__select"
             @change="handleProjectChange(($event.target as HTMLSelectElement).value)"
           >
-            <option value="" disabled>
+            <option
+              value=""
+              disabled
+            >
               {{ t('session.selectProject') }}
             </option>
             <option
@@ -529,7 +532,6 @@ const formatDate = (date: string) => {
             class="session-filter__icon"
           />
         </div>
-
       </div>
 
       <!-- 搜索框 -->
@@ -668,27 +670,39 @@ const formatDate = (date: string) => {
           <div class="session-item__meta">
             <div class="session-item__meta-row">
               <span class="session-item__time">
-                <EaIcon name="clock" :size="11" />
+                <EaIcon
+                  name="clock"
+                  :size="11"
+                />
                 {{ getRelativeTime(session.updatedAt) }}
               </span>
               <span
                 v-if="session.messageCount"
                 class="session-item__count"
               >
-                <EaIcon name="message-square" :size="11" />
+                <EaIcon
+                  name="message-square"
+                  :size="11"
+                />
                 {{ session.messageCount }} 条消息
               </span>
               <span
                 v-if="session.agentType"
                 class="session-item__agent-type"
               >
-                <EaIcon name="bot" :size="11" />
+                <EaIcon
+                  name="bot"
+                  :size="11"
+                />
                 {{ session.agentType }}
               </span>
             </div>
             <div class="session-item__meta-row session-item__meta-row--secondary">
               <span class="session-item__created">
-                <EaIcon name="calendar" :size="11" />
+                <EaIcon
+                  name="calendar"
+                  :size="11"
+                />
                 创建于 {{ formatDate(session.createdAt) }}
               </span>
             </div>

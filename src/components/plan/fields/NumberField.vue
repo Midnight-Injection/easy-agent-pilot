@@ -26,9 +26,15 @@ function onInput(event: Event) {
 
 <template>
   <div class="form-field number-field">
-    <label :for="inputId" class="field-label">
+    <label
+      :for="inputId"
+      class="field-label"
+    >
       {{ field.label }}
-      <span v-if="field.required" class="required-mark">*</span>
+      <span
+        v-if="field.required"
+        class="required-mark"
+      >*</span>
     </label>
     <input
       :id="inputId"
@@ -41,8 +47,11 @@ function onInput(event: Event) {
       class="input"
       :class="{ 'has-error': error }"
       @input="onInput"
-    />
-    <span v-if="error" class="error-message">{{ error }}</span>
+    >
+    <span
+      v-if="error"
+      class="error-message"
+    >{{ error }}</span>
   </div>
 </template>
 

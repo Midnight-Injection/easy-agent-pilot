@@ -132,7 +132,9 @@ const handleConfirm = () => {
                     />
                     <span class="strategy-option__label">{{ option.label }}</span>
                   </div>
-                  <p class="strategy-option__desc">{{ option.description }}</p>
+                  <p class="strategy-option__desc">
+                    {{ option.description }}
+                  </p>
                 </div>
               </div>
             </div>

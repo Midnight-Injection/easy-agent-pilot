@@ -152,24 +152,32 @@ pub fn create_agent(input: CreateAgentInput) -> Result<Agent, String> {
 
     // 兼容性处理：如果 agent_type 是旧的值（claude/codex/custom），则将其作为 provider
     // 并将 mode 作为 type
-    let (final_type, final_provider, final_mode) = if ["claude", "codex", "custom"].contains(&input.agent_type.as_str()) {
-        // 旧格式：type=claude/codex, mode=cli/api
-        let t = input.mode.clone().unwrap_or_else(|| "cli".to_string());
-        let p = if input.agent_type == "custom" {
-            None
+    let (final_type, final_provider, final_mode) =
+        if ["claude", "codex", "custom"].contains(&input.agent_type.as_str()) {
+            // 旧格式：type=claude/codex, mode=cli/api
+            let t = input.mode.clone().unwrap_or_else(|| "cli".to_string());
+            let p = if input.agent_type == "custom" {
+                None
+            } else {
+                Some(input.agent_type.clone())
+            };
+            let m = input.mode.clone().unwrap_or_else(|| "cli".to_string());
+            (t, p, m)
         } else {
-            Some(input.agent_type.clone())
+            // 新格式：type=cli/sdk, provider=claude/codex
+            // mode 字段使用 type 的值作为默认值
+            let m = input
+                .mode
+                .clone()
+                .unwrap_or_else(|| input.agent_type.clone());
+            (input.agent_type.clone(), input.provider.clone(), m)
         };
-        let m = input.mode.clone().unwrap_or_else(|| "cli".to_string());
-        (t, p, m)
-    } else {
-        // 新格式：type=cli/sdk, provider=claude/codex
-        // mode 字段使用 type 的值作为默认值
-        let m = input.mode.clone().unwrap_or_else(|| input.agent_type.clone());
-        (input.agent_type.clone(), input.provider.clone(), m)
-    };
 
-    let custom_model_enabled_int = if input.custom_model_enabled.unwrap_or(false) { 1 } else { 0 };
+    let custom_model_enabled_int = if input.custom_model_enabled.unwrap_or(false) {
+        1
+    } else {
+        0
+    };
 
     conn.execute(
         "INSERT INTO agents (id, name, type, provider, cli_path, api_key, base_url, model_id, custom_model_enabled, mode, model, status, created_at, updated_at)
@@ -455,9 +463,7 @@ async fn test_cli_connection(agent: &Agent) -> (bool, String) {
     }
 
     // 尝试执行 --version 命令
-    let output = Command::new(cli_path)
-        .arg("--version")
-        .output();
+    let output = Command::new(cli_path).arg("--version").output();
 
     match output {
         Ok(output) => {

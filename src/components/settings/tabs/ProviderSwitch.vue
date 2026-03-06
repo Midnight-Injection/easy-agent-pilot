@@ -153,8 +153,12 @@ watch(currentCliType, async (type) => {
   <div class="provider-switch">
     <!-- 标题和描述 -->
     <div class="header">
-      <h2 class="title">{{ t('settings.providerSwitch.title') }}</h2>
-      <p class="description">{{ t('settings.providerSwitch.description') }}</p>
+      <h2 class="title">
+        {{ t('settings.providerSwitch.title') }}
+      </h2>
+      <p class="description">
+        {{ t('settings.providerSwitch.description') }}
+      </p>
     </div>
 
     <!-- CLI 类型切换 -->
@@ -164,14 +168,20 @@ watch(currentCliType, async (type) => {
           :class="['tab-btn', { active: currentCliType === 'claude' }]"
           @click="handleCliTypeChange('claude')"
         >
-          <EaIcon name="terminal" :size="16" />
+          <EaIcon
+            name="terminal"
+            :size="16"
+          />
           <span>{{ t('settings.providerSwitch.cliType.claude') }}</span>
         </button>
         <button
           :class="['tab-btn', { active: currentCliType === 'codex' }]"
           @click="handleCliTypeChange('codex')"
         >
-          <EaIcon name="code" :size="16" />
+          <EaIcon
+            name="code"
+            :size="16"
+          />
           <span>{{ t('settings.providerSwitch.cliType.codex') }}</span>
         </button>
       </div>
@@ -179,12 +189,24 @@ watch(currentCliType, async (type) => {
 
     <!-- 当前 CLI 连接信息 -->
     <div class="cli-connection section">
-      <h3 class="section-title">{{ t('settings.providerSwitch.currentFileConfig') }}</h3>
-      <div v-if="store.isLoadingConnections" class="loading">
-        <EaIcon name="loading" spin :size="20" />
+      <h3 class="section-title">
+        {{ t('settings.providerSwitch.currentFileConfig') }}
+      </h3>
+      <div
+        v-if="store.isLoadingConnections"
+        class="loading"
+      >
+        <EaIcon
+          name="loading"
+          spin
+          :size="20"
+        />
         <span>{{ t('common.loading') }}</span>
       </div>
-      <div v-else-if="currentConnection" class="connection-card">
+      <div
+        v-else-if="currentConnection"
+        class="connection-card"
+      >
         <div class="connection-header">
           <div class="connection-name">
             <EaIcon
@@ -210,46 +232,79 @@ watch(currentCliType, async (type) => {
             <span class="connection-label">{{ t('settings.providerSwitch.settingsFile') }}</span>
             <span class="connection-value mono">{{ currentConnection.settingsFile }}</span>
           </div>
-          <div v-if="currentConnection.baseUrl" class="connection-row">
+          <div class="connection-row">
             <span class="connection-label">{{ t('settings.providerSwitch.form.baseUrl') }}</span>
-            <span class="connection-value mono">{{ currentConnection.baseUrl }}</span>
+            <span class="connection-value mono">{{ currentConnection.baseUrl || '-' }}</span>
           </div>
-          <div v-if="currentConnection.mainModel" class="connection-row">
+          <div
+            v-if="currentConnection.mainModel"
+            class="connection-row"
+          >
             <span class="connection-label">{{ t('settings.providerSwitch.form.mainModel') }}</span>
             <span class="connection-value mono">{{ currentConnection.mainModel }}</span>
           </div>
-          <div v-if="currentConnection.apiKeyMasked" class="connection-row">
+          <div class="connection-row">
             <span class="connection-label">{{ t('settings.providerSwitch.form.apiKey') }}</span>
             <div class="connection-value-with-action">
-              <span class="connection-value mono masked">{{ showApiKey ? currentConnection.apiKey : currentConnection.apiKeyMasked }}</span>
-              <button
-                class="toggle-visibility-btn"
-                :title="showApiKey ? '隐藏 API Key' : '显示 API Key'"
-                @click="showApiKey = !showApiKey"
-              >
-                <EaIcon :name="showApiKey ? 'eye-off' : 'eye'" :size="14" />
-              </button>
+              <template v-if="currentConnection.apiKeyMasked">
+                <span class="connection-value mono masked">{{ showApiKey ? currentConnection.apiKey : currentConnection.apiKeyMasked }}</span>
+                <button
+                  class="toggle-visibility-btn"
+                  :title="showApiKey ? '隐藏 API Key' : '显示 API Key'"
+                  @click="showApiKey = !showApiKey"
+                >
+                  <EaIcon
+                    :name="showApiKey ? 'eye-off' : 'eye'"
+                    :size="14"
+                  />
+                </button>
+              </template>
+              <span
+                v-else
+                class="connection-value mono"
+              >-</span>
             </div>
           </div>
-          <div v-if="currentConnection.errorMessage" class="connection-error">
-            <EaIcon name="alert-triangle" :size="14" />
+          <div
+            v-if="currentConnection.errorMessage"
+            class="connection-error"
+          >
+            <EaIcon
+              name="alert-triangle"
+              :size="14"
+            />
             <span>{{ currentConnection.errorMessage }}</span>
           </div>
         </div>
       </div>
-      <div v-else class="no-connection">
-        <EaIcon name="info" :size="16" />
+      <div
+        v-else
+        class="no-connection"
+      >
+        <EaIcon
+          name="info"
+          :size="16"
+        />
         <span>{{ t('settings.providerSwitch.noConnectionInfo') }}</span>
       </div>
     </div>
 
     <!-- 当前激活配置 -->
     <div class="current-config section">
-      <h3 class="section-title">{{ t('settings.providerSwitch.currentConfig') }}</h3>
-      <div v-if="currentActiveProfile" class="active-profile-card">
+      <h3 class="section-title">
+        {{ t('settings.providerSwitch.currentConfig') }}
+      </h3>
+      <div
+        v-if="currentActiveProfile"
+        class="active-profile-card"
+      >
         <div class="profile-info">
           <div class="profile-name">
-            <EaIcon name="check-circle" class="active-icon" :size="18" />
+            <EaIcon
+              name="check-circle"
+              class="active-icon"
+              :size="18"
+            />
             {{ currentActiveProfile.name }}
           </div>
           <div class="profile-details">
@@ -259,14 +314,26 @@ watch(currentCliType, async (type) => {
           </div>
         </div>
         <div class="profile-actions">
-          <EaButton size="small" @click="handleEdit(currentActiveProfile)">
-            <EaIcon name="edit" :size="14" />
+          <EaButton
+            size="small"
+            @click="handleEdit(currentActiveProfile)"
+          >
+            <EaIcon
+              name="edit"
+              :size="14"
+            />
             {{ t('settings.providerSwitch.edit') }}
           </EaButton>
         </div>
       </div>
-      <div v-else class="no-active-config">
-        <EaIcon name="info" :size="16" />
+      <div
+        v-else
+        class="no-active-config"
+      >
+        <EaIcon
+          name="info"
+          :size="16"
+        />
         <span>{{ t('settings.providerSwitch.noActiveConfig') }}</span>
       </div>
     </div>
@@ -274,25 +341,52 @@ watch(currentCliType, async (type) => {
     <!-- 配置列表 -->
     <div class="profiles-list section">
       <div class="section-header">
-        <h3 class="section-title">{{ t('settings.providerSwitch.profiles') }}</h3>
-        <EaButton type="primary" size="small" @click="handleAdd">
-          <EaIcon name="plus" :size="14" />
+        <h3 class="section-title">
+          {{ t('settings.providerSwitch.profiles') }}
+        </h3>
+        <EaButton
+          type="primary"
+          size="small"
+          @click="handleAdd"
+        >
+          <EaIcon
+            name="plus"
+            :size="14"
+          />
           {{ t('settings.providerSwitch.addProfile') }}
         </EaButton>
       </div>
 
-      <div v-if="store.isLoading" class="loading">
-        <EaIcon name="loading" spin :size="24" />
+      <div
+        v-if="store.isLoading"
+        class="loading"
+      >
+        <EaIcon
+          name="loading"
+          spin
+          :size="24"
+        />
         <span>{{ t('common.loading') }}</span>
       </div>
 
-      <div v-else-if="currentProfiles.length === 0" class="empty-state">
-        <EaIcon name="folder-open" :size="48" />
+      <div
+        v-else-if="currentProfiles.length === 0"
+        class="empty-state"
+      >
+        <EaIcon
+          name="folder-open"
+          :size="48"
+        />
         <p>{{ t('settings.providerSwitch.noProfiles') }}</p>
-        <p class="hint">{{ t('settings.providerSwitch.noProfilesHint') }}</p>
+        <p class="hint">
+          {{ t('settings.providerSwitch.noProfilesHint') }}
+        </p>
       </div>
 
-      <div v-else class="profile-cards">
+      <div
+        v-else
+        class="profile-cards"
+      >
         <div
           v-for="profile in currentProfiles"
           :key="profile.id"
@@ -301,9 +395,17 @@ watch(currentCliType, async (type) => {
         >
           <div class="profile-info">
             <div class="profile-name">
-              <EaIcon v-if="profile.isActive" name="check-circle" class="active-icon" :size="18" />
+              <EaIcon
+                v-if="profile.isActive"
+                name="check-circle"
+                class="active-icon"
+                :size="18"
+              />
               {{ profile.name }}
-              <span v-if="profile.isActive" class="badge active-badge">
+              <span
+                v-if="profile.isActive"
+                class="badge active-badge"
+              >
                 {{ t('settings.providerSwitch.active') }}
               </span>
             </div>
@@ -323,11 +425,24 @@ watch(currentCliType, async (type) => {
             >
               {{ t('settings.providerSwitch.switch') }}
             </EaButton>
-            <EaButton size="small" @click="handleEdit(profile)">
-              <EaIcon name="edit" :size="14" />
+            <EaButton
+              size="small"
+              @click="handleEdit(profile)"
+            >
+              <EaIcon
+                name="edit"
+                :size="14"
+              />
             </EaButton>
-            <EaButton size="small" type="danger" @click="handleDeleteConfirm(profile)">
-              <EaIcon name="trash" :size="14" />
+            <EaButton
+              size="small"
+              type="danger"
+              @click="handleDeleteConfirm(profile)"
+            >
+              <EaIcon
+                name="trash"
+                :size="14"
+              />
             </EaButton>
           </div>
         </div>
@@ -343,7 +458,11 @@ watch(currentCliType, async (type) => {
     />
 
     <!-- 删除确认弹窗 -->
-    <div v-if="showDeleteConfirm" class="confirm-overlay" @click.self="showDeleteConfirm = false">
+    <div
+      v-if="showDeleteConfirm"
+      class="confirm-overlay"
+      @click.self="showDeleteConfirm = false"
+    >
       <div class="confirm-dialog">
         <h3>{{ t('settings.providerSwitch.confirmDelete') }}</h3>
         <p>{{ t('settings.providerSwitch.confirmDeleteMessage', { name: deletingProfile?.name }) }}</p>
@@ -351,7 +470,10 @@ watch(currentCliType, async (type) => {
           <EaButton @click="showDeleteConfirm = false">
             {{ t('common.cancel') }}
           </EaButton>
-          <EaButton type="danger" @click="handleDelete">
+          <EaButton
+            type="danger"
+            @click="handleDelete"
+          >
             {{ t('common.delete') }}
           </EaButton>
         </div>

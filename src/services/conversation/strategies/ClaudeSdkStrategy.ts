@@ -21,14 +21,14 @@ export class ClaudeSdkStrategy implements AgentStrategy {
   private currentSessionId: string | null = null
 
   supports(agent: AgentConfig): boolean {
-    return agent.type === 'sdk'
+    return agent.type === 'sdk' && (agent.provider === 'claude' || !agent.provider)
   }
 
   async execute(
     context: ConversationContext,
     onEvent: (event: StreamEvent) => void
   ): Promise<void> {
-    const { sessionId, agent, messages, tools } = context
+    const { sessionId, agent, messages, tools, mcpServers } = context
 
     // 验证必要配置
     if (!agent.apiKey) {
@@ -76,7 +76,8 @@ export class ClaudeSdkStrategy implements AgentStrategy {
             content: m.content
           })),
         maxTokens: 4096,
-        tools
+        tools,
+        mcpServers
       }
 
       // 调用后端命令

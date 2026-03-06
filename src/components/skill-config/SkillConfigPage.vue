@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAgentStore } from '@/stores/agent'
 import { useSkillConfigStore, type UnifiedMcpConfig, type UnifiedSkillConfig, type UnifiedPluginConfig } from '@/stores/skillConfig'
@@ -17,6 +17,9 @@ const skillConfigStore = useSkillConfigStore()
 
 // 当前标签页
 const activeTab = ref<'mcp' | 'skills' | 'plugins'>('mcp')
+
+// 是否显示 Plugins 标签页（根据 CLI 能力判断）
+const showPluginsTab = computed(() => skillConfigStore.supportsPlugins)
 
 // 内容区域引用，用于重置滚动位置
 const contentRef = ref<HTMLElement | null>(null)
@@ -93,8 +96,9 @@ function handleViewSkillDetail(config: UnifiedSkillConfig) {
   skillConfigStore.viewSkillDetail(config)
 }
 
-function handleEditSkill(_config: UnifiedSkillConfig) {
+function handleEditSkill(config: UnifiedSkillConfig) {
   // TODO: 实现 Skills 编辑
+  console.log('Edit skill:', config.id)
 }
 
 function handleDeleteSkill(config: UnifiedSkillConfig) {
@@ -120,8 +124,9 @@ function handleViewPluginDetail(config: UnifiedPluginConfig) {
   skillConfigStore.viewPluginDetail(config)
 }
 
-function handleEditPlugin(_config: UnifiedPluginConfig) {
+function handleEditPlugin(config: UnifiedPluginConfig) {
   // TODO: 实现 Plugins 编辑
+  console.log('Edit plugin:', config.id)
 }
 
 function handleDeletePlugin(config: UnifiedPluginConfig) {
@@ -167,7 +172,7 @@ async function handleOpenFile() {
 
     <!-- Plugin 详情视图 -->
     <PluginDetailView
-      v-else-if="skillConfigStore.selectedPlugin && activeTab === 'plugins'"
+      v-else-if="skillConfigStore.selectedPlugin && activeTab === 'plugins' && showPluginsTab"
       :plugin="skillConfigStore.selectedPlugin"
       @back="handleBackFromPlugin"
       @delete="handleDeletePluginFromDetail"
@@ -194,6 +199,7 @@ async function handleOpenFile() {
           Skills
         </button>
         <button
+          v-if="showPluginsTab"
           class="skill-config-page__tab"
           :class="{ 'skill-config-page__tab--active': activeTab === 'plugins', 'skill-config-page__tab--plugins': activeTab === 'plugins' }"
           @click="activeTab = 'plugins'"
@@ -204,7 +210,10 @@ async function handleOpenFile() {
       </div>
 
       <!-- 标签页内容 -->
-      <div ref="contentRef" class="skill-config-page__content">
+      <div
+        ref="contentRef"
+        class="skill-config-page__content"
+      >
         <McpConfigTab
           v-if="activeTab === 'mcp'"
           :configs="skillConfigStore.mcpConfigs"
@@ -226,7 +235,7 @@ async function handleOpenFile() {
           @delete="handleDeleteSkill"
         />
         <PluginsConfigTab
-          v-else-if="activeTab === 'plugins'"
+          v-else-if="activeTab === 'plugins' && showPluginsTab"
           :configs="skillConfigStore.pluginsConfigs"
           :is-read-only="skillConfigStore.isReadOnly"
           :is-loading="skillConfigStore.isLoading"
@@ -239,16 +248,35 @@ async function handleOpenFile() {
     </template>
 
     <!-- 删除确认弹窗 -->
-    <div v-if="showDeleteConfirm" class="delete-confirm-overlay" @click.self="showDeleteConfirm = false">
+    <div
+      v-if="showDeleteConfirm"
+      class="delete-confirm-overlay"
+      @click.self="showDeleteConfirm = false"
+    >
       <div class="delete-confirm">
         <div class="delete-confirm__header">
-          <EaIcon name="lucide:alert-triangle" class="delete-confirm__icon" />
+          <EaIcon
+            name="lucide:alert-triangle"
+            class="delete-confirm__icon"
+          />
           <h3>{{ t('common.confirmDelete') }}</h3>
         </div>
-        <p class="delete-confirm__message">{{ t('settings.sdkConfig.confirmDeleteMessage') }}</p>
+        <p class="delete-confirm__message">
+          {{ t('settings.sdkConfig.confirmDeleteMessage') }}
+        </p>
         <div class="delete-confirm__actions">
-          <EaButton variant="ghost" @click="showDeleteConfirm = false">{{ t('common.cancel') }}</EaButton>
-          <EaButton variant="danger" @click="confirmDelete">{{ t('common.delete') }}</EaButton>
+          <EaButton
+            variant="ghost"
+            @click="showDeleteConfirm = false"
+          >
+            {{ t('common.cancel') }}
+          </EaButton>
+          <EaButton
+            variant="danger"
+            @click="confirmDelete"
+          >
+            {{ t('common.delete') }}
+          </EaButton>
         </div>
       </div>
     </div>

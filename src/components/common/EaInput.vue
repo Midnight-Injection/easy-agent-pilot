@@ -67,7 +67,10 @@ defineExpose({
 </script>
 
 <template>
-  <div class="ea-input" :class="{ 'ea-input--error': error, 'ea-input--disabled': disabled }">
+  <div
+    class="ea-input"
+    :class="{ 'ea-input--error': error, 'ea-input--disabled': disabled }"
+  >
     <input
       ref="inputRef"
       v-model="inputValue"
@@ -76,8 +79,11 @@ defineExpose({
       :disabled="disabled"
       class="ea-input__field"
       @keydown="handleKeydown"
-    />
-    <div v-if="error" class="ea-input__error">
+    >
+    <div
+      v-if="error"
+      class="ea-input__error"
+    >
       {{ error }}
     </div>
   </div>

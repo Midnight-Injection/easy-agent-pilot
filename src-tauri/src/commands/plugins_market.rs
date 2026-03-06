@@ -1,6 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -129,8 +129,7 @@ pub struct PluginMarketQuery {
 
 /// Get database connection
 fn get_db_connection() -> Result<Connection, String> {
-    let persistence_dir = crate::commands::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = crate::commands::get_persistence_dir_path().map_err(|e| e.to_string())?;
     let db_path = persistence_dir.join("data").join("easy-agent.db");
     Connection::open(&db_path).map_err(|e| e.to_string())
 }
@@ -143,7 +142,9 @@ struct MarketSourceResponse {
 
 /// Fetch plugins from all enabled market sources
 #[tauri::command]
-pub async fn fetch_plugins_market(query: PluginMarketQuery) -> Result<PluginMarketListResponse, String> {
+pub async fn fetch_plugins_market(
+    query: PluginMarketQuery,
+) -> Result<PluginMarketListResponse, String> {
     // Get enabled market sources from database
     let conn = get_db_connection()?;
     let sources = get_enabled_plugin_sources(&conn)?;
@@ -209,7 +210,10 @@ pub async fn fetch_plugins_market(query: PluginMarketQuery) -> Result<PluginMark
                     item.name.to_lowercase().contains(&search_lower)
                         || item.description.to_lowercase().contains(&search_lower)
                         || item.author.to_lowercase().contains(&search_lower)
-                        || item.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                        || item
+                            .tags
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(&search_lower))
                 })
                 .collect();
         }
@@ -538,7 +542,10 @@ fn get_mock_plugins_data(query: PluginMarketQuery) -> PluginMarketListResponse {
                     item.name.to_lowercase().contains(&search_lower)
                         || item.description.to_lowercase().contains(&search_lower)
                         || item.author.to_lowercase().contains(&search_lower)
-                        || item.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                        || item
+                            .tags
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(&search_lower))
                 })
                 .collect();
         }
@@ -611,7 +618,11 @@ pub struct PluginFileContent {
 // ============== Plugin Installation Commands ==============
 
 /// Get CLI config directory path
-fn get_cli_config_dir(cli_path: &str, scope: &str, project_path: Option<&str>) -> Result<PathBuf, String> {
+fn get_cli_config_dir(
+    cli_path: &str,
+    scope: &str,
+    project_path: Option<&str>,
+) -> Result<PathBuf, String> {
     if scope == "project" {
         if let Some(path) = project_path {
             let project_dir = PathBuf::from(path);
@@ -621,8 +632,7 @@ fn get_cli_config_dir(cli_path: &str, scope: &str, project_path: Option<&str>) -
     }
 
     // Global scope - use home directory
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     // Determine CLI type from path
     let cli_name = PathBuf::from(cli_path)
@@ -638,8 +648,7 @@ fn get_cli_config_dir(cli_path: &str, scope: &str, project_path: Option<&str>) -
 
 /// Get plugins.json path
 fn get_plugins_json_path() -> Result<PathBuf, String> {
-    let persistence_dir = crate::commands::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = crate::commands::get_persistence_dir_path().map_err(|e| e.to_string())?;
     Ok(persistence_dir.join("plugins.json"))
 }
 
@@ -766,13 +775,13 @@ Generate React components following best practices.
 #[tauri::command]
 pub async fn install_plugin(input: PluginInstallInput) -> Result<PluginInstallResult, String> {
     let session_id = uuid::Uuid::new_v4().to_string();
-    let backup_base = crate::commands::install::get_backup_base_dir()
-        .map_err(|e| e.to_string())?;
+    let backup_base = crate::commands::install::get_backup_base_dir().map_err(|e| e.to_string())?;
     let backup_dir = backup_base.join(&session_id);
     fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
 
     // Get CLI config directory
-    let config_dir = get_cli_config_dir(&input.cli_path, &input.scope, input.project_path.as_deref())?;
+    let config_dir =
+        get_cli_config_dir(&input.cli_path, &input.scope, input.project_path.as_deref())?;
 
     // Ensure config directory exists
     fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
@@ -822,7 +831,11 @@ pub async fn install_plugin(input: PluginInstallInput) -> Result<PluginInstallRe
 
         // Backup existing file if it exists
         let backup_path = if target_path.exists() {
-            let backup_file = backup_dir.join(format!("{}_{}", uuid::Uuid::new_v4(), relative_path.replace('/', "_")));
+            let backup_file = backup_dir.join(format!(
+                "{}_{}",
+                uuid::Uuid::new_v4(),
+                relative_path.replace('/', "_")
+            ));
             fs::copy(&target_path, &backup_file).map_err(|e| format!("Failed to backup: {}", e))?;
             Some(backup_file.to_string_lossy().to_string())
         } else {
@@ -830,10 +843,15 @@ pub async fn install_plugin(input: PluginInstallInput) -> Result<PluginInstallRe
         };
 
         // Write file
-        fs::write(&target_path, &file.content).map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&target_path, &file.content)
+            .map_err(|e| format!("Failed to write file: {}", e))?;
 
         // Determine component type from path
-        let component_type = relative_path.split('/').next().unwrap_or("other").to_string();
+        let component_type = relative_path
+            .split('/')
+            .next()
+            .unwrap_or("other")
+            .to_string();
         let component_name = PathBuf::from(relative_path)
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -859,12 +877,15 @@ pub async fn install_plugin(input: PluginInstallInput) -> Result<PluginInstallRe
     }
 
     // Handle MCP components - add to settings.json
-    let has_mcp = installed_components.iter().any(|c| c.component_type == "mcp");
+    let has_mcp = installed_components
+        .iter()
+        .any(|c| c.component_type == "mcp");
     let _settings_backup_path = if has_mcp {
         let settings_path = config_dir.join("settings.json");
         if settings_path.exists() {
             let backup_file = backup_dir.join(format!("{}_settings.json", uuid::Uuid::new_v4()));
-            fs::copy(&settings_path, &backup_file).map_err(|e| format!("Failed to backup settings: {}", e))?;
+            fs::copy(&settings_path, &backup_file)
+                .map_err(|e| format!("Failed to backup settings: {}", e))?;
             Some(backup_file.to_string_lossy().to_string())
         } else {
             None
@@ -904,7 +925,10 @@ pub async fn install_plugin(input: PluginInstallInput) -> Result<PluginInstallRe
 
     Ok(PluginInstallResult {
         success: true,
-        message: format!("Successfully installed {} components", installed_components.len()),
+        message: format!(
+            "Successfully installed {} components",
+            installed_components.len()
+        ),
         plugin_id: input.plugin_id,
         installed_components,
         backup_path: Some(backup_dir.to_string_lossy().to_string()),
@@ -986,7 +1010,8 @@ pub fn uninstall_plugin(plugin_id: String) -> Result<PluginInstallResult, String
             fs::remove_file(&path).map_err(|e| format!("Failed to remove file: {}", e))?;
         }
         if disabled_path.exists() {
-            fs::remove_file(&disabled_path).map_err(|e| format!("Failed to remove disabled file: {}", e))?;
+            fs::remove_file(&disabled_path)
+                .map_err(|e| format!("Failed to remove disabled file: {}", e))?;
         }
     }
 

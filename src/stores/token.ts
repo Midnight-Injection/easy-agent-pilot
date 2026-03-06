@@ -77,17 +77,32 @@ export const useTokenStore = defineStore('token', () => {
       }
 
       // 获取会话的智能体
-      const agent = session.agentId
-        ? agentStore.agents.find(a => a.id === session.agentId)
-        : null
+      // 优先使用 agentType（当前会话实际绑定字段），并兼容历史数据
+      const agent = (() => {
+        if (session.agentType) {
+          const byId = agentStore.agents.find(a => a.id === session.agentType)
+          if (byId) return byId
+
+          // 兼容旧会话中 agentType 仅存 provider（如 claude/codex）的情况
+          const byProvider = agentStore.agents.find(a => a.provider === session.agentType)
+          if (byProvider) return byProvider
+        }
+
+        if (session.agentId) {
+          const byLegacyId = agentStore.agents.find(a => a.id === session.agentId)
+          if (byLegacyId) return byLegacyId
+        }
+
+        return null
+      })()
 
       // 获取智能体的模型配置
       let contextWindow = DEFAULT_CONTEXT_WINDOW
       if (agent) {
-        const modelConfigs = agentConfigStore.getModelsConfigs(agent.id)
-        const defaultModel = modelConfigs.find(m => m.isDefault && m.enabled)
-        if (defaultModel?.contextWindow) {
-          contextWindow = defaultModel.contextWindow
+        const enabledModels = agentConfigStore.getModelsConfigs(agent.id).filter(m => m.enabled)
+        const activeModel = enabledModels.find(m => m.isDefault) ?? enabledModels[0]
+        if (activeModel?.contextWindow) {
+          contextWindow = activeModel.contextWindow
         }
       }
 

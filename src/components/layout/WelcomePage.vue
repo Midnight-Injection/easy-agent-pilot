@@ -197,7 +197,7 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
   <div class="welcome-page">
     <!-- 动态背景 -->
     <div class="welcome-bg">
-      <div class="welcome-bg__gradient"></div>
+      <div class="welcome-bg__gradient" />
       <div class="welcome-bg__shapes">
         <div
           v-for="i in 6"
@@ -210,9 +210,9 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
             '--y': `${10 + Math.random() * 80}%`,
             '--duration': `${15 + Math.random() * 10}s`
           }"
-        ></div>
+        />
       </div>
-      <div class="welcome-bg__grid"></div>
+      <div class="welcome-bg__grid" />
     </div>
 
     <!-- 主内容 -->
@@ -232,13 +232,22 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
               />
             </div>
           </div>
-          <h1 class="welcome-title">选择项目</h1>
-          <p class="welcome-subtitle">选择一个项目开始工作，或导入新项目</p>
+          <h1 class="welcome-title">
+            选择项目
+          </h1>
+          <p class="welcome-subtitle">
+            选择一个项目开始工作，或导入新项目
+          </p>
         </div>
 
         <!-- 最近使用 -->
-        <div v-if="recentProjects.length > 0" class="recent-section">
-          <h3 class="section-title">最近使用</h3>
+        <div
+          v-if="recentProjects.length > 0"
+          class="recent-section"
+        >
+          <h3 class="section-title">
+            最近使用
+          </h3>
           <div class="project-grid">
             <div
               v-for="(project, index) in recentProjects"
@@ -255,7 +264,9 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
                 />
               </div>
               <div class="project-card__content">
-                <div class="project-card__name">{{ project.name }}</div>
+                <div class="project-card__name">
+                  {{ project.name }}
+                </div>
                 <div class="project-card__meta">
                   <span class="project-card__path">{{ project.path }}</span>
                 </div>
@@ -272,7 +283,9 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
 
         <!-- 所有项目 -->
         <div class="all-projects-section">
-          <h3 class="section-title">所有项目</h3>
+          <h3 class="section-title">
+            所有项目
+          </h3>
           <!-- 项目列表 -->
           <div class="project-list">
             <div
@@ -290,20 +303,22 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
                 />
               </div>
               <div class="project-card__content">
-                <div class="project-card__name">{{ project.name }}</div>
-              <div class="project-card__meta">
-                <span class="project-card__path">{{ project.path }}</span>
-                <span class="project-card__time">{{ formatTime(project.updatedAt) }}</span>
+                <div class="project-card__name">
+                  {{ project.name }}
+                </div>
+                <div class="project-card__meta">
+                  <span class="project-card__path">{{ project.path }}</span>
+                  <span class="project-card__time">{{ formatTime(project.updatedAt) }}</span>
+                </div>
+              </div>
+              <div class="project-card__arrow">
+                <EaIcon
+                  name="arrow-right"
+                  :size="16"
+                />
               </div>
             </div>
-            <div class="project-card__arrow">
-              <EaIcon
-                name="arrow-right"
-                :size="16"
-              />
-            </div>
           </div>
-        </div>
         </div>
 
         <!-- 快捷操作 -->
@@ -336,7 +351,7 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
                 :size="48"
               />
             </div>
-            <div class="welcome-logo__pulse"></div>
+            <div class="welcome-logo__pulse" />
           </div>
           <h1 class="welcome-title">
             <span class="welcome-title__brand">Easy Agent Pilot</span>
@@ -399,8 +414,12 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
               />
             </div>
             <div class="feature-item__text">
-              <div class="feature-item__title">{{ feature.title }}</div>
-              <div class="feature-item__desc">{{ feature.description }}</div>
+              <div class="feature-item__title">
+                {{ feature.title }}
+              </div>
+              <div class="feature-item__desc">
+                {{ feature.description }}
+              </div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 
 /// 会话数据结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,35 +194,43 @@ pub fn update_session(id: String, input: UpdateSessionInput) -> Result<Session, 
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref name) = input.name {
-        stmt.raw_bind_parameter(param_count, name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref status) = input.status {
-        stmt.raw_bind_parameter(param_count, status).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, status)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(pinned) = input.pinned {
-        stmt.raw_bind_parameter(param_count, if pinned { 1 } else { 0 }).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, if pinned { 1 } else { 0 })
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref last_message) = input.last_message {
-        stmt.raw_bind_parameter(param_count, last_message).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, last_message)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref error_message) = input.error_message {
-        stmt.raw_bind_parameter(param_count, error_message).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, error_message)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref agent_type) = input.agent_type {
-        stmt.raw_bind_parameter(param_count, agent_type).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, agent_type)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
 
     stmt.raw_execute().map_err(|e| e.to_string())?;
 

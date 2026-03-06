@@ -1,6 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
@@ -129,8 +129,7 @@ pub struct InstalledSkill {
 
 /// Get database connection
 fn get_db_connection() -> Result<Connection, String> {
-    let persistence_dir = crate::commands::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = crate::commands::get_persistence_dir_path().map_err(|e| e.to_string())?;
     let db_path = persistence_dir.join("data").join("easy-agent.db");
     Connection::open(&db_path).map_err(|e| e.to_string())
 }
@@ -143,7 +142,9 @@ struct MarketSourceResponse {
 
 /// Fetch skills from all enabled market sources in parallel
 #[tauri::command]
-pub async fn fetch_skills_market(query: SkillMarketQuery) -> Result<SkillMarketListResponse, String> {
+pub async fn fetch_skills_market(
+    query: SkillMarketQuery,
+) -> Result<SkillMarketListResponse, String> {
     // Get enabled market sources from database
     let conn = get_db_connection()?;
     let sources = get_enabled_skill_sources(&conn)?;
@@ -209,7 +210,10 @@ pub async fn fetch_skills_market(query: SkillMarketQuery) -> Result<SkillMarketL
                     item.name.to_lowercase().contains(&search_lower)
                         || item.description.to_lowercase().contains(&search_lower)
                         || item.trigger_scenario.to_lowercase().contains(&search_lower)
-                        || item.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                        || item
+                            .tags
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(&search_lower))
                 })
                 .collect();
         }
@@ -567,7 +571,10 @@ fn get_mock_skills_data(query: SkillMarketQuery) -> SkillMarketListResponse {
                     item.name.to_lowercase().contains(&search_lower)
                         || item.description.to_lowercase().contains(&search_lower)
                         || item.trigger_scenario.to_lowercase().contains(&search_lower)
-                        || item.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                        || item
+                            .tags
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(&search_lower))
                 })
                 .collect();
         }
@@ -828,9 +835,12 @@ Create distinctive, production-grade frontend interfaces with high design qualit
 }
 
 /// Get CLI skills directory path
-fn get_cli_skills_dir(cli_type: &str, scope: &str, project_path: Option<&str>) -> Result<PathBuf, String> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+fn get_cli_skills_dir(
+    cli_type: &str,
+    scope: &str,
+    project_path: Option<&str>,
+) -> Result<PathBuf, String> {
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     let base_path = match scope {
         "project" => {
@@ -855,8 +865,7 @@ fn get_cli_skills_dir(cli_type: &str, scope: &str, project_path: Option<&str>) -
 #[tauri::command]
 pub async fn list_installed_skills() -> Result<Vec<InstalledSkill>, String> {
     let mut installed_skills: Vec<InstalledSkill> = Vec::new();
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     // List of supported CLIs and their paths
     let cli_configs = vec![
@@ -873,7 +882,8 @@ pub async fn list_installed_skills() -> Result<Vec<InstalledSkill>, String> {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.extension().map_or(false, |ext| ext == "md") {
-                            let file_name = path.file_name()
+                            let file_name = path
+                                .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("")
                                 .to_string();
@@ -896,12 +906,20 @@ pub async fn list_installed_skills() -> Result<Vec<InstalledSkill>, String> {
                                 .ok()
                                 .map(|content| {
                                     // Extract description from frontmatter or first line
-                                    let desc = content.lines()
+                                    let desc = content
+                                        .lines()
                                         .find(|line| line.starts_with("description:"))
-                                        .map(|line| line.replace("description:", "").trim().to_string())
+                                        .map(|line| {
+                                            line.replace("description:", "").trim().to_string()
+                                        })
                                         .or_else(|| {
-                                            content.lines()
-                                                .find(|line| !line.starts_with("#") && !line.trim().is_empty() && !line.starts_with("---"))
+                                            content
+                                                .lines()
+                                                .find(|line| {
+                                                    !line.starts_with("#")
+                                                        && !line.trim().is_empty()
+                                                        && !line.starts_with("---")
+                                                })
                                                 .map(|line| line.to_string())
                                         });
 
@@ -912,10 +930,15 @@ pub async fn list_installed_skills() -> Result<Vec<InstalledSkill>, String> {
                                     //   - keyword2
                                     // Or:
                                     // triggers: keyword1, keyword2
-                                    let trig = content.lines()
+                                    let trig = content
+                                        .lines()
                                         .find(|line| line.trim().starts_with("triggers:"))
                                         .map(|line| {
-                                            let triggers_content = line.trim().strip_prefix("triggers:").unwrap_or("").trim();
+                                            let triggers_content = line
+                                                .trim()
+                                                .strip_prefix("triggers:")
+                                                .unwrap_or("")
+                                                .trim();
                                             if triggers_content.is_empty() {
                                                 // Multi-line format: collect items from following lines
                                                 let mut items = Vec::new();
@@ -928,8 +951,15 @@ pub async fn list_installed_skills() -> Result<Vec<InstalledSkill>, String> {
                                                     }
                                                     if in_triggers {
                                                         if trimmed.starts_with("-") {
-                                                            items.push(trimmed.trim_start_matches("-").trim().to_string());
-                                                        } else if !trimmed.is_empty() && !trimmed.starts_with("#") {
+                                                            items.push(
+                                                                trimmed
+                                                                    .trim_start_matches("-")
+                                                                    .trim()
+                                                                    .to_string(),
+                                                            );
+                                                        } else if !trimmed.is_empty()
+                                                            && !trimmed.starts_with("#")
+                                                        {
                                                             // End of triggers list
                                                             break;
                                                         }
@@ -938,7 +968,8 @@ pub async fn list_installed_skills() -> Result<Vec<InstalledSkill>, String> {
                                                 items
                                             } else {
                                                 // Single-line format: split by comma
-                                                triggers_content.split(',')
+                                                triggers_content
+                                                    .split(',')
                                                     .map(|s| s.trim().to_string())
                                                     .filter(|s| !s.is_empty())
                                                     .collect()
@@ -951,7 +982,8 @@ pub async fn list_installed_skills() -> Result<Vec<InstalledSkill>, String> {
                                 .unwrap_or((None, Vec::new()));
 
                             // Get file metadata for installed_at
-                            let installed_at = entry.metadata()
+                            let installed_at = entry
+                                .metadata()
                                 .ok()
                                 .and_then(|m| m.modified().ok())
                                 .map(|t| {
@@ -989,11 +1021,14 @@ pub async fn install_skill_to_cli(input: SkillInstallInput) -> Result<SkillInsta
     let detail = get_mock_skill_detail(&input.skill_id)
         .ok_or_else(|| format!("Skill not found: {}", input.skill_id))?;
 
-    let skill_content = detail.skill_content.clone()
+    let skill_content = detail
+        .skill_content
+        .clone()
         .ok_or_else(|| "Skill content not available".to_string())?;
 
     // Get target skills directory
-    let skills_dir = get_cli_skills_dir(&input.cli_type, &input.scope, input.project_path.as_deref())?;
+    let skills_dir =
+        get_cli_skills_dir(&input.cli_type, &input.scope, input.project_path.as_deref())?;
 
     // Create directory if not exists
     fs::create_dir_all(&skills_dir)
@@ -1046,7 +1081,11 @@ pub async fn install_skill_to_cli(input: SkillInstallInput) -> Result<SkillInsta
 
     Ok(SkillInstallResult {
         success: true,
-        message: format!("Skill '{}' installed successfully to {}", input.skill_name, skills_dir.display()),
+        message: format!(
+            "Skill '{}' installed successfully to {}",
+            input.skill_name,
+            skills_dir.display()
+        ),
         skill_path: Some(skill_path_str),
         backup_path,
     })
@@ -1054,7 +1093,10 @@ pub async fn install_skill_to_cli(input: SkillInstallInput) -> Result<SkillInsta
 
 /// Toggle installed skill (enable/disable)
 #[tauri::command]
-pub async fn toggle_installed_skill(skill_path: String, disable: bool) -> Result<SkillInstallResult, String> {
+pub async fn toggle_installed_skill(
+    skill_path: String,
+    disable: bool,
+) -> Result<SkillInstallResult, String> {
     let path = PathBuf::from(&skill_path);
 
     if !path.exists() {
@@ -1063,13 +1105,15 @@ pub async fn toggle_installed_skill(skill_path: String, disable: bool) -> Result
 
     let new_path = if disable {
         // Add .disabled suffix
-        let stem = path.file_stem()
+        let stem = path
+            .file_stem()
             .and_then(|n| n.to_str())
             .ok_or("Invalid file name")?;
         path.with_file_name(format!("{}.disabled.md", stem))
     } else {
         // Remove .disabled suffix
-        let file_name = path.file_name()
+        let file_name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .ok_or("Invalid file name")?;
         if file_name.ends_with(".disabled.md") {
@@ -1086,8 +1130,7 @@ pub async fn toggle_installed_skill(skill_path: String, disable: bool) -> Result
     };
 
     // Rename file
-    fs::rename(&path, &new_path)
-        .map_err(|e| format!("Failed to rename skill file: {}", e))?;
+    fs::rename(&path, &new_path).map_err(|e| format!("Failed to rename skill file: {}", e))?;
 
     // Update database - update path and disabled status
     let new_path_str = new_path.to_string_lossy().to_string();
@@ -1095,8 +1138,14 @@ pub async fn toggle_installed_skill(skill_path: String, disable: bool) -> Result
         let conn = get_db_connection()?;
         conn.execute(
             "UPDATE skills SET path = ?1, disabled = ?2, updated_at = ?3 WHERE path = ?4",
-            rusqlite::params![&new_path_str, disable as i32, chrono::Utc::now().to_rfc3339(), &skill_path],
-        ).map_err(|e| format!("Failed to update skill in database: {}", e))?;
+            rusqlite::params![
+                &new_path_str,
+                disable as i32,
+                chrono::Utc::now().to_rfc3339(),
+                &skill_path
+            ],
+        )
+        .map_err(|e| format!("Failed to update skill in database: {}", e))?;
     }
 
     let action = if disable { "disabled" } else { "enabled" };
@@ -1119,20 +1168,16 @@ pub async fn uninstall_skill(skill_path: String) -> Result<SkillInstallResult, S
 
     // Create backup before deletion
     let backup_path = path.with_extension("md.deleted");
-    fs::copy(&path, &backup_path)
-        .map_err(|e| format!("Failed to backup skill file: {}", e))?;
+    fs::copy(&path, &backup_path).map_err(|e| format!("Failed to backup skill file: {}", e))?;
 
     // Delete file
-    fs::remove_file(&path)
-        .map_err(|e| format!("Failed to delete skill file: {}", e))?;
+    fs::remove_file(&path).map_err(|e| format!("Failed to delete skill file: {}", e))?;
 
     // Delete from database
     {
         let conn = get_db_connection()?;
-        conn.execute(
-            "DELETE FROM skills WHERE path = ?1",
-            [&skill_path],
-        ).map_err(|e| format!("Failed to delete skill from database: {}", e))?;
+        conn.execute("DELETE FROM skills WHERE path = ?1", [&skill_path])
+            .map_err(|e| format!("Failed to delete skill from database: {}", e))?;
     }
 
     Ok(SkillInstallResult {
@@ -1145,7 +1190,9 @@ pub async fn uninstall_skill(skill_path: String) -> Result<SkillInstallResult, S
 
 /// Check for skill updates
 #[tauri::command]
-pub async fn check_skill_updates(skill_names: Vec<String>) -> Result<Vec<SkillUpdateCheckResult>, String> {
+pub async fn check_skill_updates(
+    skill_names: Vec<String>,
+) -> Result<Vec<SkillUpdateCheckResult>, String> {
     // Mock implementation - in real app, would check against market source
     let results: Vec<SkillUpdateCheckResult> = skill_names
         .into_iter()
@@ -1186,7 +1233,9 @@ pub async fn update_skill(input: SkillUpdateInput) -> Result<SkillInstallResult,
     let detail = get_mock_skill_detail(&input.skill_id)
         .ok_or_else(|| format!("Skill not found: {}", input.skill_id))?;
 
-    let skill_content = detail.skill_content.clone()
+    let skill_content = detail
+        .skill_content
+        .clone()
         .ok_or_else(|| "Skill content not available".to_string())?;
 
     let path = PathBuf::from(&input.skill_path);
@@ -1197,12 +1246,10 @@ pub async fn update_skill(input: SkillUpdateInput) -> Result<SkillInstallResult,
 
     // Create backup before update
     let backup_path = path.with_extension("md.backup");
-    fs::copy(&path, &backup_path)
-        .map_err(|e| format!("Failed to backup skill file: {}", e))?;
+    fs::copy(&path, &backup_path).map_err(|e| format!("Failed to backup skill file: {}", e))?;
 
     // Write updated content
-    fs::write(&path, &skill_content)
-        .map_err(|e| format!("Failed to write skill file: {}", e))?;
+    fs::write(&path, &skill_content).map_err(|e| format!("Failed to write skill file: {}", e))?;
 
     // Update database
     let now = chrono::Utc::now().to_rfc3339();
@@ -1211,7 +1258,8 @@ pub async fn update_skill(input: SkillUpdateInput) -> Result<SkillInstallResult,
         conn.execute(
             "UPDATE skills SET description = ?1, updated_at = ?2 WHERE path = ?3",
             rusqlite::params![&detail.description, &now, &input.skill_path],
-        ).map_err(|e| format!("Failed to update skill in database: {}", e))?;
+        )
+        .map_err(|e| format!("Failed to update skill in database: {}", e))?;
     }
 
     Ok(SkillInstallResult {

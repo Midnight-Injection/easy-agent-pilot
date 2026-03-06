@@ -25,9 +25,15 @@ function onChange(event: Event) {
 
 <template>
   <div class="form-field select-field">
-    <label :for="inputId" class="field-label">
+    <label
+      :for="inputId"
+      class="field-label"
+    >
       {{ field.label }}
-      <span v-if="field.required" class="required-mark">*</span>
+      <span
+        v-if="field.required"
+        class="required-mark"
+      >*</span>
     </label>
     <select
       :id="inputId"
@@ -37,7 +43,12 @@ function onChange(event: Event) {
       :class="{ 'has-error': error }"
       @change="onChange"
     >
-      <option v-if="field.placeholder" value="">{{ field.placeholder }}</option>
+      <option
+        v-if="field.placeholder"
+        value=""
+      >
+        {{ field.placeholder }}
+      </option>
       <option
         v-for="option in field.options"
         :key="option.value"
@@ -46,7 +57,10 @@ function onChange(event: Event) {
         {{ option.label }}
       </option>
     </select>
-    <span v-if="error" class="error-message">{{ error }}</span>
+    <span
+      v-if="error"
+      class="error-message"
+    >{{ error }}</span>
   </div>
 </template>
 

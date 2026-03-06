@@ -11,6 +11,8 @@ interface RustPlan {
   project_id: string
   name: string
   description?: string
+  split_agent_id?: string
+  split_model_id?: string
   status: string
   execution_status?: string
   current_task_id?: string
@@ -19,6 +21,13 @@ interface RustPlan {
   max_retry_count: number
   created_at: string
   updated_at: string
+}
+
+export interface PlanSplitDialogContext {
+  planId: string
+  agentId: string
+  modelId: string
+  entry: 'create_start_split' | 'list_split' | 'resume_split'
 }
 
 // 将 Rust 返回的 snake_case 转换为 camelCase
@@ -37,6 +46,8 @@ function transformPlan(rustPlan: RustPlan): Plan {
     projectId: rustPlan.project_id,
     name: rustPlan.name,
     description: rustPlan.description,
+    splitAgentId: rustPlan.split_agent_id,
+    splitModelId: rustPlan.split_model_id,
     status: rustPlan.status as PlanStatus,
     executionStatus: rustPlan.execution_status as PlanExecutionStatus | undefined,
     currentTaskId: rustPlan.current_task_id,
@@ -55,7 +66,7 @@ export const usePlanStore = defineStore('plan', () => {
   const isLoading = ref(false)
   const loadError = ref<string | null>(null)
   const splitDialogVisible = ref(false)
-  const splitDialogPlanId = ref<string | null>(null)
+  const splitDialogContext = ref<PlanSplitDialogContext | null>(null)
 
   // Getters
   const currentPlan = computed(() =>
@@ -86,9 +97,15 @@ export const usePlanStore = defineStore('plan', () => {
     try {
       const rustPlans = await invoke<RustPlan[]>('list_plans', { projectId })
       plans.value = rustPlans.map(transformPlan)
+
+      // 项目切换后，如果当前计划不在新列表中，清空选中计划
+      if (currentPlanId.value && !plans.value.some(plan => plan.id === currentPlanId.value)) {
+        currentPlanId.value = null
+      }
     } catch (error) {
       console.error('Failed to load plans:', error)
       plans.value = []
+      currentPlanId.value = null
       loadError.value = getErrorMessage(error)
       notificationStore.networkError(
         '加载计划列表',
@@ -116,6 +133,8 @@ export const usePlanStore = defineStore('plan', () => {
       project_id: input.projectId,
       name: input.name,
       description: input.description ?? null,
+      split_agent_id: input.splitAgentId ?? null,
+      split_model_id: input.splitModelId ?? null,
       agent_team: input.agentTeam ?? null,
       granularity: input.granularity ?? 20,
       max_retry_count: input.maxRetryCount ?? 3
@@ -142,6 +161,8 @@ export const usePlanStore = defineStore('plan', () => {
     const input = {
       name: updates.name ?? null,
       description: updates.description ?? null,
+      split_agent_id: updates.splitAgentId ?? null,
+      split_model_id: updates.splitModelId ?? null,
       status: updates.status ?? null,
       execution_status: updates.executionStatus ?? null,
       current_task_id: updates.currentTaskId ?? null,
@@ -244,15 +265,15 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   // 打开任务拆分对话框
-  function openSplitDialog(planId: string) {
-    splitDialogPlanId.value = planId
+  function openSplitDialog(context: PlanSplitDialogContext) {
+    splitDialogContext.value = context
     splitDialogVisible.value = true
   }
 
   // 关闭任务拆分对话框
   function closeSplitDialog() {
     splitDialogVisible.value = false
-    splitDialogPlanId.value = null
+    splitDialogContext.value = null
   }
 
   return {
@@ -262,7 +283,7 @@ export const usePlanStore = defineStore('plan', () => {
     isLoading,
     loadError,
     splitDialogVisible,
-    splitDialogPlanId,
+    splitDialogContext,
     // Getters
     currentPlan,
     plansByProject,

@@ -120,35 +120,67 @@ const handleClose = () => {
 <template>
   <div class="model-manage-modal">
     <div class="modal-header">
-      <h3 class="modal-title">模型管理</h3>
-      <button class="modal-close" @click="handleClose">
-        <EaIcon name="x" :size="16" />
+      <h3 class="modal-title">
+        模型管理
+      </h3>
+      <button
+        class="modal-close"
+        @click="handleClose"
+      >
+        <EaIcon
+          name="x"
+          :size="16"
+        />
       </button>
     </div>
 
     <div class="modal-body">
       <!-- 操作栏 -->
       <div class="model-actions">
-        <EaButton size="small" @click="handleAdd">
-          <EaIcon name="plus" :size="14" />
+        <EaButton
+          size="small"
+          @click="handleAdd"
+        >
+          <EaIcon
+            name="plus"
+            :size="14"
+          />
           添加模型
         </EaButton>
       </div>
 
       <!-- 模型列表 -->
       <div class="model-list">
-        <div v-if="isLoading || isInitializing" class="loading-state">
-          <EaIcon name="loader" :size="24" class="spin" />
+        <div
+          v-if="isLoading || isInitializing"
+          class="loading-state"
+        >
+          <EaIcon
+            name="loader"
+            :size="24"
+            class="spin"
+          />
           {{ isInitializing ? '正在初始化内置模型...' : '加载中...' }}
         </div>
 
-        <div v-else-if="models.length === 0" class="empty-state">
-          <EaIcon name="inbox" :size="48" />
+        <div
+          v-else-if="models.length === 0"
+          class="empty-state"
+        >
+          <EaIcon
+            name="inbox"
+            :size="48"
+          />
           <p>暂无模型配置</p>
-          <p class="hint">点击"添加模型"开始配置</p>
+          <p class="hint">
+            点击"添加模型"开始配置
+          </p>
         </div>
 
-        <div v-else class="model-items">
+        <div
+          v-else
+          class="model-items"
+        >
           <div
             v-for="model in models"
             :key="model.id"
@@ -158,11 +190,22 @@ const handleClose = () => {
             <div class="model-info">
               <div class="model-name">
                 <span class="name">{{ model.displayName }}</span>
-                <span v-if="model.isBuiltin" class="badge builtin">内置</span>
-                <span v-if="model.isDefault" class="badge default">默认</span>
-                <span v-if="!model.enabled" class="badge disabled">禁用</span>
+                <span
+                  v-if="model.isBuiltin"
+                  class="badge builtin"
+                >内置</span>
+                <span
+                  v-if="model.isDefault"
+                  class="badge default"
+                >默认</span>
+                <span
+                  v-if="!model.enabled"
+                  class="badge disabled"
+                >禁用</span>
               </div>
-              <div class="model-id">{{ model.modelId || '使用默认模型' }}</div>
+              <div class="model-id">
+                {{ model.modelId || '使用默认模型' }}
+              </div>
             </div>
 
             <div class="model-actions-row">
@@ -172,14 +215,20 @@ const handleClose = () => {
                 title="设为默认"
                 @click="handleSetDefault(model)"
               >
-                <EaIcon name="star" :size="14" />
+                <EaIcon
+                  name="star"
+                  :size="14"
+                />
               </button>
               <button
                 class="action-btn"
                 title="编辑"
                 @click="handleEdit(model)"
               >
-                <EaIcon name="pencil" :size="14" />
+                <EaIcon
+                  name="pencil"
+                  :size="14"
+                />
               </button>
               <button
                 v-if="!model.isBuiltin"
@@ -187,7 +236,10 @@ const handleClose = () => {
                 title="删除"
                 @click="handleDelete(model)"
               >
-                <EaIcon name="trash-2" :size="14" />
+                <EaIcon
+                  name="trash-2"
+                  :size="14"
+                />
               </button>
             </div>
           </div>

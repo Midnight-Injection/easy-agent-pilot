@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { FileTreeNode } from '@/stores/project'
 import { useProjectStore } from '@/stores/project'
 import { EaIcon } from '@/components/common'
+import { resolveFileIcon } from '@/utils/fileIcon'
 
 interface Props {
   node: FileTreeNode
@@ -18,21 +19,22 @@ const emit = defineEmits<{
 const projectStore = useProjectStore()
 const isExpanded = ref(false)
 const isLoadingChildren = ref(false)
+const currentChildren = ref<FileTreeNode[]>(props.node.children || [])
 
 const isDirectory = computed(() => props.node.nodeType === 'directory')
+
+const nodeChildren = computed(() => currentChildren.value)
 
 const toggleExpand = async (event: Event) => {
   event.stopPropagation()
   if (isDirectory.value) {
     isExpanded.value = !isExpanded.value
 
-    // 展开时懒加载子节点
-    if (isExpanded.value && (!props.node.children || props.node.children.length === 0)) {
+    if (isExpanded.value) {
       isLoadingChildren.value = true
       try {
-        const children = await projectStore.loadDirectoryChildren(props.node.path)
-        // 更新节点的 children
-        props.node.children = children
+        // 每次展开目录都实时查询，避免使用本地缓存
+        currentChildren.value = await projectStore.loadDirectoryChildren(props.node.path)
       } finally {
         isLoadingChildren.value = false
       }
@@ -52,44 +54,7 @@ const getFileIcon = (node: FileTreeNode): string => {
   if (node.nodeType === 'directory') {
     return isExpanded.value ? 'folder-open' : 'folder'
   }
-
-  const ext = node.extension?.toLowerCase()
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return 'file-code'
-    case 'js':
-    case 'jsx':
-      return 'file-code'
-    case 'vue':
-      return 'file-code'
-    case 'json':
-      return 'file-json'
-    case 'md':
-      return 'file-text'
-    case 'css':
-    case 'scss':
-    case 'less':
-      return 'file-code'
-    case 'html':
-      return 'file-code'
-    case 'py':
-      return 'file-code'
-    case 'rs':
-      return 'file-code'
-    case 'go':
-      return 'file-code'
-    case 'java':
-      return 'file-code'
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'svg':
-      return 'image'
-    default:
-      return 'file'
-  }
+  return resolveFileIcon(node.nodeType, node.name, node.extension).icon
 }
 
 // 获取文件图标颜色
@@ -97,32 +62,7 @@ const getFileIconColor = (node: FileTreeNode): string => {
   if (node.nodeType === 'directory') {
     return 'var(--color-text-secondary)'
   }
-
-  const ext = node.extension?.toLowerCase()
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return '#3178c6'
-    case 'js':
-    case 'jsx':
-      return '#f7df1e'
-    case 'vue':
-      return '#42b883'
-    case 'json':
-      return '#cbcb41'
-    case 'md':
-      return '#519aba'
-    case 'py':
-      return '#3776ab'
-    case 'rs':
-      return '#dea584'
-    case 'go':
-      return '#00add8'
-    case 'java':
-      return '#b07219'
-    default:
-      return 'var(--color-text-tertiary)'
-  }
+  return resolveFileIcon(node.nodeType, node.name, node.extension).color
 }
 
 const indentStyle = computed(() => ({
@@ -179,13 +119,17 @@ const indentStyle = computed(() => ({
         class="file-tree-node__loading"
         :style="{ paddingLeft: `${(depth + 1) * 12 + 8}px` }"
       >
-        <EaIcon name="loading" :size="12" class="file-tree-node__loading-icon" />
+        <EaIcon
+          name="loading"
+          :size="12"
+          class="file-tree-node__loading-icon"
+        />
         <span>加载中...</span>
       </div>
       <!-- 子节点列表 -->
-      <template v-else-if="node.children && node.children.length > 0">
+      <template v-else-if="nodeChildren.length > 0">
         <FileTreeNode
-          v-for="child in node.children"
+          v-for="child in nodeChildren"
           :key="child.path"
           :node="child"
           :depth="depth + 1"

@@ -272,20 +272,31 @@ function getParamType(paramName: string): string {
     <!-- 列表视图 -->
     <template v-if="showList">
       <div class="mcp-config-tab__header">
-        <h3 class="mcp-config-tab__title">{{ t('settings.sdkConfig.mcp.title') }}</h3>
+        <h3 class="mcp-config-tab__title">
+          {{ t('settings.sdkConfig.mcp.title') }}
+        </h3>
         <div class="mcp-config-tab__actions">
-          <template v-if="!isReadOnly">
-            <EaButton size="small" @click="handleAdd">
-              <EaIcon name="lucide:plus" />
-              {{ t('settings.sdkConfig.mcp.add') }}
-            </EaButton>
-          </template>
-          <template v-else>
-            <EaButton size="small" variant="ghost" @click="emit('refresh')">
+          <EaButton
+            size="small"
+            @click="handleAdd"
+          >
+            <EaIcon name="lucide:plus" />
+            {{ t('settings.sdkConfig.mcp.add') }}
+          </EaButton>
+          <template v-if="isReadOnly">
+            <EaButton
+              size="small"
+              variant="ghost"
+              @click="emit('refresh')"
+            >
               <EaIcon name="lucide:refresh-cw" />
               {{ t('common.refresh') }}
             </EaButton>
-            <EaButton size="small" variant="ghost" @click="emit('open-file')">
+            <EaButton
+              size="small"
+              variant="ghost"
+              @click="emit('open-file')"
+            >
               <EaIcon name="lucide:external-link" />
               {{ t('settings.agentConfig.cliConfigCardTitle') }}
             </EaButton>
@@ -293,17 +304,32 @@ function getParamType(paramName: string): string {
         </div>
       </div>
 
-      <div v-if="isLoading" class="mcp-config-tab__loading">
-        <EaIcon name="lucide:loader-2" class="mcp-config-tab__spinner" />
+      <div
+        v-if="isLoading"
+        class="mcp-config-tab__loading"
+      >
+        <EaIcon
+          name="lucide:loader-2"
+          class="mcp-config-tab__spinner"
+        />
         {{ t('common.loading') }}
       </div>
 
-      <div v-else-if="configs.length === 0" class="mcp-config-tab__empty">
-        <EaIcon name="lucide:server" class="mcp-config-tab__empty-icon" />
+      <div
+        v-else-if="configs.length === 0"
+        class="mcp-config-tab__empty"
+      >
+        <EaIcon
+          name="lucide:server"
+          class="mcp-config-tab__empty-icon"
+        />
         <p>{{ t('settings.sdkConfig.mcp.noConfigs') }}</p>
       </div>
 
-      <div v-else class="mcp-config-tab__list">
+      <div
+        v-else
+        class="mcp-config-tab__list"
+      >
         <McpConfigItem
           v-for="config in configs"
           :key="config.id"
@@ -321,7 +347,11 @@ function getParamType(paramName: string): string {
       <div class="mcp-edit-detail">
         <!-- 头部 -->
         <div class="mcp-edit-detail__header">
-          <EaButton variant="ghost" size="small" @click="goBackToList">
+          <EaButton
+            variant="ghost"
+            size="small"
+            @click="goBackToList"
+          >
             <EaIcon name="lucide:arrow-left" />
             {{ t('common.back') }}
           </EaButton>
@@ -340,30 +370,54 @@ function getParamType(paramName: string): string {
                 v-model="editForm.name"
                 type="text"
                 :placeholder="t('settings.sdkConfig.mcp.namePlaceholder')"
-              />
+              >
             </div>
 
             <div class="form-row">
               <div class="form-group">
                 <label class="label-with-icon">
-                  <EaIcon name="lucide:plug" class="label-icon" />
+                  <EaIcon
+                    name="lucide:plug"
+                    class="label-icon"
+                  />
                   {{ t('settings.sdkConfig.mcp.transportType') }}
                 </label>
-                <select v-model="editForm.transportType" class="select-transport">
-                  <option value="stdio">(STDIO) 标准输入输出</option>
-                  <option value="sse">(SSE) 服务器推送事件</option>
-                  <option value="http">(HTTP) HTTP 请求</option>
+                <select
+                  v-model="editForm.transportType"
+                  class="select-transport"
+                >
+                  <option value="stdio">
+                    (STDIO) 标准输入输出
+                  </option>
+                  <option value="sse">
+                    (SSE) 服务器推送事件
+                  </option>
+                  <option value="http">
+                    (HTTP) HTTP 请求
+                  </option>
                 </select>
               </div>
               <div class="form-group">
                 <label class="label-with-icon">
-                  <EaIcon name="lucide:map-pin" class="label-icon" />
+                  <EaIcon
+                    name="lucide:map-pin"
+                    class="label-icon"
+                  />
                   {{ t('settings.sdkConfig.mcp.scope') }}
                 </label>
-                <select v-model="editForm.scope" class="select-scope">
-                  <option value="user">{{ t('settings.agent.scan.scopeTypes.user') }}</option>
-                  <option value="local">{{ t('settings.agent.scan.scopeTypes.local') }}</option>
-                  <option value="project">{{ t('settings.agent.scan.scopeTypes.project') }}</option>
+                <select
+                  v-model="editForm.scope"
+                  class="select-scope"
+                >
+                  <option value="user">
+                    {{ t('settings.agent.scan.scopeTypes.user') }}
+                  </option>
+                  <option value="local">
+                    {{ t('settings.agent.scan.scopeTypes.local') }}
+                  </option>
+                  <option value="project">
+                    {{ t('settings.agent.scan.scopeTypes.project') }}
+                  </option>
                 </select>
               </div>
             </div>
@@ -375,7 +429,7 @@ function getParamType(paramName: string): string {
                   v-model="editForm.command"
                   type="text"
                   :placeholder="t('settings.sdkConfig.mcp.commandPlaceholder')"
-                />
+                >
               </div>
               <div class="form-group">
                 <label>{{ t('settings.sdkConfig.mcp.args') }}</label>
@@ -383,11 +437,14 @@ function getParamType(paramName: string): string {
                   v-model="editForm.args"
                   :placeholder="t('settings.sdkConfig.mcp.argsPlaceholder')"
                   rows="3"
-                ></textarea>
+                />
               </div>
               <div class="form-group">
                 <label class="label-with-icon">
-                  <EaIcon name="lucide:variable" class="label-icon" />
+                  <EaIcon
+                    name="lucide:variable"
+                    class="label-icon"
+                  />
                   {{ t('settings.sdkConfig.mcp.env') }}
                 </label>
                 <div class="env-list">
@@ -401,19 +458,19 @@ function getParamType(paramName: string): string {
                       type="text"
                       placeholder="KEY"
                       class="env-key"
-                    />
+                    >
                     <span class="env-equals">=</span>
                     <input
                       v-model="item.value"
                       type="text"
                       placeholder="value"
                       class="env-value"
-                    />
+                    >
                     <button
                       type="button"
                       class="env-remove"
-                      @click="removeEnvItem(index)"
                       title="删除"
+                      @click="removeEnvItem(index)"
                     >
                       <EaIcon name="lucide:x" />
                     </button>
@@ -437,11 +494,14 @@ function getParamType(paramName: string): string {
                   v-model="editForm.url"
                   type="text"
                   placeholder="https://example.com/mcp"
-                />
+                >
               </div>
               <div class="form-group">
                 <label class="label-with-icon">
-                  <EaIcon name="lucide:file-text" class="label-icon" />
+                  <EaIcon
+                    name="lucide:file-text"
+                    class="label-icon"
+                  />
                   {{ t('settings.sdkConfig.mcp.headers') }}
                 </label>
                 <div class="env-list">
@@ -455,19 +515,19 @@ function getParamType(paramName: string): string {
                       type="text"
                       placeholder="Header Name"
                       class="env-key"
-                    />
+                    >
                     <span class="env-equals">:</span>
                     <input
                       v-model="item.value"
                       type="text"
                       placeholder="Header Value"
                       class="env-value"
-                    />
+                    >
                     <button
                       type="button"
                       class="env-remove"
-                      @click="removeHeaderItem(index)"
                       title="删除"
+                      @click="removeHeaderItem(index)"
                     >
                       <EaIcon name="lucide:x" />
                     </button>
@@ -486,8 +546,15 @@ function getParamType(paramName: string): string {
           </div>
 
           <div class="edit-actions">
-            <EaButton variant="ghost" @click="goBackToList">{{ t('common.cancel') }}</EaButton>
-            <EaButton @click="handleSaveEdit">{{ t('common.save') }}</EaButton>
+            <EaButton
+              variant="ghost"
+              @click="goBackToList"
+            >
+              {{ t('common.cancel') }}
+            </EaButton>
+            <EaButton @click="handleSaveEdit">
+              {{ t('common.save') }}
+            </EaButton>
           </div>
         </div>
       </div>
@@ -498,7 +565,11 @@ function getParamType(paramName: string): string {
       <div class="mcp-test-detail">
         <!-- 头部 -->
         <div class="mcp-test-detail__header">
-          <EaButton variant="ghost" size="small" @click="goBackToList">
+          <EaButton
+            variant="ghost"
+            size="small"
+            @click="goBackToList"
+          >
             <EaIcon name="lucide:arrow-left" />
             {{ t('common.back') }}
           </EaButton>
@@ -517,27 +588,56 @@ function getParamType(paramName: string): string {
               <span class="tools-count">{{ testTools.length }}</span>
             </div>
 
-            <div v-if="testIsLoading" class="tools-loading">
-              <EaIcon name="lucide:loader-2" class="tools-loading__spinner" />
+            <div
+              v-if="testIsLoading"
+              class="tools-loading"
+            >
+              <EaIcon
+                name="lucide:loader-2"
+                class="tools-loading__spinner"
+              />
               {{ t('settings.mcp.toolTester.loadingTools') }}
             </div>
 
-            <div v-else-if="testError" class="tools-error">
-              <EaIcon name="lucide:alert-circle" class="tools-error__icon" />
-              <p class="tools-error__title">加载失败</p>
-              <p class="tools-error__message">{{ testError }}</p>
-              <EaButton size="small" variant="ghost" @click="handleTest(testingConfig!)">
+            <div
+              v-else-if="testError"
+              class="tools-error"
+            >
+              <EaIcon
+                name="lucide:alert-circle"
+                class="tools-error__icon"
+              />
+              <p class="tools-error__title">
+                加载失败
+              </p>
+              <p class="tools-error__message">
+                {{ testError }}
+              </p>
+              <EaButton
+                size="small"
+                variant="ghost"
+                @click="handleTest(testingConfig!)"
+              >
                 <EaIcon name="lucide:refresh-cw" />
                 重试
               </EaButton>
             </div>
 
-            <div v-else-if="testTools.length === 0" class="tools-empty">
-              <EaIcon name="lucide:wrench" class="tools-empty__icon" />
+            <div
+              v-else-if="testTools.length === 0"
+              class="tools-empty"
+            >
+              <EaIcon
+                name="lucide:wrench"
+                class="tools-empty__icon"
+              />
               <p>{{ t('settings.mcp.toolTester.noTools') }}</p>
             </div>
 
-            <div v-else class="tools-list">
+            <div
+              v-else
+              class="tools-list"
+            >
               <button
                 v-for="tool in testTools"
                 :key="tool.name"
@@ -545,7 +645,10 @@ function getParamType(paramName: string): string {
                 :class="{ 'tool-item--active': selectedTool?.name === tool.name }"
                 @click="selectTool(tool)"
               >
-                <EaIcon name="lucide:wrench" class="tool-item__icon" />
+                <EaIcon
+                  name="lucide:wrench"
+                  class="tool-item__icon"
+                />
                 <div class="tool-item__info">
                   <span class="tool-item__name">{{ tool.name }}</span>
                   <span class="tool-item__desc">{{ tool.description || '-' }}</span>
@@ -556,8 +659,14 @@ function getParamType(paramName: string): string {
 
           <!-- 右侧参数和结果 -->
           <div class="mcp-test-detail__main">
-            <div v-if="!selectedTool" class="detail-empty">
-              <EaIcon name="lucide:mouse-pointer-click" class="detail-empty__icon" />
+            <div
+              v-if="!selectedTool"
+              class="detail-empty"
+            >
+              <EaIcon
+                name="lucide:mouse-pointer-click"
+                class="detail-empty__icon"
+              />
               <p>{{ t('settings.mcp.toolTester.selectTool') }}</p>
             </div>
 
@@ -581,17 +690,26 @@ function getParamType(paramName: string): string {
               </div>
 
               <!-- 参数配置 -->
-              <div v-show="testActiveTab === 'params'" class="detail-params">
+              <div
+                v-show="testActiveTab === 'params'"
+                class="detail-params"
+              >
                 <div class="params-header">
                   <h4>{{ selectedTool.name }}</h4>
                   <p>{{ selectedTool.description }}</p>
                 </div>
 
-                <div v-if="!selectedTool.inputSchema?.properties" class="params-empty">
+                <div
+                  v-if="!selectedTool.inputSchema?.properties"
+                  class="params-empty"
+                >
                   {{ t('settings.mcp.toolTester.noParams') }}
                 </div>
 
-                <div v-else class="params-form">
+                <div
+                  v-else
+                  class="params-form"
+                >
                   <div
                     v-for="(_prop, key) in selectedTool.inputSchema.properties"
                     :key="key"
@@ -599,35 +717,41 @@ function getParamType(paramName: string): string {
                   >
                     <label>
                       {{ key }}
-                      <span v-if="isRequired(key as string)" class="required">*</span>
+                      <span
+                        v-if="isRequired(key as string)"
+                        class="required"
+                      >*</span>
                       <span class="param-type">({{ getParamType(key as string) }})</span>
                     </label>
                     <input
                       v-if="getParamType(key as string) === 'string' || getParamType(key as string) === 'number'"
-                      :value="paramValues[key as string] as string | number | undefined"
-                      @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                      :value="paramValues[key as string]"
                       :type="getParamType(key as string) === 'number' ? 'number' : 'text'"
                       :placeholder="t('settings.mcp.toolTester.paramPlaceholder')"
-                    />
+                      @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                    >
                     <textarea
                       v-else-if="getParamType(key as string) === 'object' || getParamType(key as string) === 'array'"
                       :value="String(paramValues[key as string] ?? '')"
-                      @input="paramValues[key as string] = ($event.target as HTMLTextAreaElement).value"
                       :placeholder="t('settings.mcp.toolTester.jsonPlaceholder')"
                       rows="4"
-                    ></textarea>
+                      @input="paramValues[key as string] = ($event.target as HTMLTextAreaElement).value"
+                    />
                     <input
                       v-else
-                      :value="paramValues[key as string] as string | undefined"
-                      @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                      :value="paramValues[key as string]"
                       type="text"
                       :placeholder="t('settings.mcp.toolTester.paramPlaceholder')"
-                    />
+                      @input="paramValues[key as string] = ($event.target as HTMLInputElement).value"
+                    >
                   </div>
                 </div>
 
                 <div class="params-actions">
-                  <EaButton @click="handleCallTool" :loading="isCalling">
+                  <EaButton
+                    :loading="isCalling"
+                    @click="handleCallTool"
+                  >
                     <EaIcon name="lucide:play" />
                     {{ t('settings.mcp.toolTester.callTool') }}
                   </EaButton>
@@ -635,22 +759,40 @@ function getParamType(paramName: string): string {
               </div>
 
               <!-- 执行结果 -->
-              <div v-show="testActiveTab === 'result'" class="detail-result">
-                <div v-if="isCalling" class="result-calling">
-                  <EaIcon name="lucide:loader-2" class="result-calling__spinner" />
+              <div
+                v-show="testActiveTab === 'result'"
+                class="detail-result"
+              >
+                <div
+                  v-if="isCalling"
+                  class="result-calling"
+                >
+                  <EaIcon
+                    name="lucide:loader-2"
+                    class="result-calling__spinner"
+                  />
                   {{ t('settings.mcp.toolTester.calling') }}
                 </div>
 
-                <div v-else-if="!callResult" class="result-empty">
+                <div
+                  v-else-if="!callResult"
+                  class="result-empty"
+                >
                   {{ t('settings.mcp.toolTester.noResult') }}
                 </div>
 
                 <template v-else>
-                  <div v-if="callResult.success" class="result-success">
+                  <div
+                    v-if="callResult.success"
+                    class="result-success"
+                  >
                     <h4>{{ t('settings.mcp.toolTester.resultData') }}</h4>
                     <EaJsonViewer :data="callResult.data" />
                   </div>
-                  <div v-else class="result-error">
+                  <div
+                    v-else
+                    class="result-error"
+                  >
                     <h4>{{ t('settings.mcp.toolTester.errorDetails') }}</h4>
                     <EaJsonViewer :data="callResult.error" />
                   </div>

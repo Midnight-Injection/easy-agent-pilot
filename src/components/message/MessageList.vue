@@ -245,7 +245,10 @@ const handleRetry = (message: Message) => {
         :title="t('message.scrollToBottom')"
         @click="handleScrollToBottom"
       >
-        <EaIcon name="arrow-down" :size="16" />
+        <EaIcon
+          name="arrow-down"
+          :size="16"
+        />
         <span class="scroll-to-bottom-btn__ring" />
       </button>
     </Transition>

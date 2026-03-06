@@ -6,17 +6,18 @@
 
 import { ref, h, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NTree, TreeOption, TreeDropInfo, TreeDragInfo } from 'naive-ui'
+import { NTree, TreeOption } from 'naive-ui'
 import { invoke } from '@tauri-apps/api/core'
+import { watch as watchFs, type UnwatchFn } from '@tauri-apps/plugin-fs'
 import { EaIcon, EaButton } from '@/components/common'
-import { useProjectStore, type FileTreeNode } from '@/stores/project'
+import type { FileTreeNode } from '@/stores/project'
+import { resolveFileIcon } from '@/utils/fileIcon'
 import { useFileOperations } from './composables/useFileOperations'
 import FileTreeContextMenu from './FileTreeContextMenu.vue'
 import FileTreeRenameDialog from './FileTreeRenameDialog.vue'
 import type { FileTreeNodeData, ContextMenuContext } from './types'
 
 const { t } = useI18n()
-const projectStore = useProjectStore()
 const { renameFile, deleteFile, batchDeleteFiles, moveFile, loading } = useFileOperations()
 
 interface Props {
@@ -58,9 +59,17 @@ const batchDeleteConfirmVisible = ref(false)
 
 /// 加载状态
 const isLoading = ref(false)
+const pendingReload = ref(false)
+const unwatchFileTree = ref<UnwatchFn | null>(null)
+const reloadTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 /// 加载根目录文件树
 const loadTreeData = async () => {
+  if (isLoading.value) {
+    pendingReload.value = true
+    return
+  }
+
   isLoading.value = true
   try {
     const result = await invoke<FileTreeNode[]>('list_project_files', {
@@ -71,6 +80,53 @@ const loadTreeData = async () => {
     console.error('Failed to load file tree:', error)
   } finally {
     isLoading.value = false
+
+    if (pendingReload.value) {
+      pendingReload.value = false
+      await loadTreeData()
+    }
+  }
+}
+
+const scheduleTreeReload = () => {
+  if (reloadTimer.value) {
+    clearTimeout(reloadTimer.value)
+  }
+
+  reloadTimer.value = setTimeout(() => {
+    reloadTimer.value = null
+    void loadTreeData()
+  }, 250)
+}
+
+const stopFileWatcher = () => {
+  if (reloadTimer.value) {
+    clearTimeout(reloadTimer.value)
+    reloadTimer.value = null
+  }
+
+  if (unwatchFileTree.value) {
+    unwatchFileTree.value()
+    unwatchFileTree.value = null
+  }
+}
+
+const startFileWatcher = async (projectPath: string) => {
+  stopFileWatcher()
+
+  try {
+    unwatchFileTree.value = await watchFs(
+      projectPath,
+      () => {
+        scheduleTreeReload()
+      },
+      {
+        recursive: true,
+        delayMs: 300
+      }
+    )
+  } catch (error) {
+    console.error('Failed to watch project directory:', error)
   }
 }
 
@@ -86,42 +142,77 @@ const convertToTreeOptions = (nodes: FileTreeNode[], projectId: string): TreeOpt
       extension: node.extension,
       projectId
     }
+    if (!isFile) {
+      // 目录节点默认给空 children，避免 Tree 组件进入无 on-load 的加载态
+      option.children = []
+    }
     return option as TreeOption
   })
 }
 
-/// 处理树节点懒加载
-const handleTreeLoad = async (node: TreeOption): Promise<unknown> => {
-  const nodePath = node.key as string
-
-  try {
-    const children = await invoke<FileTreeNode[]>('load_directory_children', {
-      dirPath: nodePath
-    })
-
-    const newChildren = children.map(child => {
-      const isFile = child.nodeType === 'file'
-      return {
-        key: child.path,
-        label: child.name,
-        isLeaf: isFile,
-        nodeType: child.nodeType,
-        extension: child.extension,
-        projectId: props.projectId
-      } as TreeOption
-    })
-
-    node.children = newChildren
-    return Promise.resolve()
-  } catch (error) {
-    console.error('Failed to load node children:', error)
-    return Promise.reject(error)
+const findTreeNodeByKey = (nodes: TreeOption[], key: string): (TreeOption & { nodeType?: string }) | null => {
+  for (const node of nodes) {
+    if (String(node.key) === key) {
+      return node as (TreeOption & { nodeType?: string })
+    }
+    if (node.children?.length) {
+      const matched = findTreeNodeByKey(node.children as TreeOption[], key)
+      if (matched) {
+        return matched
+      }
+    }
   }
+  return null
+}
+
+const loadChildrenForNode = async (node: TreeOption): Promise<void> => {
+  const nodePath = node.key as string
+  const children = await invoke<FileTreeNode[]>('load_directory_children', {
+    dirPath: nodePath
+  })
+
+  const newChildren = children.map(child => {
+    const isFile = child.nodeType === 'file'
+    const option: TreeOption = {
+      key: child.path,
+      label: child.name,
+      isLeaf: isFile,
+      nodeType: child.nodeType,
+      extension: child.extension,
+      projectId: props.projectId
+    }
+    if (!isFile) {
+      option.children = []
+    }
+    return option
+  })
+
+  node.children = newChildren
 }
 
 /// 处理展开状态变化
-const handleExpandChange = (keys: string[]) => {
+const handleExpandChange = async (keys: string[]) => {
+  const previousKeys = new Set(expandedKeys.value)
   expandedKeys.value = keys
+
+  const justExpandedKeys = keys.filter(key => !previousKeys.has(key))
+  if (justExpandedKeys.length === 0) {
+    return
+  }
+
+  const targetNodes = justExpandedKeys
+    .map(key => findTreeNodeByKey(treeData.value, key))
+    .filter((node): node is TreeOption & { nodeType?: string } => !!node)
+    .filter(node => node.nodeType === 'directory' || node.isLeaf === false)
+
+  await Promise.all(targetNodes.map(async node => {
+    try {
+      // 每次展开目录都实时查询，避免懒加载结果缓存
+      await loadChildrenForNode(node)
+    } catch (error) {
+      console.error('Failed to refresh node children on expand:', error)
+    }
+  }))
 }
 
 /// 处理复选框变化
@@ -130,13 +221,21 @@ const handleCheckChange = (keys: string[]) => {
 }
 
 /// 处理选中变化
-const handleSelectChange = (keys: string[]) => {
-  if (keys.length > 0) {
-    selectedKey.value = keys[0]
-    emit('fileSelect', keys[0])
-  } else {
+const handleSelectChange = (keys: Array<string | number>, options: Array<TreeOption | null>) => {
+  if (keys.length === 0) {
     selectedKey.value = null
+    return
   }
+
+  const selectedPath = String(keys[0])
+  selectedKey.value = selectedPath
+
+  const selectedNode = (options[0] ?? null) as (TreeOption & { nodeType?: string }) | null
+  if (selectedNode?.nodeType !== 'file' && selectedNode?.isLeaf === false) {
+    return
+  }
+
+  emit('fileSelect', selectedPath)
 }
 
 /// 处理右键菜单
@@ -244,91 +343,24 @@ const handleDrop = async (info: { node: TreeOption; dragNode: TreeOption; dropPo
   }
 }
 
-/// 获取文件图标
-const getFileIcon = (nodeType: string, extension?: string): string => {
-  if (nodeType === 'directory') {
-    return 'folder'
-  }
-
-  const ext = extension?.toLowerCase()
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-    case 'js':
-    case 'jsx':
-    case 'vue':
-    case 'json':
-    case 'css':
-    case 'scss':
-    case 'less':
-    case 'html':
-    case 'py':
-    case 'rs':
-    case 'go':
-    case 'java':
-      return 'file-code'
-    case 'md':
-      return 'file-text'
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'svg':
-      return 'image'
-    default:
-      return 'file'
-  }
-}
-
-/// 获取文件图标颜色
-const getFileIconColor = (nodeType: string, extension?: string): string => {
-  if (nodeType === 'directory') {
-    return 'var(--color-text-secondary)'
-  }
-
-  const ext = extension?.toLowerCase()
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return '#3178c6'
-    case 'js':
-    case 'jsx':
-      return '#f7df1e'
-    case 'vue':
-      return '#42b883'
-    case 'json':
-      return '#cbcb41'
-    case 'md':
-      return '#519aba'
-    case 'py':
-      return '#3776ab'
-    case 'rs':
-      return '#dea584'
-    case 'go':
-      return '#00add8'
-    case 'java':
-      return '#b07219'
-    default:
-      return 'var(--color-text-tertiary)'
-  }
-}
-
 /// 自定义节点渲染
 const renderLabel = ({ option }: { option: TreeOption }) => {
   const nodeType = (option as any).nodeType as string
+  const fileName = option.label as string
   const extension = (option as any).extension as string | undefined
+  const iconMeta = resolveFileIcon(nodeType, fileName, extension)
 
   return h('div', {
     class: 'file-tree-node__content',
     onContextmenu: (e: MouseEvent) => handleContextMenu(e, option)
   }, [
     h(EaIcon, {
-      name: getFileIcon(nodeType, extension),
+      name: iconMeta.icon,
       size: 14,
       class: 'file-tree-node__icon',
-      style: { color: getFileIconColor(nodeType, extension) }
+      style: { color: iconMeta.color }
     }),
-    h('span', { class: 'file-tree-node__name' }, option.label as string)
+    h('span', { class: 'file-tree-node__name' }, fileName)
   ])
 }
 
@@ -340,16 +372,23 @@ const handleClickOutside = () => {
 /// 监听点击事件关闭右键菜单
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
-  loadTreeData()
+  void loadTreeData()
+  void startFileWatcher(props.projectPath)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  stopFileWatcher()
 })
 
 /// 监听项目路径变化重新加载
-watch(() => props.projectPath, () => {
-  loadTreeData()
+watch(() => props.projectPath, async (newPath, oldPath) => {
+  if (newPath === oldPath) {
+    return
+  }
+
+  await loadTreeData()
+  await startFileWatcher(newPath)
 })
 </script>
 
@@ -397,7 +436,6 @@ watch(() => props.projectPath, () => {
       block-line
       :allow-drop="allowDrop"
       :render-label="renderLabel"
-      :on-load="handleTreeLoad"
       class="file-tree__n-tree"
       @update:expanded-keys="handleExpandChange"
       @update:checked-keys="handleCheckChange"
@@ -558,7 +596,7 @@ watch(() => props.projectPath, () => {
 }
 
 .file-tree__n-tree :deep(.n-tree-node-content) {
-  padding: 4px 8px !important;
+  padding: 5px 10px !important;
   border-radius: var(--radius-sm);
 }
 
@@ -571,22 +609,30 @@ watch(() => props.projectPath, () => {
   height: 16px !important;
 }
 
-.file-tree__n-tree .file-tree-node__content {
+.file-tree__n-tree :deep(.file-tree-node__content) {
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: var(--spacing-2);
   width: 100%;
 }
 
-.file-tree__n-tree .file-tree-node__icon {
+.file-tree__n-tree :deep(.file-tree-node__icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
-.file-tree__n-tree .file-tree-node__name {
+.file-tree__n-tree :deep(.file-tree-node__name) {
+  display: flex;
+  align-items: center;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.35;
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }

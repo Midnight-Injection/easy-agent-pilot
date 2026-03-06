@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessageStore } from '@/stores/message'
 import { useSessionStore } from '@/stores/session'
+import { useProjectStore } from '@/stores/project'
 import { useSettingsStore } from '@/stores/settings'
 import { useNotificationStore } from '@/stores/notification'
 import { useAgentStore } from '@/stores/agent'
@@ -15,12 +16,15 @@ import { EaIcon } from '@/components/common'
 import { MessageList } from '@/components/message'
 import CompressionConfirmDialog from '@/components/common/CompressionConfirmDialog.vue'
 import type { Message } from '@/stores/message'
+import FileMentionDropdown from './FileMentionDropdown.vue'
+import McpPluginSelector from './McpPluginSelector.vue'
 
 const { t } = useI18n()
 const messageStore = useMessageStore()
 const sessionStore = useSessionStore()
 const settingsStore = useSettingsStore()
 const notificationStore = useNotificationStore()
+const projectStore = useProjectStore()
 const agentStore = useAgentStore()
 const agentConfigStore = useAgentConfigStore()
 const sessionExecutionStore = useSessionExecutionStore()
@@ -61,6 +65,13 @@ const currentAgent = computed(() => {
   const agentId = currentAgentId.value
   if (!agentId) return null
   return agentStore.agents.find(a => a.id === agentId) || null
+})
+
+// 当前会话关联的项目
+const currentProject = computed(() => {
+  const sessionId = sessionStore.currentSessionId
+  if (!sessionId) return null
+  return projectStore.projects.find(p => p.id === sessionStore.currentSession?.projectId) || null
 })
 
 // 当前选中的智能体名称
@@ -215,6 +226,14 @@ onUnmounted(() => {
 })
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
+const renderLayerRef = ref<HTMLDivElement | null>(null)
+
+// 同步渲染层滚动
+const syncScroll = () => {
+  if (textareaRef.value && renderLayerRef.value) {
+    renderLayerRef.value.scrollTop = textareaRef.value.scrollTop
+  }
+}
 
 // 使用会话执行状态 store 管理每个会话的独立状态
 const currentSessionId = computed(() => sessionStore.currentSessionId)
@@ -232,6 +251,64 @@ const inputText = computed({
 const isSending = computed(() =>
   currentSessionId.value ? sessionExecutionStore.getIsSending(currentSessionId.value) : false
 )
+
+// 解析文本中的文件引用，返回渲染片段
+interface TextSegment {
+  type: 'text' | 'file'
+  content: string
+  fullPath?: string
+}
+
+const parsedInputText = computed(() => {
+  const text = inputText.value
+  if (!text) return []
+
+  const segments: TextSegment[] = []
+  // 匹配 @ 开头的文件路径，只有后面跟着空格或行尾时才显示为标签
+  // 路径可以包含字母、数字、点、斜杠、下划线、连字符、中文等
+  const filePattern = /@([a-zA-Z0-9_\-\u4e00-\u9fa5./\\]+)(?=\s|$)/g
+  let lastIndex = 0
+  let match
+
+  while ((match = filePattern.exec(text)) !== null) {
+    // 添加 @ 之前的文本（确保不添加空内容）
+    if (match.index > lastIndex) {
+      const content = text.slice(lastIndex, match.index)
+      if (content) {
+        segments.push({
+          type: 'text',
+          content
+        })
+      }
+    }
+
+    // 添加文件引用 - 显示完整路径以保持长度一致
+    const fullPath = match[1]
+    // 提取文件名用于显示
+    const fileName = fullPath.split(/[/\\]/).pop() || fullPath
+
+    segments.push({
+      type: 'file',
+      content: fileName,
+      fullPath
+    })
+
+    lastIndex = match.index + match[0].length
+  }
+
+  // 添加剩余的文本（确保不添加空内容）
+  if (lastIndex < text.length) {
+    const content = text.slice(lastIndex)
+    if (content) {
+      segments.push({
+        type: 'text',
+        content
+      })
+    }
+  }
+
+  return segments
+})
 
 // 压缩相关计算属性
 const tokenUsage = computed(() => {
@@ -299,9 +376,141 @@ const inputPlaceholder = computed(() => {
   return '输入消息，按 Ctrl/Cmd+Enter 发送'
 })
 
+// @ 文件引用相关状态
+const showFileMention = ref(false)
+const fileMentionPosition = ref({ x: 0, y: 0, width: 0, height: 0 })
+const mentionStart = ref(-1)
+
+const mentionSearchText = ref('')
+
+// 打开文件选择器
+const openFileMention = (x: number, y: number, query: string, start: number) => {
+  console.log('[openFileMention] called with:', { x, y, query, start })
+  console.log('[openFileMention] sessionId:', sessionStore.currentSessionId)
+  console.log('[openFileMention] currentProject:', currentProject.value)
+
+  if (!sessionStore.currentSessionId) {
+    console.log('[openFileMention] 没有当前会话，返回')
+    return
+  }
+  if (!currentProject.value) {
+    console.log('[openFileMention] 没有当前项目，返回')
+    return
+  }
+
+  console.log('[openFileMention] 打开文件选择器')
+  showFileMention.value = true
+  fileMentionPosition.value = { x, y, width: 280, height: 0 }
+  mentionStart.value = start
+  mentionSearchText.value = query
+}
+
+// 关闭文件选择器
+const closeFileMention = () => {
+  showFileMention.value = false
+  fileMentionPosition.value = { x: 0, y: 0, width: 0, height: 0 }
+  mentionStart.value = -1
+  mentionSearchText.value = ''
+}
+// 选择文件后的处理
+const handleFileSelect = (_path: string, relativePath: string, mentionStartPos: number) => {
+  closeFileMention()
+
+  const textarea = textareaRef.value
+  // 获取当前光标位置
+  const cursorPos = textarea ? textarea.selectionStart : inputText.value.length
+
+  // 替换从 @ 开始到光标位置的文本为选中的文件路径
+  // mentionStartPos 是 @ 符号的位置
+  const beforeAt = inputText.value.slice(0, mentionStartPos)
+  const afterSearch = inputText.value.slice(cursorPos)
+  const insertText = `@${relativePath} `
+
+  inputText.value = beforeAt + insertText + afterSearch
+
+  // 光标移到插入内容后面
+  nextTick(() => {
+    if (textarea) {
+      textarea.focus()
+      const newPosition = beforeAt.length + insertText.length
+      textarea.setSelectionRange(newPosition, newPosition)
+    }
+  })
+}
+
+// 计算光标在 textarea 中的像素位置
+const getCaretCoordinates = (textarea: HTMLTextAreaElement, position: number) => {
+  const text = textarea.value.substring(0, position)
+  const lines = text.split('\n')
+  const currentLine = lines.length - 1
+  const currentCol = lines[lines.length - 1].length
+
+  // 获取 textarea 的样式
+  const style = window.getComputedStyle(textarea)
+  const lineHeight = parseFloat(style.lineHeight)
+  const paddingTop = parseFloat(style.paddingTop)
+  const paddingLeft = parseFloat(style.paddingLeft)
+  const fontSize = parseFloat(style.fontSize)
+  const fontFamily = style.fontFamily
+
+  // 计算垂直位置
+  const lineHeightActual = lineHeight || fontSize * 1.5
+  const y = paddingTop + currentLine * lineHeightActual
+
+  // 计算水平位置（简化版，使用等宽字体估算）
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+  if (context) {
+    context.font = `${fontSize}px ${fontFamily}`
+    const textWidth = context.measureText(lines[lines.length - 1]).width
+    canvas.remove()
+    return { x: paddingLeft + textWidth, y }
+  }
+  canvas.remove()
+  return { x: paddingLeft + currentCol * (fontSize * 0.6), y }
+}
+
 const handleInput = (e: Event) => {
   const target = e.target as HTMLTextAreaElement
-  inputText.value = target.value
+  const value = target.value
+  const cursorPosition = target.selectionStart || 0
+
+  // 如果文件选择器已打开，更新搜索文本
+  if (showFileMention.value && mentionStart.value >= 0) {
+    // 检查 @ 符号是否还存在
+    if (value[mentionStart.value] !== '@') {
+      // @ 符号被删除了，关闭选择器
+      closeFileMention()
+    } else if (cursorPosition < mentionStart.value || cursorPosition > mentionStart.value + 100) {
+      // 光标移出了 @ 引用范围，关闭选择器
+      closeFileMention()
+    } else {
+      // 更新搜索文本（从 @ 后面到光标位置）
+      const searchText = value.slice(mentionStart.value + 1, cursorPosition)
+      mentionSearchText.value = searchText
+    }
+    inputText.value = value
+    return
+  }
+
+  // 检测 @ 符号
+  if (value.length > 0 && cursorPosition > 0 && value[cursorPosition - 1] === '@') {
+    // 检查 @ 前是否是空格或行首
+    const charBefore = cursorPosition > 1 ? value[cursorPosition - 2] : ' '
+    if (charBefore === ' ' || charBefore === '\n' || charBefore === '\r' || cursorPosition === 1) {
+      // 触发文件选择器
+      const rect = target.getBoundingClientRect()
+      const caretPos = getCaretCoordinates(target, cursorPosition - 1)
+
+      // 计算下拉框位置：在 @ 符号下方
+      const x = rect.left + caretPos.x
+      const y = rect.top + caretPos.y + 20 // 20px 是大约一行文字的高度
+
+      openFileMention(x, y, '', cursorPosition - 1)
+    }
+  }
+
+  inputText.value = value
 }
 
 const handleSend = async () => {
@@ -541,6 +750,11 @@ const handleRetry = async (message: Message) => {
 }
 
 const handleKeyDown = (e: KeyboardEvent) => {
+  // 如果文件选择器打开，让 FileMentionDropdown 处理键盘事件
+  if (showFileMention.value) {
+    return
+  }
+
   if (e.key === 'Enter') {
     const sendOnEnter = settingsStore.settings.sendOnEnter
 
@@ -599,8 +813,9 @@ watch(() => sessionStore.currentSessionId, async (sessionId) => {
     >
       <!-- 输入框容器 -->
       <div class="message-input">
-        <!-- 顶部工具栏：智能体选择器 -->
+        <!-- 顶部工具栏：智能体选择器 + MCP工具选择器 -->
         <div class="message-input__toolbar message-input__toolbar--top">
+          <!-- 智能体选择器 -->
           <div
             ref="agentDropdownRef"
             class="input-chip"
@@ -648,19 +863,35 @@ watch(() => sessionStore.currentSessionId, async (sessionId) => {
               </div>
             </Transition>
           </div>
+
+          <!-- MCP 插件选择器 -->
+          <McpPluginSelector />
         </div>
 
-        <!-- 输入框 -->
-        <textarea
-          ref="textareaRef"
-          v-model="inputText"
-          class="message-input__textarea"
-          :placeholder="inputPlaceholder"
-          rows="4"
-          :disabled="!sessionStore.currentSessionId || isSending"
-          @input="handleInput"
-          @keydown="handleKeyDown"
-        />
+        <!-- 输入框容器 -->
+        <div class="message-input__editor">
+          <!-- 渲染层 - 显示带样式的文件标签 -->
+          <div ref="renderLayerRef" class="message-input__render">
+            <template v-if="parsedInputText.length > 0">
+              <template v-for="(segment, index) in parsedInputText" :key="index">
+                <span v-if="segment.type === 'text'" class="message-input__text">{{ segment.content }}</span>
+                <span v-else class="message-input__file-tag" :title="segment.fullPath">@{{ segment.fullPath }}</span>
+              </template>
+            </template>
+            <span v-else-if="!inputText" class="message-input__placeholder">{{ inputPlaceholder }}</span>
+          </div>
+          <!-- 输入层 - 透明的 textarea -->
+          <textarea
+            ref="textareaRef"
+            v-model="inputText"
+            class="message-input__textarea"
+            rows="4"
+            :disabled="!sessionStore.currentSessionId || isSending"
+            @input="handleInput"
+            @keydown="handleKeyDown"
+            @scroll="syncScroll"
+          />
+        </div>
 
         <!-- 底部工具栏：模型选择器 -->
         <div class="message-input__toolbar message-input__toolbar--bottom">
@@ -689,7 +920,10 @@ watch(() => sessionStore.currentSessionId, async (sessionId) => {
               class="input-chip__btn"
               @click="toggleModelDropdown"
             >
-              <EaIcon name="cpu" :size="12" />
+              <EaIcon
+                name="cpu"
+                :size="12"
+              />
               <span>{{ getModelLabel(selectedModelId) }}</span>
               <EaIcon
                 :name="isModelDropdownOpen ? 'chevron-up' : 'chevron-down'"
@@ -731,6 +965,16 @@ watch(() => sessionStore.currentSessionId, async (sessionId) => {
       :loading="isCompressing"
       @confirm="handleConfirmCompress"
       @cancel="handleCancelCompress"
+    />
+
+    <!-- 文件引用选择器 -->
+    <FileMentionDropdown
+      :visible="showFileMention"
+      :position="fileMentionPosition"
+      :search-text="mentionSearchText"
+      :mention-start="mentionStart"
+      @select="handleFileSelect"
+      @close="closeFileMention"
     />
   </div>
 </template>
@@ -813,26 +1057,97 @@ watch(() => sessionStore.currentSessionId, async (sessionId) => {
 
 .message-input__toolbar--top {
   justify-content: flex-start;
+  gap: var(--spacing-2);
 }
 
 .message-input__toolbar--bottom {
   justify-content: flex-end;
 }
 
-.message-input__textarea {
+/* 输入框编辑器容器 */
+.message-input__editor {
+  position: relative;
   flex: 1;
   min-height: calc(1.5em * 4); /* 4 行 */
   max-height: calc(1.5em * 6); /* 6 行 */
+}
+
+/* 渲染层 - 显示带样式的文件标签 */
+.message-input__render {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--spacing-1) 0;
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: none;
+  scrollbar-width: none;
+}
+
+.message-input__render::-webkit-scrollbar {
+  display: none;
+}
+
+.message-input__placeholder {
+  color: var(--color-text-tertiary);
+  font-style: italic;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast) var(--easing-default);
+}
+
+.message-input__editor:focus-within .message-input__placeholder {
+  opacity: 0;
+}
+
+/* 文件标签样式 - 保持字符宽度基本一致 */
+.message-input__file-tag {
+  color: var(--color-primary);
+  font-weight: 500;
+  background-color: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  border-radius: 2px;
+}
+
+.message-input__text {
+  white-space: pre-wrap;
+}
+
+.message-input__textarea {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
   padding: var(--spacing-1) 0;
   background: none;
   border: none;
   font-size: var(--font-size-sm);
+  font-family: inherit;
   line-height: 1.5;
-  color: var(--color-text-primary);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
+  caret-color: var(--color-primary);
   resize: none;
   outline: none;
   overflow-y: auto;
-  caret-color: var(--color-primary);
+}
+
+.message-input__textarea::selection {
+  background: var(--color-primary-light);
+}
+
+.message-input__textarea::-moz-selection {
+  background: var(--color-primary-light);
 }
 
 .message-input__textarea:focus {
@@ -841,12 +1156,11 @@ watch(() => sessionStore.currentSessionId, async (sessionId) => {
   box-shadow: none;
 }
 
-.message-input__textarea::placeholder {
-  color: var(--color-text-tertiary);
-}
-
 .message-input__textarea:disabled {
   cursor: not-allowed;
+}
+
+.message-input__editor:has(.message-input__textarea:disabled) .message-input__render {
   opacity: 0.6;
 }
 

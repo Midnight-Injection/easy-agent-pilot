@@ -22,20 +22,29 @@ function onChange(event: Event) {
 
 <template>
   <div class="form-field checkbox-field">
-    <label :for="inputId" class="checkbox-label">
+    <label
+      :for="inputId"
+      class="checkbox-label"
+    >
       <input
         :id="inputId"
         type="checkbox"
         :checked="modelValue"
         class="checkbox"
         @change="onChange"
-      />
+      >
       <span class="label-text">
         {{ field.label }}
-        <span v-if="field.required" class="required-mark">*</span>
+        <span
+          v-if="field.required"
+          class="required-mark"
+        >*</span>
       </span>
     </label>
-    <span v-if="error" class="error-message">{{ error }}</span>
+    <span
+      v-if="error"
+      class="error-message"
+    >{{ error }}</span>
   </div>
 </template>
 

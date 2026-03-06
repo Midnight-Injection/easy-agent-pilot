@@ -8,11 +8,17 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'dragStart', task: Task): void
+  (e: 'dragStart', task: Task, event: DragEvent): void
+  (e: 'dragEnd', event: DragEvent): void
+  (e: 'cardDragOver', event: DragEvent): void
+  (e: 'cardDragEnter', event: DragEvent): void
+  (e: 'cardDragLeave', event: DragEvent): void
+  (e: 'cardDrop', event: DragEvent): void
   (e: 'click', task: Task): void
   (e: 'stop', task: Task): void
   (e: 'retry', task: Task): void
   (e: 'edit', task: Task): void
+  (e: 'delete', task: Task): void
 }>()
 
 // 是否可以拖拽
@@ -28,6 +34,11 @@ const showStopButton = computed(() => {
 // 是否显示重试按钮
 const showRetryButton = computed(() => {
   return props.task.status === 'blocked'
+})
+
+// 是否显示删除按钮
+const showDeleteButton = computed(() => {
+  return props.task.status === 'pending'
 })
 
 // 优先级标签
@@ -60,7 +71,39 @@ function handleDragStart(event: DragEvent) {
     event.preventDefault()
     return
   }
-  emit('dragStart', props.task)
+
+  console.log('[KanbanCard] handleDragStart:', props.task.id)
+
+  // 设置拖拽数据
+  if (event.dataTransfer) {
+    event.dataTransfer.setData('text/plain', props.task.id)
+    event.dataTransfer.effectAllowed = 'move'
+  }
+
+  emit('dragStart', props.task, event)
+}
+
+// 拖拽结束
+function handleDragEnd(event: DragEvent) {
+  console.log('[KanbanCard] handleDragEnd:', props.task.id)
+  emit('dragEnd', event)
+}
+
+function handleDragOver(event: DragEvent) {
+  event.preventDefault()
+  emit('cardDragOver', event)
+}
+
+function handleDragEnter(event: DragEvent) {
+  emit('cardDragEnter', event)
+}
+
+function handleDragLeave(event: DragEvent) {
+  emit('cardDragLeave', event)
+}
+
+function handleDrop(event: DragEvent) {
+  emit('cardDrop', event)
 }
 
 // 点击卡片
@@ -85,6 +128,12 @@ function handleEdit(event: Event) {
   event.stopPropagation()
   emit('edit', props.task)
 }
+
+// 删除任务
+function handleDelete(event: Event) {
+  event.stopPropagation()
+  emit('delete', props.task)
+}
 </script>
 
 <template>
@@ -97,35 +146,62 @@ function handleEdit(event: Event) {
     }"
     :draggable="canDrag"
     @dragstart="handleDragStart"
+    @dragend="handleDragEnd"
+    @dragover="handleDragOver"
+    @dragenter="handleDragEnter"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
     @click="handleClick"
   >
     <div class="card-header">
       <span class="task-title">{{ task.title }}</span>
-      <span class="priority-badge" :class="getPriorityColor(task.priority)">
+      <span
+        class="priority-badge"
+        :class="getPriorityColor(task.priority)"
+      >
         {{ getPriorityLabel(task.priority) }}
       </span>
     </div>
 
-    <p v-if="task.description" class="task-desc">
+    <p
+      v-if="task.description"
+      class="task-desc"
+    >
       {{ task.description }}
     </p>
 
     <!-- 重试信息 -->
-    <div v-if="task.retryCount > 0 || task.status === 'blocked'" class="retry-info">
-      <span v-if="task.retryCount > 0" class="retry-count">
+    <div
+      v-if="task.retryCount > 0 || task.status === 'blocked'"
+      class="retry-info"
+    >
+      <span
+        v-if="task.retryCount > 0"
+        class="retry-count"
+      >
         重试: {{ task.retryCount }}/{{ task.maxRetries }}
       </span>
-      <span v-if="task.errorMessage" class="error-hint" :title="task.errorMessage">
+      <span
+        v-if="task.errorMessage"
+        class="error-hint"
+        :title="task.errorMessage"
+      >
         ⚠️ 错误
       </span>
     </div>
 
     <div class="card-footer">
       <div class="footer-left">
-        <span v-if="task.assignee" class="assignee">
+        <span
+          v-if="task.assignee"
+          class="assignee"
+        >
           {{ task.assignee }}
         </span>
-        <span v-if="task.dependencies?.length" class="deps">
+        <span
+          v-if="task.dependencies?.length"
+          class="deps"
+        >
           {{ task.dependencies.length }} 依赖
         </span>
       </div>
@@ -138,8 +214,20 @@ function handleEdit(event: Event) {
           title="停止执行"
           @click="handleStop"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="6" y="6" width="12" height="12"/>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <rect
+              x="6"
+              y="6"
+              width="12"
+              height="12"
+            />
           </svg>
         </button>
 
@@ -150,9 +238,16 @@ function handleEdit(event: Event) {
           title="重试"
           @click="handleRetry"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 4v6h6"/>
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M1 4v6h6" />
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
           </svg>
         </button>
 
@@ -163,9 +258,39 @@ function handleEdit(event: Event) {
           title="编辑"
           @click="handleEdit"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
+
+        <!-- 删除按钮 -->
+        <button
+          v-if="showDeleteButton"
+          class="btn-action btn-delete"
+          title="删除"
+          @click="handleDelete"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6" />
+            <path d="M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
           </svg>
         </button>
       </div>
@@ -357,5 +482,31 @@ function handleEdit(event: Event) {
 .btn-edit:hover {
   background-color: var(--color-success-light, #d1fae5);
   color: var(--color-success, #10b981);
+}
+
+.btn-delete:hover {
+  background-color: var(--color-error-light, #fee2e2);
+  color: var(--color-error, #ef4444);
+}
+
+/* 拖拽指示器 */
+.drop-indicator-top {
+  height: 4px;
+  background-color: var(--color-primary, #3b82f6);
+  border-radius: 2px;
+  margin-bottom: 4px;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 拖拽中的卡片样式 */
+.kanban-card.dragging {
+  opacity: 0.5;
+  transform: scale(0.02);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 </style>

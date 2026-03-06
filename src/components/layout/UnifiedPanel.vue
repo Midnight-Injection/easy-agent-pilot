@@ -2,10 +2,15 @@
 import { ref, h, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NTree, TreeOption } from 'naive-ui'
+import { watch as watchFs, type UnwatchFn } from '@tauri-apps/plugin-fs'
 import { useProjectStore, type Project, type FileTreeNode } from '@/stores/project'
 import { useSessionStore, type Session, type SessionStatus } from '@/stores/session'
 import { useLayoutStore, type ProjectTabType } from '@/stores/layout'
 import { useUIStore } from '@/stores/ui'
+import { useTaskStore } from '@/stores/task'
+import { usePlanStore } from '@/stores/plan'
+import { useFileEditorStore } from '@/modules/file-editor'
+import { resolveFileIcon } from '@/utils/fileIcon'
 import { EaIcon, EaButton, EaSkeleton } from '@/components/common'
 import { ProjectCreateModal } from '@/components/project'
 
@@ -33,6 +38,9 @@ const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const layoutStore = useLayoutStore()
 const uiStore = useUIStore()
+const taskStore = useTaskStore()
+const planStore = usePlanStore()
+const fileEditorStore = useFileEditorStore()
 
 // 项目相关状态
 const editingProject = ref<Project | null>(null)
@@ -52,6 +60,8 @@ const expandedKeysMap = ref<Map<string, Set<string>>>(new Map())
 
 // 本地维护的 Tree 数据
 const projectTreeDataMap = ref<Map<string, TreeOption[]>>(new Map())
+const projectWatcherMap = ref<Map<string, UnwatchFn>>(new Map())
+const projectRefreshTimerMap = ref<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
 // 获取项目当前 Tab
 const getProjectTab = (projectId: string): ProjectTabType => {
@@ -59,11 +69,20 @@ const getProjectTab = (projectId: string): ProjectTabType => {
 }
 
 // 设置项目当前 Tab
-const setProjectTab = (projectId: string, tab: ProjectTabType) => {
+const setProjectTab = async (projectId: string, tab: ProjectTabType) => {
   layoutStore.setProjectTab(projectId, tab)
   // 切换到会话 Tab 时加载会话
   if (tab === 'sessions') {
+    stopProjectWatcher(projectId)
     sessionStore.loadSessions(projectId)
+    return
+  }
+
+  if (tab === 'files') {
+    const project = projectStore.projects.find(p => p.id === projectId)
+    if (!project) return
+    await refreshProjectFileTree(project)
+    await startProjectWatcher(project)
   }
 }
 
@@ -79,18 +98,52 @@ const toggleSessionSort = () => {
 }
 
 // 项目是否有展开的会话
-const getProjectSessionCount = (projectId: string): number => {
-  return sessionStore.sessionsByProject(projectId).length
+
+// 格式化导入时间
+const formatImportTime = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (days === 0) return '今天'
+  if (days === 1) return '昨天'
+  if (days < 7) return `${days}天前`
+  if (days < 30) return `${Math.floor(days / 7)}周前`
+  if (days < 365) return `${Math.floor(days / 30)}个月前`
+  return `${Math.floor(days / 365)}年前`
+}
+
+// 点击项目卡片切换展开/收起
+const handleProjectCardClick = async (project: Project) => {
+  projectStore.toggleProjectExpand(project.id)
+
+  if (projectStore.isProjectExpanded(project.id)) {
+    if (getProjectTab(project.id) === 'files') {
+      await refreshProjectFileTree(project)
+      await startProjectWatcher(project)
+    } else {
+      stopProjectWatcher(project.id)
+    }
+  } else {
+    stopProjectWatcher(project.id)
+  }
+
+  // 展开时加载会话
+  if (projectStore.isProjectExpanded(project.id)) {
+    await sessionStore.loadSessions(project.id)
+  }
 }
 
 // 生命周期
-onMounted(() => {
-  projectStore.loadProjects()
+onMounted(async () => {
+  await projectStore.loadProjects()
   document.addEventListener('keydown', handleModalKeydown)
 })
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleModalKeydown)
+  stopAllProjectWatchers()
 })
 
 // ESC 键关闭模态框
@@ -109,8 +162,28 @@ const handleModalKeydown = (e: KeyboardEvent) => {
 }
 
 // ========== 项目操作 ==========
-const handleRefresh = () => {
-  projectStore.loadProjects()
+const handleRefresh = async () => {
+  await projectStore.loadProjects()
+
+  const activeProjectIds = new Set(projectStore.projects.map(p => p.id))
+  Array.from(projectWatcherMap.value.keys()).forEach(projectId => {
+    if (!activeProjectIds.has(projectId)) {
+      stopProjectWatcher(projectId)
+      projectTreeDataMap.value.delete(projectId)
+      expandedKeysMap.value.delete(projectId)
+    }
+  })
+
+  const expandedProjectIds = Array.from(projectStore.expandedProjects)
+  const expandedProjects = projectStore.projects.filter(project => expandedProjectIds.includes(project.id))
+  await Promise.all(expandedProjects.map(async project => {
+    if (getProjectTab(project.id) === 'files') {
+      await refreshProjectFileTree(project)
+      await startProjectWatcher(project)
+    } else {
+      stopProjectWatcher(project.id)
+    }
+  }))
 }
 
 const handleAddProject = () => {
@@ -121,10 +194,6 @@ const handleAddProject = () => {
 const handleEditProject = (project: Project) => {
   editingProject.value = project
   uiStore.openProjectCreateModal()
-}
-
-const handleSelectProject = (id: string) => {
-  projectStore.setCurrentProject(id)
 }
 
 const handleCreateProject = async (data: { name: string; path: string; description?: string }) => {
@@ -150,38 +219,50 @@ const confirmDeleteProject = () => {
   deletingProject.value = null
 }
 
-// 展开/折叠项目
-const handleToggleExpand = async (project: Project, event: Event) => {
-  event.stopPropagation()
-  projectStore.toggleProjectExpand(project.id)
-
-  // 如果是展开且还没有加载文件树，则加载
-  if (projectStore.isProjectExpanded(project.id) && !projectStore.getProjectFileTree(project.id)) {
-    await projectStore.loadProjectFiles(project.id, project.path)
-    initProjectTreeData(project.id)
-    if (!expandedKeysMap.value.has(project.id)) {
-      expandedKeysMap.value.set(project.id, new Set())
-    }
-  }
-
-  // 展开时加载会话
-  if (projectStore.isProjectExpanded(project.id)) {
-    await sessionStore.loadSessions(project.id)
-  }
-}
-
 // ========== 会话操作 ==========
 const handleAddSession = () => {
   uiStore.openSessionCreateModal()
 }
 
-const handleSelectSession = (id: string) => {
+const handleSelectSession = async (id: string) => {
+  uiStore.setMainContentMode('chat')
+
   // 获取会话信息
   const session = sessionStore.sessions.find(s => s.id === id)
   if (session?.projectId) {
     // 确保会话所属的项目被选中
     projectStore.setCurrentProject(session.projectId)
   }
+
+  // 检查会话是否是计划类型（agentType 为 'planner'）
+  if (session?.agentType === 'planner') {
+    // 计划类型的会话，跳转到计划页面
+    // 先加载计划列表
+    if (session?.projectId) {
+      await planStore.loadPlans(session.projectId)
+    }
+    // 切换到计划模式
+    uiStore.setAppMode('plan')
+    return
+  }
+
+  // 检查会话是否关联了计划任务
+  const task = await taskStore.getTaskBySessionId(id)
+  if (task?.planId) {
+    // 会话关联了计划任务，跳转到计划页面
+    // 先加载计划列表（如果还没有加载）
+    if (session?.projectId && planStore.plansByProject(session.projectId).length === 0) {
+      await planStore.loadPlans(session.projectId)
+    }
+    // 设置当前计划
+    planStore.setCurrentPlan(task.planId)
+    // 加载该计划的任务
+    await taskStore.loadTasks(task.planId)
+    // 切换到计划模式
+    uiStore.setAppMode('plan')
+    return
+  }
+
   sessionStore.openSession(id)
 }
 
@@ -298,6 +379,7 @@ const convertToTreeOptions = (nodes: FileTreeNode[], projectId: string): TreeOpt
       if (node.children && node.children.length > 0) {
         option.children = convertToTreeOptions(node.children, projectId)
       } else {
+        // 目录节点默认给空 children，避免 Tree 组件进入无 on-load 的加载态
         option.children = []
       }
     }
@@ -306,16 +388,22 @@ const convertToTreeOptions = (nodes: FileTreeNode[], projectId: string): TreeOpt
   }) as TreeOption[]
 }
 
-const initProjectTreeData = (projectId: string) => {
+const initProjectTreeData = (projectId: string, force: boolean = false) => {
+  if (!force && projectTreeDataMap.value.has(projectId)) {
+    return
+  }
+
   const fileTree = projectStore.getProjectFileTree(projectId)
-  if (!fileTree) return
+  if (!fileTree) {
+    projectTreeDataMap.value.delete(projectId)
+    return
+  }
+
   const treeData = convertToTreeOptions(fileTree, projectId)
   projectTreeDataMap.value.set(projectId, treeData)
 }
 
 const getProjectTreeData = (projectId: string): TreeOption[] => {
-  const cached = projectTreeDataMap.value.get(projectId)
-  if (cached) return cached
   initProjectTreeData(projectId)
   return projectTreeDataMap.value.get(projectId) || []
 }
@@ -325,126 +413,181 @@ const getProjectExpandedKeys = (projectId: string): string[] => {
   return keys ? Array.from(keys) : []
 }
 
-const handleTreeLoad = async (node: TreeOption): Promise<unknown> => {
+const findTreeNodeByKey = (nodes: TreeOption[], key: string): (TreeOption & { nodeType?: string }) | null => {
+  for (const node of nodes) {
+    if (String(node.key) === key) {
+      return node as (TreeOption & { nodeType?: string })
+    }
+    if (node.children?.length) {
+      const matched = findTreeNodeByKey(node.children as TreeOption[], key)
+      if (matched) {
+        return matched
+      }
+    }
+  }
+  return null
+}
+
+const loadChildrenForNode = async (node: TreeOption): Promise<void> => {
   const projectId = (node as any).projectId as string
   const nodePath = node.key as string
 
   if (!projectId) {
-    return Promise.resolve()
+    return
   }
 
-  try {
-    const children = await projectStore.loadDirectoryChildren(nodePath)
-
-    node.children = children.map(child => {
-      const isFile = child.nodeType === 'file'
-      const option: TreeOption = {
-        key: child.path,
-        label: child.name,
-        isLeaf: isFile,
-        nodeType: child.nodeType,
-        extension: child.extension,
-        projectId: projectId
-      }
-      if (!isFile) {
-        option.children = []
-      }
-      return option
-    }) as TreeOption[]
-
-    return Promise.resolve()
-  } catch (error) {
-    console.error('[handleTreeLoad] 加载失败:', error)
-    return Promise.reject(error)
-  }
+  const children = await projectStore.loadDirectoryChildren(nodePath)
+  node.children = children.map(child => {
+    const isFile = child.nodeType === 'file'
+    const option: TreeOption = {
+      key: child.path,
+      label: child.name,
+      isLeaf: isFile,
+      nodeType: child.nodeType,
+      extension: child.extension,
+      projectId: projectId
+    }
+    if (!isFile) {
+      option.children = []
+    }
+    return option
+  }) as TreeOption[]
 }
 
-const handleTreeExpand = (expandedKeys: string[], projectId: string) => {
-  expandedKeysMap.value.set(projectId, new Set(expandedKeys))
+const handleTreeExpand = async (expandedKeys: string[], projectId: string) => {
+  const previousKeys = expandedKeysMap.value.get(projectId) || new Set<string>()
+  const currentKeys = new Set(expandedKeys)
+  expandedKeysMap.value.set(projectId, currentKeys)
+
+  const justExpandedKeys = expandedKeys.filter(key => !previousKeys.has(key))
+  if (justExpandedKeys.length === 0) {
+    return
+  }
+
+  const treeData = getProjectTreeData(projectId)
+  const targetNodes = justExpandedKeys
+    .map(key => findTreeNodeByKey(treeData, key))
+    .filter((node): node is TreeOption & { nodeType?: string } => !!node)
+    .filter(node => node.nodeType === 'directory' || node.isLeaf === false)
+
+  await Promise.all(targetNodes.map(async node => {
+    try {
+      // 每次展开目录都重新查询目录内容，避免使用历史数据缓存
+      await loadChildrenForNode(node)
+    } catch (error) {
+      console.error('[handleTreeExpand] 加载目录失败:', error)
+    }
+  }))
 }
 
-// 文件图标
-const getFileIcon = (nodeType: string, extension?: string): string => {
-  if (nodeType === 'directory') {
-    return 'folder'
+const handleFileSelect = async (
+  keys: Array<string | number>,
+  options: Array<TreeOption | null> = [],
+  project: Project
+) => {
+  if (!keys.length) {
+    return
   }
 
-  const ext = extension?.toLowerCase()
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-    case 'js':
-    case 'jsx':
-    case 'vue':
-    case 'json':
-    case 'css':
-    case 'scss':
-    case 'less':
-    case 'html':
-    case 'py':
-    case 'rs':
-    case 'go':
-    case 'java':
-      return 'file-code'
-    case 'md':
-      return 'file-text'
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'svg':
-      return 'image'
-    default:
-      return 'file'
-  }
-}
+  const selectedPath = String(keys[0])
+  const selectedNodeFromEvent = (options[0] ?? null) as (TreeOption & { nodeType?: string }) | null
+  const selectedNode = selectedNodeFromEvent
+    ?? findTreeNodeByKey(getProjectTreeData(project.id), selectedPath)
 
-const getFileIconColor = (nodeType: string, extension?: string): string => {
-  if (nodeType === 'directory') {
-    return 'var(--color-text-secondary)'
+  if (selectedNode?.nodeType === 'directory' || selectedNode?.isLeaf === false) {
+    return
   }
 
-  const ext = extension?.toLowerCase()
-  switch (ext) {
-    case 'ts':
-    case 'tsx':
-      return '#3178c6'
-    case 'js':
-    case 'jsx':
-      return '#f7df1e'
-    case 'vue':
-      return '#42b883'
-    case 'json':
-      return '#cbcb41'
-    case 'md':
-      return '#519aba'
-    case 'py':
-      return '#3776ab'
-    case 'rs':
-      return '#dea584'
-    case 'go':
-      return '#00add8'
-    case 'java':
-      return '#b07219'
-    default:
-      return 'var(--color-text-tertiary)'
-  }
+  projectStore.setCurrentProject(project.id)
+
+  await fileEditorStore.openFile({
+    projectId: project.id,
+    projectPath: project.path,
+    filePath: selectedPath
+  })
 }
 
 // 自定义节点渲染
 const renderTreeLabel = ({ option }: TreeRenderProps) => {
   const nodeType = (option as any).nodeType as string
+  const fileName = option.label as string
   const extension = (option as any).extension as string | undefined
+  const iconMeta = resolveFileIcon(nodeType, fileName, extension)
 
   return h('div', { class: 'file-tree-node__content' }, [
     h(EaIcon, {
-      name: getFileIcon(nodeType, extension),
+      name: iconMeta.icon,
       size: 14,
       class: 'file-tree-node__icon',
-      style: { color: getFileIconColor(nodeType, extension) }
+      style: { color: iconMeta.color }
     }),
-    h('span', { class: 'file-tree-node__name' }, option.label as string)
+    h('span', { class: 'file-tree-node__name' }, fileName)
   ])
+}
+
+const refreshProjectFileTree = async (project: Project) => {
+  await projectStore.refreshFileTree(project.id, project.path)
+  initProjectTreeData(project.id, true)
+  if (!expandedKeysMap.value.has(project.id)) {
+    expandedKeysMap.value.set(project.id, new Set())
+  }
+}
+
+const scheduleProjectTreeRefresh = (project: Project) => {
+  const oldTimer = projectRefreshTimerMap.value.get(project.id)
+  if (oldTimer) {
+    clearTimeout(oldTimer)
+  }
+
+  const timer = setTimeout(async () => {
+    projectRefreshTimerMap.value.delete(project.id)
+
+    if (!projectStore.isProjectExpanded(project.id)) {
+      return
+    }
+
+    await refreshProjectFileTree(project)
+  }, 250)
+
+  projectRefreshTimerMap.value.set(project.id, timer)
+}
+
+const stopProjectWatcher = (projectId: string) => {
+  const timer = projectRefreshTimerMap.value.get(projectId)
+  if (timer) {
+    clearTimeout(timer)
+    projectRefreshTimerMap.value.delete(projectId)
+  }
+
+  const unwatch = projectWatcherMap.value.get(projectId)
+  if (unwatch) {
+    unwatch()
+    projectWatcherMap.value.delete(projectId)
+  }
+}
+
+const stopAllProjectWatchers = () => {
+  Array.from(projectWatcherMap.value.keys()).forEach(stopProjectWatcher)
+}
+
+const startProjectWatcher = async (project: Project) => {
+  stopProjectWatcher(project.id)
+
+  try {
+    const unwatch = await watchFs(
+      project.path,
+      () => {
+        scheduleProjectTreeRefresh(project)
+      },
+      {
+        recursive: true,
+        delayMs: 300
+      }
+    )
+    projectWatcherMap.value.set(project.id, unwatch)
+  } catch (error) {
+    console.error('[UnifiedPanel] 启动目录监听失败:', error)
+  }
 }
 </script>
 
@@ -610,55 +753,58 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
             role="listitem"
             :aria-selected="project.id === projectStore.currentProjectId"
             :aria-expanded="projectStore.isProjectExpanded(project.id)"
-            @click="handleSelectProject(project.id)"
-            @keydown.enter="handleSelectProject(project.id)"
-            @keydown.space.prevent="handleSelectProject(project.id)"
+            @click="handleProjectCardClick(project)"
+            @keydown.enter="handleProjectCardClick(project)"
+            @keydown.space.prevent="handleProjectCardClick(project)"
           >
-            <!-- 展开/折叠按钮 -->
-            <button
-              class="project-item__expand"
-              :class="{ 'project-item__expand--expanded': projectStore.isProjectExpanded(project.id) }"
-              :title="t('unified.toggleExpand')"
-              @click="handleToggleExpand(project, $event)"
-            >
+            <!-- 展开/折叠箭头 -->
+            <div class="project-item__arrow">
               <EaIcon
                 :name="projectStore.isFileTreeLoading(project.id) ? 'loader' : 'chevron-right'"
                 :size="14"
-                :class="{ 'animate-spin': projectStore.isFileTreeLoading(project.id) }"
+                :class="{
+                  'project-item__arrow--expanded': projectStore.isProjectExpanded(project.id),
+                  'animate-spin': projectStore.isFileTreeLoading(project.id)
+                }"
               />
-            </button>
-            <EaIcon
-              name="folder"
-              :size="16"
-              class="project-item__icon"
-            />
-            <span class="project-item__name">{{ project.name }}</span>
-            <span
-              v-if="getProjectSessionCount(project.id) > 0"
-              class="project-item__badge"
-            >
-              {{ getProjectSessionCount(project.id) }}
-            </span>
-            <button
-              class="project-item__edit"
-              :title="t('common.edit')"
-              @click.stop="handleEditProject(project)"
-            >
-              <EaIcon
-                name="edit-2"
-                :size="12"
-              />
-            </button>
-            <button
-              class="project-item__delete"
-              :title="t('common.delete')"
-              @click.stop="handleDeleteProject(project)"
-            >
-              <EaIcon
-                name="x"
-                :size="12"
-              />
-            </button>
+            </div>
+            <!-- 项目图标 -->
+            <div class="project-item__icon">
+              <EaIcon name="folder" :size="18" />
+            </div>
+            <!-- 项目信息 -->
+            <div class="project-item__info">
+              <div class="project-item__header">
+                <span class="project-item__name">{{ project.name }}</span>
+              </div>
+              <div class="project-item__meta">
+                <span class="project-item__time">{{ formatImportTime(project.createdAt) }}导入</span>
+                <span
+                  class="project-item__session-count"
+                  :class="{ 'project-item__session-count--has': project.sessionCount && project.sessionCount > 0 }"
+                >
+                  <EaIcon name="message-square" :size="10" />
+                  {{ project.sessionCount || 0 }} 会话
+                </span>
+              </div>
+            </div>
+            <!-- 操作按钮 -->
+            <div class="project-item__actions">
+              <button
+                class="project-item__action-btn"
+                :title="t('common.edit')"
+                @click.stop="handleEditProject(project)"
+              >
+                <EaIcon name="edit-2" :size="12" />
+              </button>
+              <button
+                class="project-item__action-btn project-item__action-btn--danger"
+                :title="t('common.delete')"
+                @click.stop="handleDeleteProject(project)"
+              >
+                <EaIcon name="x" :size="12" />
+              </button>
+            </div>
           </div>
 
           <!-- 展开内容 -->
@@ -791,18 +937,27 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
                         v-if="session.agentType"
                         class="session-item__meta-item"
                       >
-                        <EaIcon name="bot" :size="10" />
+                        <EaIcon
+                          name="bot"
+                          :size="10"
+                        />
                         {{ session.agentType }}
                       </span>
                       <span
                         v-if="session.messageCount"
                         class="session-item__meta-item"
                       >
-                        <EaIcon name="message-square" :size="10" />
+                        <EaIcon
+                          name="message-square"
+                          :size="10"
+                        />
                         {{ session.messageCount }} 条
                       </span>
                       <span class="session-item__meta-item session-item__meta-item--created">
-                        <EaIcon name="calendar" :size="10" />
+                        <EaIcon
+                          name="calendar"
+                          :size="10"
+                        />
                         {{ formatDate(session.createdAt) }}
                       </span>
                     </div>
@@ -887,16 +1042,16 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
                 />
               </div>
               <n-tree
-                v-else-if="projectStore.getProjectFileTree(project.id)"
+                v-else
                 :data="getProjectTreeData(project.id)"
                 :expanded-keys="getProjectExpandedKeys(project.id)"
-                :render_label="renderTreeLabel"
-                :on-load="handleTreeLoad"
+                :render-label="renderTreeLabel"
                 block-line
                 expand-on-click
                 selectable
                 class="file-tree__n-tree"
                 @update:expanded-keys="(keys: string[]) => handleTreeExpand(keys, project.id)"
+                @update:selected-keys="(keys: string[], options: Array<TreeOption | null>) => handleFileSelect(keys, options, project)"
               />
             </div>
           </div>
@@ -1074,8 +1229,11 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
 }
 
 .unified-panel__content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  overflow: hidden;
   padding: var(--spacing-2);
 }
 
@@ -1083,6 +1241,9 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
 .project-list {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   gap: var(--spacing-1);
 }
 
@@ -1090,111 +1251,137 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
-  border-radius: var(--radius-md);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast) var(--easing-default);
   position: relative;
   outline: none;
+  background-color: var(--color-surface);
+  border: 1px solid transparent;
 }
 
 .project-item:hover {
-  background-color: var(--color-primary-light);
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border);
 }
 
 .project-item:focus-visible {
-  background-color: var(--color-primary-light);
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }
 
 .project-item--active {
   background-color: var(--color-primary-light);
-  box-shadow: inset 0 0 0 1px var(--color-primary);
+  border-color: var(--color-primary);
 }
 
-.project-item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 3px;
-  background-color: var(--color-primary);
-  border-radius: 0 2px 2px 0;
-}
-
-.project-item__expand {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--color-text-tertiary);
-  cursor: pointer;
-  transition: all var(--transition-fast) var(--easing-default);
-  border-radius: var(--radius-sm);
-}
-
-.project-item__expand:hover {
+.project-item--expanded {
   background-color: var(--color-surface-hover);
-  color: var(--color-text-secondary);
+  border-color: var(--color-primary);
 }
 
-.project-item__expand--expanded {
-  transform: rotate(90deg);
-}
-
-.project-item__icon {
-  flex-shrink: 0;
-  color: var(--color-text-secondary);
-}
-
-.project-item--active .project-item__icon {
-  color: var(--color-primary);
-}
-
-.project-item__name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-size-sm);
-}
-
-.project-item:hover .project-item__name {
-  color: var(--color-primary);
-}
-
-.project-item--active .project-item__name {
-  color: var(--color-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.project-item__badge {
+.project-item__arrow {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  background-color: var(--color-primary);
-  color: var(--color-text-inverse);
-  border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-}
-
-.project-item__edit,
-.project-item__delete {
-  display: none;
   align-items: center;
   justify-content: center;
   width: 20px;
   height: 20px;
+  color: var(--color-text-tertiary);
+  transition: transform var(--transition-fast) var(--easing-default);
+}
+
+.project-item__arrow--expanded {
+  transform: rotate(90deg);
+}
+
+.project-item__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.project-item--active .project-item__icon,
+.project-item--expanded .project-item__icon {
+  background-color: var(--color-primary);
+  color: white;
+}
+
+.project-item__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.project-item__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.project-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+}
+
+.project-item__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+.project-item__time {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.project-item__session-count {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+}
+
+.project-item__session-count--has {
+  background-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.project-item__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--transition-fast) var(--easing-default);
+}
+
+.project-item:hover .project-item__actions {
+  opacity: 1;
+}
+
+.project-item__action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: var(--radius-sm);
   color: var(--color-text-tertiary);
   background: transparent;
@@ -1203,17 +1390,12 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
   transition: all var(--transition-fast) var(--easing-default);
 }
 
-.project-item:hover .project-item__edit,
-.project-item:hover .project-item__delete {
-  display: flex;
-}
-
-.project-item__edit:hover {
+.project-item__action-btn:hover {
   background-color: var(--color-primary-light);
   color: var(--color-primary);
 }
 
-.project-item__delete:hover {
+.project-item__action-btn--danger:hover {
   background-color: var(--color-error-light);
   color: var(--color-error);
 }
@@ -1225,6 +1407,14 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   margin-bottom: var(--spacing-1);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  max-width: calc(100% - var(--spacing-4));
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-height: 220px;
 }
 
 /* Tab 切换 */
@@ -1234,11 +1424,17 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
   padding: var(--spacing-1);
   border-bottom: 1px solid var(--color-border);
   gap: var(--spacing-1);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .tab-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
   gap: var(--spacing-1);
   padding: var(--spacing-1) var(--spacing-2);
   border-radius: var(--radius-sm);
@@ -1287,8 +1483,15 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
 
 /* Tab 内容 */
 .tab-content {
-  max-height: 300px;
+  flex: 1 1 auto;
+  height: 0;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  max-height: none;
+  overflow-x: hidden;
   overflow-y: auto;
+  box-sizing: border-box;
   scrollbar-width: thin;
   scrollbar-color: var(--color-border) transparent;
 }
@@ -1311,6 +1514,10 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
 }
 
 .tab-content--files {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
   padding: var(--spacing-1);
 }
 
@@ -1320,6 +1527,11 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
   flex-direction: column;
   gap: var(--spacing-2);
   padding: var(--spacing-2);
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .session-item {
@@ -1637,6 +1849,11 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
   --n-arrow-color: var(--color-text-tertiary) !important;
   --n-line-color: var(--color-border) !important;
   padding: var(--spacing-1) 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: auto;
+  box-sizing: border-box;
 }
 
 .file-tree__n-tree :deep(.n-tree-node) {
@@ -1644,7 +1861,7 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
 }
 
 .file-tree__n-tree :deep(.n-tree-node-content) {
-  padding: 4px 8px !important;
+  padding: 5px 10px !important;
   border-radius: var(--radius-sm);
 }
 
@@ -1661,22 +1878,31 @@ const renderTreeLabel = ({ option }: TreeRenderProps) => {
   opacity: 0.6;
 }
 
-.file-tree__n-tree .file-tree-node__content {
+.file-tree__n-tree :deep(.file-tree-node__content) {
   display: flex;
   align-items: center;
-  gap: var(--spacing-1);
+  gap: var(--spacing-2);
   width: 100%;
+  min-width: 0;
 }
 
-.file-tree__n-tree .file-tree-node__icon {
+.file-tree__n-tree :deep(.file-tree-node__icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
-.file-tree__n-tree .file-tree-node__name {
+.file-tree__n-tree :deep(.file-tree-node__name) {
+  display: flex;
+  align-items: center;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.35;
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }

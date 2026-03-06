@@ -278,6 +278,7 @@ export default {
       skills: 'Skills',
       plugins: 'Plugins',
       theme: '主题',
+      lsp: 'LSP 服务管理',
       data: '数据管理',
       providerSwitch: '配置切换'
     },
@@ -743,6 +744,23 @@ export default {
       themeColorDesc: '选择预设主题色，个性化您的使用体验',
       themeColorApplied: '主题色已应用'
     },
+    lsp: {
+      title: 'LSP 服务管理',
+      storageTitle: 'LSP 存储路径',
+      storageDesc: '所有语言 LSP 下载内容统一存储在持久化目录下',
+      serverListTitle: '语言 LSP 列表',
+      manualOnly: '仅支持手动下载，不会在打开文件时自动下载。',
+      installed: '已下载',
+      notInstalled: '未下载',
+      installedAt: '下载时间',
+      download: '下载',
+      remove: '删除',
+      downloadSuccess: 'LSP 下载成功',
+      downloadFailed: 'LSP 下载失败',
+      removeSuccess: 'LSP 删除成功',
+      removeFailed: 'LSP 删除失败',
+      loadFailed: '加载 LSP 列表失败'
+    },
     data: {
       dataPath: '数据路径',
       dataLocation: '数据存储位置',
@@ -1048,5 +1066,26 @@ export default {
   languages: {
     'zh-CN': '简体中文',
     'en-US': 'English'
+  },
+
+  // MCP 插件选择器
+  mcpSelector: {
+    selected: '已选 {enabled}/{total} 个插件',
+    noPlugins: '无可用插件',
+    selectAll: '全选'
+  },
+
+  // 文件引用
+  fileMention: {
+    searchFiles: '搜索文件...',
+    noFiles: '没有找到文件',
+    loading: '加载中...',
+    selectFile: '选择文件',
+    back: '返回',
+    enterDir: '进入目录',
+    backToRoot: '返回根目录',
+    navigate: '导航',
+    select: '选择',
+    close: '关闭'
   }
 }

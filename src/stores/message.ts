@@ -43,6 +43,8 @@ export interface Message {
   tokens?: number
   errorMessage?: string
   toolCalls?: ToolCall[]
+  // 思考内容（扩展思维模型的思考过程）
+  thinking?: string
   createdAt: string
   // 压缩消息的元数据
   compressionMetadata?: CompressionMetadata
@@ -66,6 +68,7 @@ interface RustMessage {
   tokens: number | null
   error_message: string | null
   tool_calls: RustToolCall[] | null
+  thinking: string | null
   created_at: string
 }
 
@@ -83,6 +86,7 @@ interface CreateMessageInput {
   tokens?: number
   error_message?: string
   tool_calls?: string // JSON string
+  thinking?: string
 }
 
 interface UpdateMessageInput {
@@ -91,6 +95,7 @@ interface UpdateMessageInput {
   tokens?: number
   error_message?: string
   tool_calls?: string // JSON string
+  thinking?: string
 }
 
 // 分页状态
@@ -121,6 +126,7 @@ function transformMessage(rustMsg: RustMessage): Message {
     tokens: rustMsg.tokens ?? undefined,
     errorMessage: rustMsg.error_message ?? undefined,
     toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
+    thinking: rustMsg.thinking ?? undefined,
     createdAt: rustMsg.created_at
   }
 }
@@ -256,7 +262,8 @@ export const useMessageStore = defineStore('message', () => {
       status: message.status,
       tokens: message.tokens,
       error_message: message.errorMessage,
-      tool_calls: message.toolCalls ? JSON.stringify(message.toolCalls) : undefined
+      tool_calls: message.toolCalls ? JSON.stringify(message.toolCalls) : undefined,
+      thinking: message.thinking
     }
 
     try {
@@ -283,6 +290,7 @@ export const useMessageStore = defineStore('message', () => {
     if (updates.tokens !== undefined) input.tokens = updates.tokens
     if (updates.errorMessage !== undefined) input.error_message = updates.errorMessage
     if (updates.toolCalls !== undefined) input.tool_calls = JSON.stringify(updates.toolCalls)
+    if (updates.thinking !== undefined) input.thinking = updates.thinking
 
     try {
       const rustMsg = await invoke<RustMessage>('update_message', { id, input })

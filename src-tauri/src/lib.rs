@@ -33,6 +33,10 @@ pub fn run() {
                 eprintln!("Failed to initialize database: {}", e);
             }
 
+            // 初始化策略注册表
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(commands::conversation::init_registry());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -112,10 +116,19 @@ pub fn run() {
             commands::project::validate_project_path,
             commands::project::list_project_files,
             commands::project::load_directory_children,
+            commands::project::list_all_project_files_flat,
             commands::project::rename_file,
             commands::project::delete_file,
             commands::project::batch_delete_files,
             commands::project::move_file,
+            commands::file_editor::read_project_file,
+            commands::file_editor::write_project_file,
+            commands::file_editor::detect_file_language,
+            commands::lsp::get_lsp_storage_dir,
+            commands::lsp::list_lsp_servers,
+            commands::lsp::download_lsp_server,
+            commands::lsp::remove_lsp_server,
+            commands::lsp::activate_lsp_for_file,
             commands::session::list_sessions,
             commands::session::create_session,
             commands::session::update_session,
@@ -175,6 +188,7 @@ pub fn run() {
             commands::cli_config::update_cli_mcp_config,
             commands::cli_config::delete_cli_mcp_config,
             commands::cli_config::open_config_file,
+            commands::cli_config::get_cli_capabilities,
             // Provider Profile commands (CC-Switch)
             commands::provider_profile::list_provider_profiles,
             commands::provider_profile::get_provider_profile,
@@ -200,6 +214,8 @@ pub fn run() {
             commands::conversation::execute_claude_cli,
             commands::conversation::execute_codex_cli,
             commands::conversation::execute_claude_sdk,
+            commands::conversation::execute_codex_sdk,
+            commands::conversation::executor::execute_agent,
             commands::conversation::abort_cli_execution,
             commands::conversation::abort_sdk_execution,
             // Plan Mode commands

@@ -8,6 +8,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useProjectStore, type Project } from '@/stores/project'
 import { useUIStore } from '@/stores/ui'
+import { useFileEditorStore } from '@/modules/file-editor'
 import { EaIcon, EaButton, EaSkeleton } from '@/components/common'
 import PanelHeader from './PanelHeader.vue'
 import { ProjectCreateModal } from '@/components/project'
@@ -28,6 +29,7 @@ defineEmits<{
 
 const projectStore = useProjectStore()
 const uiStore = useUIStore()
+const fileEditorStore = useFileEditorStore()
 
 const editingProject = ref<Project | null>(null)
 const showDeleteConfirm = ref(false)
@@ -55,8 +57,15 @@ const handleModalKeydown = (e: KeyboardEvent) => {
   }
 }
 
-const handleRefresh = () => {
-  projectStore.loadProjects()
+const handleRefresh = async () => {
+  await projectStore.loadProjects()
+
+  const expandedProjectIds = Array.from(projectStore.expandedProjects)
+  const expandedProjects = projectStore.projects.filter(project => expandedProjectIds.includes(project.id))
+
+  await Promise.all(
+    expandedProjects.map(project => projectStore.refreshFileTree(project.id, project.path))
+  )
 }
 
 const handleAdd = () => {
@@ -106,17 +115,19 @@ const handleToggleExpand = async (project: Project, event: Event) => {
 
   const isNowExpanded = projectStore.isProjectExpanded(project.id)
 
-  // 如果是展开且还没有加载文件树，则加载
-  const existingTree = projectStore.getProjectFileTree(project.id)
-
-  if (isNowExpanded && !existingTree) {
-    await projectStore.loadProjectFiles(project.id, project.path)
+  // 每次展开都主动刷新，避免历史缓存导致文件列表不是最新
+  if (isNowExpanded) {
+    await projectStore.refreshFileTree(project.id, project.path)
   }
 }
 
 // 处理文件选择
-const handleFileSelect = (path: string) => {
-  console.log('[ProjectPanel] File selected:', path)
+const handleFileSelect = async (path: string, project: Project) => {
+  await fileEditorStore.openFile({
+    projectId: project.id,
+    projectPath: project.path,
+    filePath: path
+  })
 }
 </script>
 
@@ -319,18 +330,12 @@ const handleFileSelect = (path: string) => {
               />
             </div>
             <FileTree
-              v-else-if="projectStore.getProjectFileTree(project.id)"
+              v-else
               :project-id="project.id"
               :project-path="project.path"
               class="file-tree__content"
-              @file-select="handleFileSelect"
+              @file-select="(path: string) => handleFileSelect(path, project)"
             />
-            <div
-              v-else
-              class="file-tree__empty"
-            >
-              <span style="color: var(--color-text-tertiary); font-size: var(--font-size-xs);">暂无文件</span>
-            </div>
           </div>
         </template>
       </div>

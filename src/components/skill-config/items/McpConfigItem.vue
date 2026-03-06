@@ -49,14 +49,25 @@ function getCommandDisplay() {
 </script>
 
 <template>
-  <div class="mcp-config-item" :class="{ 'mcp-config-item--disabled': !config.enabled }">
+  <div
+    class="mcp-config-item"
+    :class="{ 'mcp-config-item--disabled': !config.enabled }"
+  >
     <div class="mcp-config-item__header">
       <div class="mcp-config-item__name">
-        <EaIcon name="lucide:folder" class="mcp-config-item__icon" />
+        <EaIcon
+          name="lucide:folder"
+          class="mcp-config-item__icon"
+        />
         <span>{{ config.name }}</span>
       </div>
       <div class="mcp-config-item__actions">
-        <EaButton size="small" variant="ghost" class="btn-test" @click="emit('test', config)">
+        <EaButton
+          size="small"
+          variant="ghost"
+          class="btn-test"
+          @click="emit('test', config)"
+        >
           <EaIcon name="lucide:play" />
           {{ t('settings.mcp.testConnection') }}
         </EaButton>
@@ -94,7 +105,10 @@ function getCommandDisplay() {
         <EaIcon name="lucide:map-pin" />
         {{ getScopeLabel(config.scope) }}
       </span>
-      <span v-if="config.source === 'file'" class="mcp-config-item__tag mcp-config-item__tag--file">
+      <span
+        v-if="config.source === 'file'"
+        class="mcp-config-item__tag mcp-config-item__tag--file"
+      >
         <EaIcon name="lucide:file-text" />
         CLI
       </span>

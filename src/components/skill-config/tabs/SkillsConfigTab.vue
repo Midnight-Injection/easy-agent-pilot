@@ -23,26 +23,49 @@ const { t } = useI18n()
 <template>
   <div class="skills-config-tab">
     <div class="skills-config-tab__header">
-      <h3 class="skills-config-tab__title">{{ t('settings.sdkConfig.skills.title') }}</h3>
-      <div v-if="!isReadOnly" class="skills-config-tab__actions">
-        <EaButton size="small" @click="emit('add')">
+      <h3 class="skills-config-tab__title">
+        {{ t('settings.sdkConfig.skills.title') }}
+      </h3>
+      <div
+        v-if="!isReadOnly"
+        class="skills-config-tab__actions"
+      >
+        <EaButton
+          size="small"
+          @click="emit('add')"
+        >
           <EaIcon name="lucide:plus" />
           {{ t('settings.sdkConfig.skills.add') }}
         </EaButton>
       </div>
     </div>
 
-    <div v-if="isLoading" class="skills-config-tab__loading">
-      <EaIcon name="lucide:loader-2" class="skills-config-tab__spinner" />
+    <div
+      v-if="isLoading"
+      class="skills-config-tab__loading"
+    >
+      <EaIcon
+        name="lucide:loader-2"
+        class="skills-config-tab__spinner"
+      />
       {{ t('common.loading') }}
     </div>
 
-    <div v-else-if="configs.length === 0" class="skills-config-tab__empty">
-      <EaIcon name="lucide:book-open" class="skills-config-tab__empty-icon" />
+    <div
+      v-else-if="configs.length === 0"
+      class="skills-config-tab__empty"
+    >
+      <EaIcon
+        name="lucide:book-open"
+        class="skills-config-tab__empty-icon"
+      />
       <p>{{ t('settings.sdkConfig.skills.noConfigs') }}</p>
     </div>
 
-    <div v-else class="skills-config-tab__list">
+    <div
+      v-else
+      class="skills-config-tab__list"
+    >
       <SkillConfigItem
         v-for="config in configs"
         :key="config.id"

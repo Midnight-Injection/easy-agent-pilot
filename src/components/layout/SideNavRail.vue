@@ -67,7 +67,7 @@ const isPlanModeActive = () => {
       </button>
 
       <!-- 分隔线 -->
-      <div class="nav-divider"></div>
+      <div class="nav-divider" />
 
       <!-- 计划模式按钮 -->
       <button

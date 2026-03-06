@@ -88,8 +88,14 @@ const fileIcon = computed(() => {
 <template>
   <div class="file-preview">
     <!-- 文件头部 -->
-    <div v-if="filePath" class="file-preview__header">
-      <EaIcon :name="fileIcon" class="file-preview__icon" />
+    <div
+      v-if="filePath"
+      class="file-preview__header"
+    >
+      <EaIcon
+        :name="fileIcon"
+        class="file-preview__icon"
+      />
       <span class="file-preview__path">{{ filePath }}</span>
       <span class="file-preview__type">{{ fileType }}</span>
     </div>
@@ -99,10 +105,13 @@ const fileIcon = computed(() => {
       v-if="isMarkdown"
       class="file-preview__markdown markdown-body"
       v-html="renderedMarkdown"
-    ></div>
+    />
 
     <!-- 代码预览 -->
-    <div v-else-if="isCode" class="file-preview__code">
+    <div
+      v-else-if="isCode"
+      class="file-preview__code"
+    >
       <div class="file-preview__code-header">
         <span class="file-preview__language">{{ codeLanguage }}</span>
       </div>
@@ -110,7 +119,10 @@ const fileIcon = computed(() => {
     </div>
 
     <!-- 纯文本预览 -->
-    <div v-else class="file-preview__text">
+    <div
+      v-else
+      class="file-preview__text"
+    >
       <pre>{{ content }}</pre>
     </div>
   </div>

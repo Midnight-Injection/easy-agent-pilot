@@ -1,6 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
@@ -561,7 +561,10 @@ pub fn export_selected_data(options: ExportOptions) -> Result<ExportData, String
 
 /// 将选定的数据导出到文件
 #[tauri::command]
-pub fn export_selected_to_file(file_path: String, options: ExportOptions) -> Result<String, String> {
+pub fn export_selected_to_file(
+    file_path: String,
+    options: ExportOptions,
+) -> Result<String, String> {
     let data = export_selected_data(options)?;
     let json = serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?;
 

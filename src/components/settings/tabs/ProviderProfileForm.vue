@@ -143,16 +143,29 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="handleClose">
+  <div
+    v-if="visible"
+    class="modal-overlay"
+    @click.self="handleClose"
+  >
     <div class="modal-content">
       <div class="modal-header">
         <h3>{{ modalTitle }}</h3>
-        <button class="close-btn" @click="handleClose">
-          <EaIcon name="close" :size="20" />
+        <button
+          class="close-btn"
+          @click="handleClose"
+        >
+          <EaIcon
+            name="close"
+            :size="20"
+          />
         </button>
       </div>
 
-      <form class="modal-body" @submit.prevent="handleSubmit">
+      <form
+        class="modal-body"
+        @submit.prevent="handleSubmit"
+      >
         <!-- 基本信息 -->
         <div class="form-section">
           <div class="form-group">
@@ -172,7 +185,9 @@ async function handleSubmit() {
         <!-- Claude CLI 配置 -->
         <template v-if="cliType === 'claude'">
           <div class="form-section">
-            <h4 class="section-title">{{ t('settings.providerSwitch.form.claudeConfig') }}</h4>
+            <h4 class="section-title">
+              {{ t('settings.providerSwitch.form.claudeConfig') }}
+            </h4>
 
             <div class="form-group">
               <label class="form-label">{{ t('settings.providerSwitch.form.apiKey') }}</label>
@@ -249,7 +264,9 @@ async function handleSubmit() {
         <!-- Codex CLI 配置 -->
         <template v-if="cliType === 'codex'">
           <div class="form-section">
-            <h4 class="section-title">{{ t('settings.providerSwitch.form.codexConfig') }}</h4>
+            <h4 class="section-title">
+              {{ t('settings.providerSwitch.form.codexConfig') }}
+            </h4>
 
             <div class="form-group">
               <label class="form-label">{{ t('settings.providerSwitch.form.apiKey') }}</label>
@@ -285,7 +302,10 @@ async function handleSubmit() {
       </form>
 
       <div class="modal-footer">
-        <EaButton type="secondary" @click="handleClose">
+        <EaButton
+          type="secondary"
+          @click="handleClose"
+        >
           {{ t('common.cancel') }}
         </EaButton>
         <EaButton

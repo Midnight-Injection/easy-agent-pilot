@@ -23,6 +23,8 @@ export interface Plan {
   projectId: string
   name: string
   description?: string
+  splitAgentId?: string
+  splitModelId?: string
   status: PlanStatus
   executionStatus?: PlanExecutionStatus
   currentTaskId?: string
@@ -62,6 +64,8 @@ export interface CreatePlanInput {
   projectId: string
   name: string
   description?: string
+  splitAgentId?: string
+  splitModelId?: string
   agentTeam?: AgentRole[]
   granularity?: number
   maxRetryCount?: number
@@ -71,6 +75,8 @@ export interface CreatePlanInput {
 export interface UpdatePlanInput {
   name?: string
   description?: string
+  splitAgentId?: string
+  splitModelId?: string
   status?: PlanStatus
   executionStatus?: PlanExecutionStatus
   currentTaskId?: string
@@ -244,7 +250,47 @@ export const AGENT_ROLES: AgentRoleConfig[] = [
 - 将复杂需求拆分为可执行的子任务
 - 确定任务依赖关系和执行顺序
 - 使用动态表单收集必要信息
-- 不要执行具体编码任务`,
+- 不要执行具体编码任务
+
+当需要收集用户信息时，请输出以下 JSON 格式（使用 markdown 代码块）：
+\`\`\`json
+{
+  "type": "form_request",
+  "mode": "schema",
+  "schema": {
+    "formId": "unique-form-id",
+    "title": "表单标题",
+    "description": "表单描述",
+    "fields": [
+      {
+        "name": "fieldName",
+        "label": "字段标签",
+        "type": "text|textarea|select|number|checkbox|...",
+        "required": true,
+        "placeholder": "占位文本"
+      }
+    ],
+    "submitText": "提交"
+  }
+}
+\`\`\`
+
+完成任务拆分时，请输出以下 JSON 格式：
+\`\`\`json
+{
+  "type": "task_split",
+  "tasks": [
+    {
+      "title": "任务标题",
+      "description": "任务描述",
+      "priority": "high|medium|low",
+      "implementationSteps": ["步骤1", "步骤2"],
+      "testSteps": ["测试步骤"],
+      "acceptanceCriteria": ["验收标准"]
+    }
+  ]
+}
+\`\`\``,
     capabilities: ['analyze', 'plan', 'decompose', 'form'],
     triggers: ['规划', '拆分', '计划', '需求']
   }
@@ -291,6 +337,7 @@ export interface SplitMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  rawContent?: string
   formSchema?: DynamicFormSchema
   formValues?: Record<string, any>
   timestamp: string

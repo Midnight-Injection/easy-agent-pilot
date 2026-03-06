@@ -1,6 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 
 /// 计划状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +55,8 @@ pub struct Plan {
     pub project_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub split_agent_id: Option<String>,
+    pub split_model_id: Option<String>,
     pub status: String,
     pub agent_team: Option<Vec<String>>,
     pub granularity: i32,
@@ -72,6 +74,8 @@ pub struct RustPlan {
     pub project_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub split_agent_id: Option<String>,
+    pub split_model_id: Option<String>,
     pub status: String,
     pub agent_team: Option<String>, // JSON 字符串
     pub granularity: i32,
@@ -88,6 +92,8 @@ pub struct CreatePlanInput {
     pub project_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub split_agent_id: Option<String>,
+    pub split_model_id: Option<String>,
     pub agent_team: Option<Vec<String>>,
     pub granularity: Option<i32>,
     pub max_retry_count: Option<i32>,
@@ -98,6 +104,8 @@ pub struct CreatePlanInput {
 pub struct UpdatePlanInput {
     pub name: Option<String>,
     pub description: Option<String>,
+    pub split_agent_id: Option<String>,
+    pub split_model_id: Option<String>,
     pub status: Option<String>,
     pub agent_team: Option<Vec<String>>,
     pub granularity: Option<i32>,
@@ -114,15 +122,17 @@ fn get_db_path() -> Result<std::path::PathBuf> {
 
 /// 将 RustPlan 转换为 Plan
 fn transform_plan(rust_plan: RustPlan) -> Plan {
-    let agent_team = rust_plan.agent_team.and_then(|s| {
-        serde_json::from_str(&s).ok()
-    });
+    let agent_team = rust_plan
+        .agent_team
+        .and_then(|s| serde_json::from_str(&s).ok());
 
     Plan {
         id: rust_plan.id,
         project_id: rust_plan.project_id,
         name: rust_plan.name,
         description: rust_plan.description,
+        split_agent_id: rust_plan.split_agent_id,
+        split_model_id: rust_plan.split_model_id,
         status: rust_plan.status,
         agent_team,
         granularity: rust_plan.granularity,
@@ -144,6 +154,7 @@ pub fn list_plans(project_id: String) -> Result<Vec<Plan>, String> {
         .prepare(
             r#"
             SELECT id, project_id, name, description, status, agent_team,
+                   split_agent_id, split_model_id,
                    granularity, max_retry_count, execution_status, current_task_id,
                    created_at, updated_at
             FROM plans
@@ -162,12 +173,14 @@ pub fn list_plans(project_id: String) -> Result<Vec<Plan>, String> {
                 description: row.get(3)?,
                 status: row.get(4)?,
                 agent_team: row.get(5)?,
-                granularity: row.get(6)?,
-                max_retry_count: row.get(7)?,
-                execution_status: row.get(8)?,
-                current_task_id: row.get(9)?,
-                created_at: row.get(10)?,
-                updated_at: row.get(11)?,
+                split_agent_id: row.get(6)?,
+                split_model_id: row.get(7)?,
+                granularity: row.get(8)?,
+                max_retry_count: row.get(9)?,
+                execution_status: row.get(10)?,
+                current_task_id: row.get(11)?,
+                created_at: row.get(12)?,
+                updated_at: row.get(13)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -190,6 +203,7 @@ pub fn get_plan(id: String) -> Result<Plan, String> {
         .query_row(
             r#"
             SELECT id, project_id, name, description, status, agent_team,
+                   split_agent_id, split_model_id,
                    granularity, max_retry_count, execution_status, current_task_id,
                    created_at, updated_at
             FROM plans
@@ -204,12 +218,14 @@ pub fn get_plan(id: String) -> Result<Plan, String> {
                     description: row.get(3)?,
                     status: row.get(4)?,
                     agent_team: row.get(5)?,
-                    granularity: row.get(6)?,
-                    max_retry_count: row.get(7)?,
-                    execution_status: row.get(8)?,
-                    current_task_id: row.get(9)?,
-                    created_at: row.get(10)?,
-                    updated_at: row.get(11)?,
+                    split_agent_id: row.get(6)?,
+                    split_model_id: row.get(7)?,
+                    granularity: row.get(8)?,
+                    max_retry_count: row.get(9)?,
+                    execution_status: row.get(10)?,
+                    current_task_id: row.get(11)?,
+                    created_at: row.get(12)?,
+                    updated_at: row.get(13)?,
                 })
             },
         )
@@ -228,21 +244,24 @@ pub fn create_plan(input: CreatePlanInput) -> Result<Plan, String> {
     let now = chrono::Utc::now().to_rfc3339();
     let status = "draft".to_string();
     let execution_status = "idle".to_string();
-    let agent_team_json = input.agent_team.as_ref().map(|t| {
-        serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string())
-    });
+    let agent_team_json = input
+        .agent_team
+        .as_ref()
+        .map(|t| serde_json::to_string(t).unwrap_or_else(|_| "[]".to_string()));
     let granularity = input.granularity.unwrap_or(20);
     let max_retry_count = input.max_retry_count.unwrap_or(3);
 
     conn.execute(
-        "INSERT INTO plans (id, project_id, name, description, status, agent_team,
+        "INSERT INTO plans (id, project_id, name, description, split_agent_id, split_model_id, status, agent_team,
          granularity, max_retry_count, execution_status, current_task_id, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             &id,
             &input.project_id,
             &input.name,
             &input.description,
+            &input.split_agent_id,
+            &input.split_model_id,
             &status,
             &agent_team_json,
             &granularity,
@@ -267,6 +286,8 @@ pub fn create_plan(input: CreatePlanInput) -> Result<Plan, String> {
         project_id: input.project_id,
         name: input.name,
         description: input.description,
+        split_agent_id: input.split_agent_id,
+        split_model_id: input.split_model_id,
         status,
         agent_team: input.agent_team,
         granularity,
@@ -296,6 +317,14 @@ pub fn update_plan(id: String, input: UpdatePlanInput) -> Result<Plan, String> {
     }
     if input.description.is_some() {
         updates.push(format!("description = ?{}", param_index));
+        param_index += 1;
+    }
+    if input.split_agent_id.is_some() {
+        updates.push(format!("split_agent_id = ?{}", param_index));
+        param_index += 1;
+    }
+    if input.split_model_id.is_some() {
+        updates.push(format!("split_model_id = ?{}", param_index));
         param_index += 1;
     }
     if input.status.is_some() {
@@ -333,44 +362,64 @@ pub fn update_plan(id: String, input: UpdatePlanInput) -> Result<Plan, String> {
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref name) = input.name {
-        stmt.raw_bind_parameter(param_count, name).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, name)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref description) = input.description {
-        stmt.raw_bind_parameter(param_count, description).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, description)
+            .map_err(|e| e.to_string())?;
+        param_count += 1;
+    }
+    if let Some(ref split_agent_id) = input.split_agent_id {
+        stmt.raw_bind_parameter(param_count, split_agent_id)
+            .map_err(|e| e.to_string())?;
+        param_count += 1;
+    }
+    if let Some(ref split_model_id) = input.split_model_id {
+        stmt.raw_bind_parameter(param_count, split_model_id)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref status) = input.status {
-        stmt.raw_bind_parameter(param_count, status).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, status)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref agent_team) = input.agent_team {
         let json = serde_json::to_string(agent_team).unwrap_or_else(|_| "[]".to_string());
-        stmt.raw_bind_parameter(param_count, json).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, json)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(granularity) = input.granularity {
-        stmt.raw_bind_parameter(param_count, granularity).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, granularity)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(max_retry_count) = input.max_retry_count {
-        stmt.raw_bind_parameter(param_count, max_retry_count).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, max_retry_count)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref execution_status) = input.execution_status {
-        stmt.raw_bind_parameter(param_count, execution_status).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, execution_status)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref current_task_id) = input.current_task_id {
-        stmt.raw_bind_parameter(param_count, current_task_id).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, current_task_id)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
     stmt.raw_execute().map_err(|e| e.to_string())?;
 
     // 获取更新后的计划
@@ -378,6 +427,7 @@ pub fn update_plan(id: String, input: UpdatePlanInput) -> Result<Plan, String> {
         .query_row(
             r#"
             SELECT id, project_id, name, description, status, agent_team,
+                   split_agent_id, split_model_id,
                    granularity, max_retry_count, execution_status, current_task_id,
                    created_at, updated_at
             FROM plans
@@ -392,12 +442,14 @@ pub fn update_plan(id: String, input: UpdatePlanInput) -> Result<Plan, String> {
                     description: row.get(3)?,
                     status: row.get(4)?,
                     agent_team: row.get(5)?,
-                    granularity: row.get(6)?,
-                    max_retry_count: row.get(7)?,
-                    execution_status: row.get(8)?,
-                    current_task_id: row.get(9)?,
-                    created_at: row.get(10)?,
-                    updated_at: row.get(11)?,
+                    split_agent_id: row.get(6)?,
+                    split_model_id: row.get(7)?,
+                    granularity: row.get(8)?,
+                    max_retry_count: row.get(9)?,
+                    execution_status: row.get(10)?,
+                    current_task_id: row.get(11)?,
+                    created_at: row.get(12)?,
+                    updated_at: row.get(13)?,
                 })
             },
         )

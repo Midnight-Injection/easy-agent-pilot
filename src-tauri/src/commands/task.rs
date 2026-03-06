@@ -1,6 +1,6 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
+use serde::{Deserialize, Serialize};
 
 /// 任务状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,8 +66,8 @@ pub struct RustTask {
     pub max_retries: i32,
     pub error_message: Option<String>,
     pub implementation_steps: Option<String>, // JSON 字符串
-    pub test_steps: Option<String>, // JSON 字符串
-    pub acceptance_criteria: Option<String>, // JSON 字符串
+    pub test_steps: Option<String>,           // JSON 字符串
+    pub acceptance_criteria: Option<String>,  // JSON 字符串
     pub created_at: String,
     pub updated_at: String,
 }
@@ -129,18 +129,18 @@ fn get_db_path() -> Result<std::path::PathBuf> {
 
 /// 将 RustTask 转换为 Task
 fn transform_task(rust_task: RustTask) -> Task {
-    let dependencies = rust_task.dependencies.and_then(|s| {
-        serde_json::from_str(&s).ok()
-    });
-    let implementation_steps = rust_task.implementation_steps.and_then(|s| {
-        serde_json::from_str(&s).ok()
-    });
-    let test_steps = rust_task.test_steps.and_then(|s| {
-        serde_json::from_str(&s).ok()
-    });
-    let acceptance_criteria = rust_task.acceptance_criteria.and_then(|s| {
-        serde_json::from_str(&s).ok()
-    });
+    let dependencies = rust_task
+        .dependencies
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let implementation_steps = rust_task
+        .implementation_steps
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let test_steps = rust_task
+        .test_steps
+        .and_then(|s| serde_json::from_str(&s).ok());
+    let acceptance_criteria = rust_task
+        .acceptance_criteria
+        .and_then(|s| serde_json::from_str(&s).ok());
 
     Task {
         id: rust_task.id,
@@ -280,19 +280,23 @@ pub fn create_task(input: CreateTaskInput) -> Result<Task, String> {
     let now = chrono::Utc::now().to_rfc3339();
     let status = "pending".to_string();
     let priority = input.priority.unwrap_or_else(|| "medium".to_string());
-    let dependencies_json = input.dependencies.as_ref().map(|d| {
-        serde_json::to_string(d).unwrap_or_else(|_| "[]".to_string())
-    });
+    let dependencies_json = input
+        .dependencies
+        .as_ref()
+        .map(|d| serde_json::to_string(d).unwrap_or_else(|_| "[]".to_string()));
     let max_retries = input.max_retries.unwrap_or(3);
-    let implementation_steps_json = input.implementation_steps.as_ref().map(|s| {
-        serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string())
-    });
-    let test_steps_json = input.test_steps.as_ref().map(|s| {
-        serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string())
-    });
-    let acceptance_criteria_json = input.acceptance_criteria.as_ref().map(|s| {
-        serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string())
-    });
+    let implementation_steps_json = input
+        .implementation_steps
+        .as_ref()
+        .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
+    let test_steps_json = input
+        .test_steps
+        .as_ref()
+        .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
+    let acceptance_criteria_json = input
+        .acceptance_criteria
+        .as_ref()
+        .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
 
     // 如果没有指定顺序，获取当前最大顺序 + 1
     let task_order = match input.order {
@@ -455,80 +459,99 @@ pub fn update_task(id: String, input: UpdateTaskInput) -> Result<Task, String> {
 
     // 绑定参数
     let mut param_count = 1;
-    stmt.raw_bind_parameter(param_count, &now).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &now)
+        .map_err(|e| e.to_string())?;
     param_count += 1;
 
     if let Some(ref title) = input.title {
-        stmt.raw_bind_parameter(param_count, title).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, title)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref description) = input.description {
-        stmt.raw_bind_parameter(param_count, description).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, description)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref status) = input.status {
-        stmt.raw_bind_parameter(param_count, status).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, status)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref priority) = input.priority {
-        stmt.raw_bind_parameter(param_count, priority).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, priority)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref assignee) = input.assignee {
-        stmt.raw_bind_parameter(param_count, assignee).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, assignee)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref session_id) = input.session_id {
-        stmt.raw_bind_parameter(param_count, session_id).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, session_id)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref progress_file) = input.progress_file {
-        stmt.raw_bind_parameter(param_count, progress_file).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, progress_file)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref dependencies) = input.dependencies {
         let json = serde_json::to_string(dependencies).unwrap_or_else(|_| "[]".to_string());
-        stmt.raw_bind_parameter(param_count, json).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, json)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(order) = input.order {
-        stmt.raw_bind_parameter(param_count, order).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, order)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(retry_count) = input.retry_count {
-        stmt.raw_bind_parameter(param_count, retry_count).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, retry_count)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(max_retries) = input.max_retries {
-        stmt.raw_bind_parameter(param_count, max_retries).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, max_retries)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref error_message) = input.error_message {
-        stmt.raw_bind_parameter(param_count, error_message).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, error_message)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref implementation_steps) = input.implementation_steps {
         let json = serde_json::to_string(implementation_steps).unwrap_or_else(|_| "[]".to_string());
-        stmt.raw_bind_parameter(param_count, json).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, json)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref test_steps) = input.test_steps {
         let json = serde_json::to_string(test_steps).unwrap_or_else(|_| "[]".to_string());
-        stmt.raw_bind_parameter(param_count, json).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, json)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
     if let Some(ref acceptance_criteria) = input.acceptance_criteria {
         let json = serde_json::to_string(acceptance_criteria).unwrap_or_else(|_| "[]".to_string());
-        stmt.raw_bind_parameter(param_count, json).map_err(|e| e.to_string())?;
+        stmt.raw_bind_parameter(param_count, json)
+            .map_err(|e| e.to_string())?;
         param_count += 1;
     }
 
-    stmt.raw_bind_parameter(param_count, &id).map_err(|e| e.to_string())?;
+    stmt.raw_bind_parameter(param_count, &id)
+        .map_err(|e| e.to_string())?;
     stmt.raw_execute().map_err(|e| e.to_string())?;
 
     // 更新计划的 updated_at 时间
     let plan_id: String = conn
-        .query_row("SELECT plan_id FROM tasks WHERE id = ?1", [&id], |row| row.get(0))
+        .query_row("SELECT plan_id FROM tasks WHERE id = ?1", [&id], |row| {
+            row.get(0)
+        })
         .map_err(|e| e.to_string())?;
 
     conn.execute(
@@ -904,7 +927,10 @@ pub fn get_task_by_session_id(session_id: String) -> Result<Option<Task>, String
 
 /// 批量创建任务（从拆分结果）
 #[tauri::command]
-pub fn batch_create_tasks(plan_id: String, tasks: Vec<CreateTaskInput>) -> Result<Vec<Task>, String> {
+pub fn batch_create_tasks(
+    plan_id: String,
+    tasks: Vec<CreateTaskInput>,
+) -> Result<Vec<Task>, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
@@ -925,20 +951,27 @@ pub fn batch_create_tasks(plan_id: String, tasks: Vec<CreateTaskInput>) -> Resul
     for task_input in tasks {
         let id = uuid::Uuid::new_v4().to_string();
         let status = "pending".to_string();
-        let priority = task_input.priority.clone().unwrap_or_else(|| "medium".to_string());
-        let dependencies_json = task_input.dependencies.as_ref().map(|d| {
-            serde_json::to_string(d).unwrap_or_else(|_| "[]".to_string())
-        });
+        let priority = task_input
+            .priority
+            .clone()
+            .unwrap_or_else(|| "medium".to_string());
+        let dependencies_json = task_input
+            .dependencies
+            .as_ref()
+            .map(|d| serde_json::to_string(d).unwrap_or_else(|_| "[]".to_string()));
         let max_retries = task_input.max_retries.unwrap_or(3);
-        let implementation_steps_json = task_input.implementation_steps.as_ref().map(|s| {
-            serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string())
-        });
-        let test_steps_json = task_input.test_steps.as_ref().map(|s| {
-            serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string())
-        });
-        let acceptance_criteria_json = task_input.acceptance_criteria.as_ref().map(|s| {
-            serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string())
-        });
+        let implementation_steps_json = task_input
+            .implementation_steps
+            .as_ref()
+            .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
+        let test_steps_json = task_input
+            .test_steps
+            .as_ref()
+            .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
+        let acceptance_criteria_json = task_input
+            .acceptance_criteria
+            .as_ref()
+            .map(|s| serde_json::to_string(s).unwrap_or_else(|_| "[]".to_string()));
 
         max_order += 1;
         let task_order = task_input.order.unwrap_or(max_order);

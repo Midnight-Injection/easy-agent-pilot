@@ -241,10 +241,7 @@ export const useProjectStore = defineStore('project', () => {
 
   // 加载项目文件树（懒加载模式，只加载第一层）
   async function loadProjectFiles(projectId: string, projectPath: string) {
-    console.log('[loadProjectFiles] 开始加载, projectId:', projectId, 'projectPath:', projectPath)
-
     if (loadingFileTrees.value.has(projectId)) {
-      console.log('[loadProjectFiles] 已经在加载中，跳过')
       return
     }
 
@@ -252,28 +249,12 @@ export const useProjectStore = defineStore('project', () => {
     const notificationStore = useNotificationStore()
 
     try {
-      console.log('[loadProjectFiles] 调用后端 list_project_files...')
       const result = await invoke<FileTreeNode[]>('list_project_files', {
         projectPath
       })
-      console.log('[loadProjectFiles] 后端返回的原始数据:', JSON.stringify(result, null, 2))
-      console.log('[loadProjectFiles] 数据长度:', result?.length)
-
-      if (result && result.length > 0) {
-        result.forEach((node, index) => {
-          console.log(`[loadProjectFiles] 节点 ${index}:`, {
-            name: node.name,
-            path: node.path,
-            nodeType: node.nodeType,
-            hasChildren: !!node.children
-          })
-        })
-      }
-
       projectFileTrees.value.set(projectId, result)
-      console.log('[loadProjectFiles] 文件树已保存到 store')
     } catch (error) {
-      console.error('[loadProjectFiles] 加载失败:', error)
+      console.error('Failed to load project files:', error)
       notificationStore.networkError(
         '加载项目文件',
         getErrorMessage(error),
@@ -281,23 +262,20 @@ export const useProjectStore = defineStore('project', () => {
       )
     } finally {
       loadingFileTrees.value.delete(projectId)
-      console.log('[loadProjectFiles] 加载完成')
     }
   }
 
   // 懒加载目录的子节点
   async function loadDirectoryChildren(dirPath: string): Promise<FileTreeNode[]> {
-    console.log('[loadDirectoryChildren] 开始加载目录:', dirPath)
     const notificationStore = useNotificationStore()
 
     try {
       const result = await invoke<FileTreeNode[]>('load_directory_children', {
         dirPath
       })
-      console.log('[loadDirectoryChildren] 加载结果:', result)
       return result
     } catch (error) {
-      console.error('[loadDirectoryChildren] 加载失败:', error)
+      console.error('Failed to load directory children:', error)
       notificationStore.networkError(
         '加载目录内容',
         getErrorMessage(error),
@@ -323,13 +301,7 @@ export const useProjectStore = defineStore('project', () => {
 
   // 获取项目文件树
   function getProjectFileTree(projectId: string): FileTreeNode[] | undefined {
-    const tree = projectFileTrees.value.get(projectId)
-    console.log('[getProjectFileTree] 获取文件树:', {
-      projectId,
-      hasData: !!tree,
-      dataLength: tree?.length
-    })
-    return tree
+    return projectFileTrees.value.get(projectId)
   }
 
   // 检查文件树是否正在加载

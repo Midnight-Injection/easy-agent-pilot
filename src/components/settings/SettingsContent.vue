@@ -6,6 +6,7 @@ import SkillConfigPage from '@/components/skill-config/SkillConfigPage.vue'
 import ProviderSwitch from './tabs/ProviderSwitch.vue'
 import ThemeSettings from './tabs/ThemeSettings.vue'
 import DataSettings from './tabs/DataSettings.vue'
+import LspSettings from './tabs/LspSettings.vue'
 
 const uiStore = useUIStore()
 </script>
@@ -13,13 +14,20 @@ const uiStore = useUIStore()
 <template>
   <div class="settings-content">
     <!-- SkillConfigPage 需要更大的空间 -->
-    <SkillConfigPage v-if="uiStore.activeSettingsTab === 'agentConfig'" class="settings-content__full" />
+    <SkillConfigPage
+      v-if="uiStore.activeSettingsTab === 'agentConfig'"
+      class="settings-content__full"
+    />
     <!-- 其他设置页面使用固定宽度 -->
-    <div v-else class="settings-content__inner">
+    <div
+      v-else
+      class="settings-content__inner"
+    >
       <GeneralSettings v-if="uiStore.activeSettingsTab === 'general'" />
       <AgentSettings v-else-if="uiStore.activeSettingsTab === 'agents'" />
       <ProviderSwitch v-else-if="uiStore.activeSettingsTab === 'providerSwitch'" />
       <ThemeSettings v-else-if="uiStore.activeSettingsTab === 'theme'" />
+      <LspSettings v-else-if="uiStore.activeSettingsTab === 'lsp'" />
       <DataSettings v-else-if="uiStore.activeSettingsTab === 'data'" />
     </div>
   </div>

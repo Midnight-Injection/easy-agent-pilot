@@ -5,6 +5,20 @@ use std::fs;
 use std::path::PathBuf;
 use tauri_plugin_opener::OpenerExt;
 
+/// CLI 能力信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliCapabilities {
+    /// 是否支持 MCP
+    pub supports_mcp: bool,
+    /// 是否支持 Skills
+    pub supports_skills: bool,
+    /// 是否支持 Plugins
+    pub supports_plugins: bool,
+    /// MCP 添加命令（如果支持）
+    pub mcp_add_command: Option<String>,
+}
+
 /// CLI 配置路径信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,8 +68,7 @@ pub struct McpConfigUpdateInput {
 
 /// 根据 CLI 路径获取配置目录和信息
 fn get_cli_config_paths_internal(cli_path: &str) -> Result<CliConfigPaths, String> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     // 从路径中提取 CLI 名称
     let cli_name = std::path::Path::new(cli_path)
@@ -129,28 +142,55 @@ pub fn read_cli_config(cli_path: String) -> Result<ClaudeCliConfig, String> {
             .map_err(|e| format!("Failed to read config file: {}", e))?;
 
         // 解析 TOML 并转换为 JSON 格式
-        let toml_value: toml::Value = toml::from_str(&content)
-            .map_err(|e| format!("Failed to parse TOML: {}", e))?;
+        let toml_value: toml::Value =
+            toml::from_str(&content).map_err(|e| format!("Failed to parse TOML: {}", e))?;
 
         // 转换 MCP 配置
-        let mcp_servers = if let Some(mcp) = toml_value.get("mcp_servers").or_else(|| toml_value.get("mcpServers")) {
+        let mcp_servers = if let Some(mcp) = toml_value
+            .get("mcp_servers")
+            .or_else(|| toml_value.get("mcpServers"))
+        {
             let mut servers = HashMap::new();
             if let Some(mcp_obj) = mcp.as_table() {
                 for (name, config) in mcp_obj {
                     if let Some(config_obj) = config.as_table() {
                         let server_config = McpServerConfig {
-                            command: config_obj.get("command").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            args: config_obj.get("args").and_then(|v| v.as_array()).map(|arr| {
-                                arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
-                            }),
+                            command: config_obj
+                                .get("command")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            args: config_obj
+                                .get("args")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                        .collect()
+                                }),
                             env: config_obj.get("env").and_then(|v| v.as_table()).map(|obj| {
-                                obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()
+                                obj.iter()
+                                    .filter_map(|(k, v)| {
+                                        v.as_str().map(|s| (k.clone(), s.to_string()))
+                                    })
+                                    .collect()
                             }),
-                            url: config_obj.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                            headers: config_obj.get("headers").and_then(|v| v.as_table()).map(|obj| {
-                                obj.iter().filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string()))).collect()
-                            }),
-                            disabled: config_obj.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false),
+                            url: config_obj
+                                .get("url")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string()),
+                            headers: config_obj.get("headers").and_then(|v| v.as_table()).map(
+                                |obj| {
+                                    obj.iter()
+                                        .filter_map(|(k, v)| {
+                                            v.as_str().map(|s| (k.clone(), s.to_string()))
+                                        })
+                                        .collect()
+                                },
+                            ),
+                            disabled: config_obj
+                                .get("disabled")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false),
                         };
                         servers.insert(name.clone(), server_config);
                     }
@@ -170,8 +210,8 @@ pub fn read_cli_config(cli_path: String) -> Result<ClaudeCliConfig, String> {
         let content = fs::read_to_string(&config_file)
             .map_err(|e| format!("Failed to read config file: {}", e))?;
 
-        let config: ClaudeCliConfig = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse JSON: {}", e))?;
+        let config: ClaudeCliConfig =
+            serde_json::from_str(&content).map_err(|e| format!("Failed to parse JSON: {}", e))?;
 
         Ok(config)
     }
@@ -203,9 +243,10 @@ pub fn write_cli_config(cli_path: String, config: ClaudeCliConfig) -> Result<(),
                     server_table.insert("command".to_string(), toml::Value::String(cmd));
                 }
                 if let Some(args) = server_config.args {
-                    server_table.insert("args".to_string(), toml::Value::Array(
-                        args.into_iter().map(toml::Value::String).collect()
-                    ));
+                    server_table.insert(
+                        "args".to_string(),
+                        toml::Value::Array(args.into_iter().map(toml::Value::String).collect()),
+                    );
                 }
                 if let Some(env) = server_config.env {
                     let env_table: toml::map::Map<String, toml::Value> = env
@@ -312,8 +353,7 @@ pub async fn open_config_file(app: tauri::AppHandle, config_path: String) -> Res
             "{\n}\n".to_string()
         };
 
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to create config file: {}", e))?;
+        fs::write(&path, content).map_err(|e| format!("Failed to create config file: {}", e))?;
     }
 
     // 使用 tauri-plugin-opener 打开文件
@@ -322,4 +362,47 @@ pub async fn open_config_file(app: tauri::AppHandle, config_path: String) -> Res
         .map_err(|e| format!("Failed to open config file: {}", e))?;
 
     Ok(())
+}
+
+/// 获取 CLI 能力信息 (Tauri 命令)
+#[tauri::command]
+pub fn get_cli_capabilities(cli_path: String) -> Result<CliCapabilities, String> {
+    // 从路径中提取 CLI 名称
+    let cli_name = std::path::Path::new(&cli_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("claude")
+        .to_lowercase();
+
+    let capabilities = match cli_name.as_str() {
+        "claude" | "claude-code" => CliCapabilities {
+            supports_mcp: true,
+            supports_skills: true,
+            supports_plugins: true,
+            mcp_add_command: Some("claude mcp add".to_string()),
+        },
+        "codex" => CliCapabilities {
+            supports_mcp: true,
+            supports_skills: true,
+            supports_plugins: false, // Codex CLI 不支持 Plugins
+            mcp_add_command: Some("codex mcp add".to_string()),
+        },
+        "qwen" | "qwen-code" => CliCapabilities {
+            supports_mcp: true,
+            supports_skills: true,
+            supports_plugins: false,
+            mcp_add_command: Some("qwen mcp add".to_string()),
+        },
+        _ => {
+            // 默认使用 Claude 配置
+            CliCapabilities {
+                supports_mcp: true,
+                supports_skills: true,
+                supports_plugins: true,
+                mcp_add_command: Some("claude mcp add".to_string()),
+            }
+        }
+    };
+
+    Ok(capabilities)
 }

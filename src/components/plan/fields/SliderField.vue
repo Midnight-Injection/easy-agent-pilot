@@ -25,9 +25,15 @@ function onInput(event: Event) {
 
 <template>
   <div class="form-field slider-field">
-    <label :for="inputId" class="field-label">
+    <label
+      :for="inputId"
+      class="field-label"
+    >
       {{ field.label }}
-      <span v-if="field.required" class="required-mark">*</span>
+      <span
+        v-if="field.required"
+        class="required-mark"
+      >*</span>
       <span class="slider-value">{{ modelValue }}</span>
     </label>
     <input
@@ -38,12 +44,15 @@ function onInput(event: Event) {
       :max="max"
       class="slider"
       @input="onInput"
-    />
+    >
     <div class="slider-labels">
       <span>{{ min }}</span>
       <span>{{ max }}</span>
     </div>
-    <span v-if="error" class="error-message">{{ error }}</span>
+    <span
+      v-if="error"
+      class="error-message"
+    >{{ error }}</span>
   </div>
 </template>
 

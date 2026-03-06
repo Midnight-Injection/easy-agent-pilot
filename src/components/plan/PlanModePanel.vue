@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, watch } from 'vue'
 import { usePlanStore } from '@/stores/plan'
 import { useTaskStore } from '@/stores/task'
-import { useProjectStore } from '@/stores/project'
 import { useAgentSchedulerStore } from '@/stores/agentScheduler'
 import PlanList from './PlanList.vue'
 import TaskBoard from './TaskBoard.vue'
@@ -11,28 +10,10 @@ import AgentRoleBadge from './AgentRoleBadge.vue'
 
 const planStore = usePlanStore()
 const taskStore = useTaskStore()
-const projectStore = useProjectStore()
 const agentSchedulerStore = useAgentSchedulerStore()
 
 // 当前活动角色
 const activeRole = computed(() => agentSchedulerStore.activeRole)
-
-// 加载数据
-onMounted(() => {
-  if (projectStore.currentProject) {
-    planStore.loadPlans(projectStore.currentProject.id)
-  }
-})
-
-// 监听项目变化
-watch(
-  () => projectStore.currentProject,
-  (project) => {
-    if (project) {
-      planStore.loadPlans(project.id)
-    }
-  }
-)
 
 // 监听计划变化，加载任务
 watch(
@@ -63,8 +44,14 @@ watch(
     </div>
 
     <!-- 活动角色指示器 -->
-    <div v-if="activeRole" class="active-role-indicator">
-      <AgentRoleBadge :role="activeRole" size="lg" />
+    <div
+      v-if="activeRole"
+      class="active-role-indicator"
+    >
+      <AgentRoleBadge
+        :role="activeRole"
+        size="lg"
+      />
     </div>
   </div>
 </template>

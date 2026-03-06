@@ -3,16 +3,17 @@ import { ref, computed, watch } from 'vue'
 import { usePlanStore } from '@/stores/plan'
 import { useTaskSplitStore } from '@/stores/taskSplit'
 import { useTaskStore } from '@/stores/task'
+import { useProjectStore } from '@/stores/project'
 import DynamicForm from './DynamicForm.vue'
 import TaskSplitPreview from './TaskSplitPreview.vue'
-import type { AITaskItem } from '@/types/plan'
+import type { FormField } from '@/types/plan'
 
 const planStore = usePlanStore()
 const taskSplitStore = useTaskSplitStore()
 const taskStore = useTaskStore()
+const projectStore = useProjectStore()
 
-// 用户输入
-const userInput = ref('')
+const isConfirming = ref(false)
 
 // 是否显示预览
 const showPreview = computed(() => taskSplitStore.splitResult !== null)
@@ -23,14 +24,60 @@ const currentFormSchema = computed(() => {
   return lastMessage?.formSchema
 })
 
-// 发送消息
-async function sendMessage() {
-  if (!userInput.value.trim() || taskSplitStore.isProcessing) return
+// 格式化字段值显示
+function formatFieldValue(field: FormField, value: any): string {
+  if (value === undefined || value === null) return '-'
 
-  const content = userInput.value.trim()
-  userInput.value = ''
+  // 处理多选
+  if (field.type === 'multiselect' && Array.isArray(value)) {
+    if (value.length === 0) return '-'
+    const labels = value.map(v => {
+      const option = field.options?.find(opt => opt.value === v)
+      return option?.label || v
+    })
+    return labels.join('、')
+  }
 
-  await taskSplitStore.submitUserMessage(content)
+  // 处理单选/下拉
+  if ((field.type === 'select' || field.type === 'radio') && field.options) {
+    const option = field.options.find(opt => opt.value === value)
+    return option?.label || String(value)
+  }
+
+  // 处理复选框
+  if (field.type === 'checkbox') {
+    return value ? '是' : '否'
+  }
+
+  // 处理日期
+  if (field.type === 'date') {
+    return String(value)
+  }
+
+  // 其他类型直接返回字符串
+  return String(value)
+}
+
+async function initializeDialogSession() {
+  const dialogContext = planStore.splitDialogContext
+  if (!dialogContext) return
+
+  taskSplitStore.reset()
+
+  const existingPlan = planStore.plans.find(p => p.id === dialogContext.planId)
+  const plan = existingPlan || await planStore.getPlan(dialogContext.planId)
+  if (!plan) return
+
+  const project = projectStore.projects.find(p => p.id === plan.projectId)
+  await taskSplitStore.initSession({
+    planId: plan.id,
+    planName: plan.name,
+    planDescription: plan.description,
+    granularity: plan.granularity,
+    agentId: dialogContext.agentId,
+    modelId: dialogContext.modelId,
+    workingDirectory: project?.path
+  })
 }
 
 // 处理表单提交
@@ -41,12 +88,16 @@ async function handleFormSubmit(values: Record<string, any>) {
 
 // 确认拆分结果
 async function confirmSplit() {
-  if (!taskSplitStore.splitResult || !planStore.splitDialogPlanId) return
+  const splitContext = planStore.splitDialogContext
+  if (!taskSplitStore.splitResult || !splitContext || isConfirming.value) return
+
+  const planId = splitContext.planId
+  isConfirming.value = true
 
   try {
     // 转换为 CreateTaskInput 格式
     const taskInputs = taskSplitStore.splitResult.map((task, index) => ({
-      planId: planStore.splitDialogPlanId!,
+      planId,
       title: task.title,
       description: task.description,
       priority: task.priority,
@@ -57,51 +108,61 @@ async function confirmSplit() {
     }))
 
     // 批量创建任务
-    await taskStore.createTasksFromSplit(planStore.splitDialogPlanId, taskInputs)
+    await taskStore.createTasksFromSplit(planId, taskInputs)
 
-    // 更新计划状态为规划中
-    await planStore.updatePlan(planStore.splitDialogPlanId, { status: 'planning' })
+    // 同步更新计划状态为"已拆分"
+    await planStore.markPlanAsReady(planId)
 
     // 关闭对话框
     closeDialog()
   } catch (error) {
     console.error('Failed to confirm split:', error)
+  } finally {
+    isConfirming.value = false
   }
 }
 
 // 关闭对话框
-function closeDialog() {
+async function closeDialog() {
+  await taskSplitStore.abort()
   taskSplitStore.reset()
   planStore.closeSplitDialog()
 }
 
 // 监听对话框打开
-watch(() => planStore.splitDialogVisible, (visible) => {
+watch(() => planStore.splitDialogVisible, async (visible) => {
   if (visible) {
-    // 重置状态
-    taskSplitStore.reset()
-    userInput.value = ''
-
-    // 发送初始消息
-    setTimeout(() => {
-      taskSplitStore.submitUserMessage('请帮我拆分这个计划的任务')
-    }, 300)
+    await initializeDialogSession()
   }
 })
 </script>
 
 <template>
   <Teleport to="body">
-    <div v-if="planStore.splitDialogVisible" class="split-dialog-overlay" @click.self="closeDialog">
+    <div
+      v-if="planStore.splitDialogVisible"
+      class="split-dialog-overlay"
+      @click.self="closeDialog"
+    >
       <div class="split-dialog">
         <div class="dialog-header">
           <h4>
             <span class="dialog-icon">✂️</span>
             任务拆分
           </h4>
-          <button class="btn-close" @click="closeDialog">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M18 6L6 18M6 6l12 12"/>
+          <button
+            class="btn-close"
+            @click="closeDialog"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -118,9 +179,24 @@ watch(() => planStore.splitDialogVisible, (visible) => {
               <div class="message-content">
                 <p>{{ message.content }}</p>
 
-                <!-- 表单渲染 -->
+                <!-- 已提交的表单显示用户选择值 -->
+                <div
+                  v-if="message.formSchema && message.formValues"
+                  class="submitted-values"
+                >
+                  <div
+                    v-for="field in message.formSchema.fields"
+                    :key="field.name"
+                    class="submitted-value-item"
+                  >
+                    <span class="field-label">{{ field.label }}:</span>
+                    <span class="field-value">{{ formatFieldValue(field, message.formValues[field.name]) }}</span>
+                  </div>
+                </div>
+
+                <!-- 未提交的表单渲染输入 -->
                 <DynamicForm
-                  v-if="message.formSchema"
+                  v-else-if="message.formSchema && !message.formValues"
                   :schema="message.formSchema"
                   :initial-values="message.formValues"
                   @submit="handleFormSubmit"
@@ -130,11 +206,14 @@ watch(() => planStore.splitDialogVisible, (visible) => {
             </div>
 
             <!-- 加载指示器 -->
-            <div v-if="taskSplitStore.isProcessing" class="message assistant">
+            <div
+              v-if="taskSplitStore.isProcessing"
+              class="message assistant"
+            >
               <div class="message-content loading">
-                <span class="dot"></span>
-                <span class="dot"></span>
-                <span class="dot"></span>
+                <span class="dot" />
+                <span class="dot" />
+                <span class="dot" />
               </div>
             </div>
           </div>
@@ -150,33 +229,44 @@ watch(() => planStore.splitDialogVisible, (visible) => {
         </div>
 
         <div class="dialog-footer">
-          <!-- 输入框 - 仅在没有预览时显示 -->
-          <div v-if="!showPreview" class="input-area">
-            <input
-              v-model="userInput"
-              type="text"
-              placeholder="描述您的需求..."
-              :disabled="taskSplitStore.isProcessing"
-              @keyup.enter="sendMessage"
-            />
+          <!-- 无预览时通过动态表单引导，不展示自由输入 -->
+          <div
+            v-if="!showPreview"
+            class="idle-area"
+          >
+            <span class="idle-hint">请根据上方 AI 动态表单逐步补充需求</span>
             <button
-              class="btn-send"
-              :disabled="!userInput.trim() || taskSplitStore.isProcessing"
-              @click="sendMessage"
+              class="btn btn-secondary"
+              @click="closeDialog"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-              </svg>
+              取消
             </button>
           </div>
 
           <!-- 确认按钮 - 仅在有预览时显示 -->
-          <div v-else class="confirm-area">
-            <button class="btn btn-secondary" @click="taskSplitStore.reset">
+          <div
+            v-else
+            class="confirm-area"
+          >
+            <button
+              class="btn btn-secondary"
+              :disabled="isConfirming"
+              @click="closeDialog"
+            >
+              取消
+            </button>
+            <button
+              class="btn btn-secondary"
+              @click="initializeDialogSession"
+            >
               重新拆分
             </button>
-            <button class="btn btn-primary" @click="confirmSplit">
-              确认并创建任务
+            <button
+              class="btn btn-primary"
+              :disabled="isConfirming"
+              @click="confirmSplit"
+            >
+              {{ isConfirming ? '创建中...' : '确认并创建任务' }}
             </button>
           </div>
         </div>
@@ -314,6 +404,8 @@ watch(() => planStore.splitDialogVisible, (visible) => {
 
 .message-content p {
   margin: 0;
+  white-space: pre-line;
+  word-break: break-word;
 }
 
 .message-content.loading {
@@ -347,6 +439,30 @@ watch(() => planStore.splitDialogVisible, (visible) => {
   }
 }
 
+.submitted-values {
+  margin-top: var(--spacing-3, 0.75rem);
+  padding: var(--spacing-3, 0.75rem);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-md, 8px);
+}
+
+.submitted-value-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2, 0.5rem);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.submitted-value-item .field-label {
+  color: rgba(255, 255, 255, 0.8);
+  flex-shrink: 0;
+}
+
+.submitted-value-item .field-value {
+  color: white;
+  font-weight: var(--font-weight-medium, 500);
+}
+
 .dialog-footer {
   padding: var(--spacing-4, 1rem) var(--spacing-5, 1.25rem);
   border-top: 1px solid var(--color-border, #e2e8f0);
@@ -354,49 +470,16 @@ watch(() => planStore.splitDialogVisible, (visible) => {
   flex-shrink: 0;
 }
 
-.input-area {
-  display: flex;
-  gap: var(--spacing-2, 0.5rem);
-}
-
-.input-area input {
-  flex: 1;
-  padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
-  border: 1px solid var(--color-border, #e2e8f0);
-  border-radius: var(--radius-md, 8px);
-  background-color: var(--color-surface, #fff);
-  color: var(--color-text-primary, #1e293b);
-  font-size: var(--font-size-sm, 13px);
-  transition: all var(--transition-fast, 150ms);
-}
-
-.input-area input:focus {
-  outline: none;
-  border-color: var(--color-primary, #60a5fa);
-  box-shadow: 0 0 0 3px var(--color-primary-light, #dbeafe);
-}
-
-.btn-send {
+.idle-area {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: var(--radius-md, 8px);
-  background-color: var(--color-primary, #3b82f6);
-  color: white;
-  cursor: pointer;
-  transition: all var(--transition-fast, 150ms);
+  justify-content: space-between;
+  gap: var(--spacing-3, 0.75rem);
 }
 
-.btn-send:hover:not(:disabled) {
-  background-color: var(--color-primary-hover, #2563eb);
-}
-
-.btn-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.idle-hint {
+  font-size: var(--font-size-xs, 12px);
+  color: var(--color-text-tertiary, #94a3b8);
 }
 
 .confirm-area {

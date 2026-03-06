@@ -1,36 +1,38 @@
+pub mod agent;
+pub mod agent_config;
 pub mod app_state;
 pub mod cli;
 pub mod cli_config;
 pub mod conversation;
-pub mod project_access;
-pub mod mcp;
-pub mod plan;
-pub mod task;
-pub mod marketplace;
-pub mod mcp_market;
-pub mod skills_market;
-pub mod plugins_market;
-pub mod install;
-pub mod project;
-pub mod session;
-pub mod message;
-pub mod agent;
-pub mod agent_config;
 pub mod data;
-pub mod settings;
-pub mod scan;
+pub mod file_editor;
+pub mod install;
+pub mod lsp;
+pub mod marketplace;
+pub mod mcp;
+pub mod mcp_market;
+pub mod message;
+pub mod plan;
+pub mod plugins_market;
+pub mod project;
+pub mod project_access;
 pub mod provider_profile;
+pub mod scan;
+pub mod session;
+pub mod settings;
 pub mod skill_plugin;
+pub mod skills_market;
+pub mod task;
 pub mod window;
 
+use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
-use anyhow::Result;
 
 /// 获取持久化目录路径
 pub fn get_persistence_dir_path() -> Result<PathBuf> {
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
+    let home_dir =
+        dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Cannot determine home directory"))?;
     Ok(home_dir.join(".easy-agent"))
 }
 
@@ -46,6 +48,9 @@ pub fn init_persistence_dirs() -> Result<()> {
     for dir in sub_dirs {
         fs::create_dir_all(base_dir.join(dir))?;
     }
+
+    // LSP 统一存储目录
+    fs::create_dir_all(base_dir.join("tools").join("lsp"))?;
 
     println!("Persistence directories initialized at: {:?}", base_dir);
     Ok(())

@@ -95,8 +95,8 @@ pub fn read_skill_file(skill_path: String) -> Result<SkillFileContent, String> {
         return Err(format!("No SKILL.md or skill.md found in: {}", skill_path));
     };
 
-    let content = fs::read_to_string(&md_path)
-        .map_err(|e| format!("Failed to read skill file: {}", e))?;
+    let content =
+        fs::read_to_string(&md_path).map_err(|e| format!("Failed to read skill file: {}", e))?;
 
     Ok(SkillFileContent {
         path: md_path.to_string_lossy().to_string(),
@@ -118,8 +118,7 @@ pub fn list_skill_references(skill_path: String) -> Result<Vec<ReferenceFile>, S
     let mut files = Vec::new();
 
     fn scan_directory(dir: &PathBuf, files: &mut Vec<ReferenceFile>) -> Result<(), String> {
-        let entries = fs::read_dir(dir)
-            .map_err(|e| format!("Failed to read directory: {}", e))?;
+        let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory: {}", e))?;
 
         for entry in entries {
             if let Ok(entry) = entry {
@@ -172,8 +171,7 @@ pub fn read_reference_file(file_path: String) -> Result<ReferenceFileContent, St
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content = fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     Ok(ReferenceFileContent {
         name,
@@ -184,14 +182,18 @@ pub fn read_reference_file(file_path: String) -> Result<ReferenceFileContent, St
 }
 
 /// 解析 plugin.json 获取插件元信息
-fn parse_plugin_json_for_details(plugin_json_path: &PathBuf) -> (Option<String>, Option<String>, Option<String>) {
+fn parse_plugin_json_for_details(
+    plugin_json_path: &PathBuf,
+) -> (Option<String>, Option<String>, Option<String>) {
     if let Ok(content) = fs::read_to_string(plugin_json_path) {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            let version = json.get("version")
+            let version = json
+                .get("version")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
-            let description = json.get("description")
+            let description = json
+                .get("description")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
 
@@ -199,7 +201,8 @@ fn parse_plugin_json_for_details(plugin_json_path: &PathBuf) -> (Option<String>,
                 if let Some(author_str) = author_obj.as_str() {
                     Some(author_str.to_string())
                 } else if let Some(author_obj) = author_obj.as_object() {
-                    author_obj.get("name")
+                    author_obj
+                        .get("name")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                 } else {
@@ -223,7 +226,10 @@ fn parse_skill_description(skill_md_path: &PathBuf) -> Option<String> {
 
         let start_idx = lines.iter().position(|line| line.trim() == "---");
         let end_idx = if let Some(start) = start_idx {
-            lines.iter().skip(start + 1).position(|line| line.trim() == "---")
+            lines
+                .iter()
+                .skip(start + 1)
+                .position(|line| line.trim() == "---")
                 .map(|idx| start + 1 + idx)
         } else {
             None
@@ -254,7 +260,9 @@ fn parse_skill_description(skill_md_path: &PathBuf) -> Option<String> {
 }
 
 /// 扫描 Plugin 内部的 skills/commands/agents 目录
-fn scan_plugin_internal_items(plugin_path: &PathBuf) -> (Vec<InternalItem>, Vec<InternalItem>, Vec<InternalItem>) {
+fn scan_plugin_internal_items(
+    plugin_path: &PathBuf,
+) -> (Vec<InternalItem>, Vec<InternalItem>, Vec<InternalItem>) {
     let mut skills = Vec::new();
     let mut commands = Vec::new();
     let mut agents = Vec::new();
@@ -389,7 +397,10 @@ fn scan_plugin_internal_items(plugin_path: &PathBuf) -> (Vec<InternalItem>, Vec<
 /// 尝试从 installed_plugins.json 获取安装来源
 fn get_install_source(plugin_name: &str) -> Option<String> {
     let home_dir = dirs::home_dir()?;
-    let installed_plugins_path = home_dir.join(".claude").join("plugins").join("installed_plugins.json");
+    let installed_plugins_path = home_dir
+        .join(".claude")
+        .join("plugins")
+        .join("installed_plugins.json");
 
     if !installed_plugins_path.exists() {
         return None;
@@ -437,7 +448,8 @@ pub fn get_plugin_details(plugin_path: String) -> Result<PluginDetails, String> 
     let install_source = get_install_source(&name);
 
     // 扫描内部 items
-    let (internal_skills, internal_commands, internal_agents) = scan_plugin_internal_items(&plugin_dir);
+    let (internal_skills, internal_commands, internal_agents) =
+        scan_plugin_internal_items(&plugin_dir);
 
     Ok(PluginDetails {
         name,
@@ -462,8 +474,7 @@ pub fn delete_skill_directory(skill_path: String) -> Result<(), String> {
     }
 
     // 安全检查：确保路径在 skills 目录下
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     let skills_dir = home_dir.join(".claude").join("skills");
     let codex_skills_dir = home_dir.join(".codex").join("skills");
@@ -474,7 +485,9 @@ pub fn delete_skill_directory(skill_path: String) -> Result<(), String> {
         || skill_dir.starts_with(&qwen_skills_dir);
 
     if !is_valid_path {
-        return Err("Invalid skill path: skill must be in a valid CLI skills directory".to_string());
+        return Err(
+            "Invalid skill path: skill must be in a valid CLI skills directory".to_string(),
+        );
     }
 
     fs::remove_dir_all(&skill_dir)
@@ -493,8 +506,7 @@ pub fn delete_plugin_directory(plugin_path: String) -> Result<(), String> {
     }
 
     // 安全检查：确保路径在 plugins 目录下
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     let plugins_dir = home_dir.join(".claude").join("plugins");
     let codex_plugins_dir = home_dir.join(".codex").join("plugins");
@@ -505,7 +517,9 @@ pub fn delete_plugin_directory(plugin_path: String) -> Result<(), String> {
         || plugin_dir.starts_with(&qwen_plugins_dir);
 
     if !is_valid_path {
-        return Err("Invalid plugin path: plugin must be in a valid CLI plugins directory".to_string());
+        return Err(
+            "Invalid plugin path: plugin must be in a valid CLI plugins directory".to_string(),
+        );
     }
 
     // 删除插件目录
@@ -538,8 +552,7 @@ pub fn read_file_content(file_path: String) -> Result<String, String> {
         return Err(format!("Path is not a file: {}", file_path));
     }
 
-    fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read file: {}", e))
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
 }
 
 /// 写入文件内容
@@ -556,8 +569,7 @@ pub fn write_file_content(file_path: String, content: String) -> Result<(), Stri
     }
 
     // 安全检查：确保路径在允许的目录下
-    let home_dir = dirs::home_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     let claude_dir = home_dir.join(".claude");
     let codex_dir = home_dir.join(".codex");
@@ -571,13 +583,15 @@ pub fn write_file_content(file_path: String, content: String) -> Result<(), Stri
         return Err("Invalid file path: file must be in a valid CLI directory".to_string());
     }
 
-    fs::write(&path, content)
-        .map_err(|e| format!("Failed to write file: {}", e))
+    fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
 }
 
 /// 列出目录下指定扩展名的文件
 #[tauri::command]
-pub fn list_directory_files(dir_path: String, extension: Option<String>) -> Result<Vec<DirectoryFile>, String> {
+pub fn list_directory_files(
+    dir_path: String,
+    extension: Option<String>,
+) -> Result<Vec<DirectoryFile>, String> {
     let dir = PathBuf::from(&dir_path);
 
     if !dir.exists() {

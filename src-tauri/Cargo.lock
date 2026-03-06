@@ -982,6 +982,7 @@ name = "easy-agent-pilot"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "chrono",
  "dirs 5.0.1",
  "futures",

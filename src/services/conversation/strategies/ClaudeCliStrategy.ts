@@ -42,12 +42,13 @@ export class ClaudeCliStrategy implements AgentStrategy {
     context: ConversationContext,
     onEvent: (event: StreamEvent) => void
   ): Promise<void> {
-    const { sessionId, agent, messages, workingDirectory } = context
+    const { sessionId, agent, messages, workingDirectory, mcpServers } = context
 
     log('info', `开始执行, sessionId: ${sessionId}`)
     log('info', `智能体配置:`, { id: agent.id, name: agent.name, cliPath: agent.cliPath, modelId: agent.modelId })
     log('info', `消息数量: ${messages.length}`)
     log('debug', `工作目录: ${workingDirectory}`)
+    log('debug', `MCP 服务器数量: ${mcpServers?.length || 0}`)
 
     this.currentSessionId = sessionId
     this.abortController = new AbortController()
@@ -87,7 +88,8 @@ export class ClaudeCliStrategy implements AgentStrategy {
             content: m.content
           })),
         workingDirectory,
-        allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch']
+        allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch'],
+        mcpServers
       }
 
       log('info', `调用后端命令, cliPath: ${request.cliPath}`)

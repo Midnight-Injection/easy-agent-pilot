@@ -278,6 +278,7 @@ export default {
       skills: 'Skills',
       plugins: 'Plugins',
       theme: 'Theme',
+      lsp: 'LSP Management',
       data: 'Data Management',
       providerSwitch: 'Config Switch'
     },
@@ -743,6 +744,23 @@ export default {
       themeColorDesc: 'Select a preset theme color to personalize your experience',
       themeColorApplied: 'Theme color applied successfully'
     },
+    lsp: {
+      title: 'LSP Service Management',
+      storageTitle: 'LSP Storage Path',
+      storageDesc: 'All downloaded language LSP files are managed under the persistence directory.',
+      serverListTitle: 'Language LSP List',
+      manualOnly: 'Manual download only. No automatic download when opening files.',
+      installed: 'Downloaded',
+      notInstalled: 'Not Downloaded',
+      installedAt: 'Downloaded At',
+      download: 'Download',
+      remove: 'Remove',
+      downloadSuccess: 'LSP downloaded',
+      downloadFailed: 'Failed to download LSP',
+      removeSuccess: 'LSP removed',
+      removeFailed: 'Failed to remove LSP',
+      loadFailed: 'Failed to load LSP list'
+    },
     data: {
       dataPath: 'Data Path',
       dataLocation: 'Data Location',
@@ -1048,5 +1066,26 @@ export default {
   languages: {
     'zh-CN': '简体中文',
     'en-US': 'English'
+  },
+
+  // MCP 插件选择器
+  mcpSelector: {
+    selected: '{enabled}/{total} plugins selected',
+    noPlugins: 'No plugins available',
+    selectAll: 'Select all'
+  },
+
+  // 文件引用
+  fileMention: {
+    searchFiles: 'Search files...',
+    noFiles: 'No files found',
+    loading: 'Loading...',
+    selectFile: 'Select file',
+    back: 'Back',
+    enterDir: 'Enter directory',
+    backToRoot: 'Back to root',
+    navigate: 'Navigate',
+    select: 'Select',
+    close: 'Close',
   }
 }

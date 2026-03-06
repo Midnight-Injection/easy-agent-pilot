@@ -26,7 +26,11 @@ function close() {
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="visible" class="ea-modal-overlay" @click.self="close">
+      <div
+        v-if="visible"
+        class="ea-modal-overlay"
+        @click.self="close"
+      >
         <div class="ea-modal">
           <slot />
         </div>

@@ -18,14 +18,24 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="skill-config-item" :class="{ 'skill-config-item--disabled': !config.enabled }">
+  <div
+    class="skill-config-item"
+    :class="{ 'skill-config-item--disabled': !config.enabled }"
+  >
     <div class="skill-config-item__header">
       <div class="skill-config-item__name">
-        <EaIcon name="lucide:book-open" class="skill-config-item__icon" />
+        <EaIcon
+          name="lucide:book-open"
+          class="skill-config-item__icon"
+        />
         <span>{{ config.name }}</span>
       </div>
       <div class="skill-config-item__actions">
-        <EaButton size="small" variant="ghost" @click="emit('detail', config)">
+        <EaButton
+          size="small"
+          variant="ghost"
+          @click="emit('detail', config)"
+        >
           <EaIcon name="lucide:info" />
           {{ t('common.view') }}
         </EaButton>
@@ -51,7 +61,10 @@ const { t } = useI18n()
       </div>
     </div>
 
-    <div v-if="config.description" class="skill-config-item__description">
+    <div
+      v-if="config.description"
+      class="skill-config-item__description"
+    >
       {{ config.description }}
     </div>
 
@@ -60,16 +73,28 @@ const { t } = useI18n()
       {{ config.skillPath }}
     </div>
 
-    <div v-if="config.scriptsPath || config.referencesPath || config.assetsPath" class="skill-config-item__subdirs">
-      <span v-if="config.scriptsPath" class="skill-config-item__subdir">
+    <div
+      v-if="config.scriptsPath || config.referencesPath || config.assetsPath"
+      class="skill-config-item__subdirs"
+    >
+      <span
+        v-if="config.scriptsPath"
+        class="skill-config-item__subdir"
+      >
         <EaIcon name="lucide:file-code" />
         {{ t('settings.agent.scan.hasScripts') }}
       </span>
-      <span v-if="config.referencesPath" class="skill-config-item__subdir">
+      <span
+        v-if="config.referencesPath"
+        class="skill-config-item__subdir"
+      >
         <EaIcon name="lucide:book" />
         {{ t('settings.agent.scan.hasReferences') }}
       </span>
-      <span v-if="config.assetsPath" class="skill-config-item__subdir">
+      <span
+        v-if="config.assetsPath"
+        class="skill-config-item__subdir"
+      >
         <EaIcon name="lucide:image" />
         {{ t('settings.agent.scan.hasAssets') }}
       </span>

@@ -1,10 +1,12 @@
-import { useMessageStore, type Message } from '@/stores/message'
+import { useMessageStore, type Message, type ToolCall } from '@/stores/message'
 import { useSessionStore } from '@/stores/session'
 import { useSessionExecutionStore } from '@/stores/sessionExecution'
 import { useProjectStore } from '@/stores/project'
 import { useAgentStore, type AgentConfig } from '@/stores/agent'
+import { useAgentConfigStore } from '@/stores/agentConfig'
+import { useSkillConfigStore } from '@/stores/skillConfig'
 import { agentExecutor } from './AgentExecutor'
-import type { ConversationContext, StreamEvent } from './strategies/types'
+import type { ConversationContext, StreamEvent, McpServerConfig } from './strategies/types'
 
 /**
  * 对话服务
@@ -40,6 +42,8 @@ export class ConversationService {
     const sessionExecutionStore = useSessionExecutionStore()
     const projectStore = useProjectStore()
     const agentStore = useAgentStore()
+    const agentConfigStore = useAgentConfigStore()
+    const skillConfigStore = useSkillConfigStore()
 
     // 获取智能体配置
     const agent = agentStore.agents.find(a => a.id === agentId)
@@ -93,13 +97,52 @@ export class ConversationService {
         }
       }
 
+      // 获取启用的 MCP 配置
+      const enabledMcpIds = sessionExecutionStore.getEnabledMcpIds(sessionId)
+      let mcpServers: McpServerConfig[] | undefined
+
+      if (enabledMcpIds.length > 0) {
+        if (agent.type === 'cli') {
+          // CLI 类型：从 skillConfigStore 获取 MCP 配置
+          const allMcpConfigs = skillConfigStore.mcpConfigs
+          mcpServers = allMcpConfigs
+            .filter(config => enabledMcpIds.includes(config.id))
+            .map(config => ({
+              id: config.id,
+              name: config.name,
+              transportType: config.transportType,
+              command: config.command,
+              args: Array.isArray(config.args) ? config.args.join(' ') : config.args,
+              env: typeof config.env === 'object' ? JSON.stringify(config.env) : config.env,
+              url: config.url,
+              headers: typeof config.headers === 'object' ? JSON.stringify(config.headers) : config.headers
+            }))
+        } else {
+          // SDK 类型：从 agentConfigStore 获取 MCP 配置
+          const allMcpConfigs = agentConfigStore.getMcpConfigs(agentId)
+          mcpServers = allMcpConfigs
+            .filter(config => enabledMcpIds.includes(config.id))
+            .map(config => ({
+              id: config.id,
+              name: config.name,
+              transportType: config.transportType,
+              command: config.command,
+              args: typeof config.args === 'string' ? config.args : undefined,
+              env: typeof config.env === 'string' ? config.env : undefined,
+              url: config.url,
+              headers: typeof config.headers === 'string' ? config.headers : undefined
+            }))
+        }
+      }
+
       // 构建对话上下文
       const messages = messageStore.messagesBySession(sessionId)
       const context: ConversationContext = {
         sessionId,
         agent,
         messages,
-        workingDirectory
+        workingDirectory,
+        mcpServers
       }
 
       // 执行对话
@@ -124,6 +167,8 @@ export class ConversationService {
     const sessionExecutionStore = useSessionExecutionStore()
 
     let accumulatedContent = ''
+    let accumulatedThinking = ''
+    let toolCalls: ToolCall[] = []
     let hasError = false
 
     try {
@@ -131,12 +176,48 @@ export class ConversationService {
         this.handleStreamEvent(event, {
           aiMessage,
           sessionId,
+          toolCalls,
           onContent: (content) => {
             accumulatedContent += content
             // 更新消息内容
             messageStore.updateMessage(aiMessage.id, {
               content: accumulatedContent
             })
+          },
+          onThinking: (thinking) => {
+            accumulatedThinking += thinking
+            // 更新思考内容
+            messageStore.updateMessage(aiMessage.id, {
+              thinking: accumulatedThinking
+            })
+          },
+          onToolUse: (toolCall) => {
+            // 添加或更新工具调用
+            const existingIndex = toolCalls.findIndex(tc => tc.id === toolCall.id)
+            if (existingIndex >= 0) {
+              toolCalls[existingIndex] = toolCall
+            } else {
+              toolCalls.push(toolCall)
+            }
+            // 更新消息的工具调用
+            messageStore.updateMessage(aiMessage.id, {
+              toolCalls: [...toolCalls]
+            })
+          },
+          onToolResult: (toolCallId, result, isError) => {
+            // 更新工具调用的结果
+            const tc = toolCalls.find(t => t.id === toolCallId)
+            if (tc) {
+              tc.result = result
+              tc.status = isError ? 'error' : 'success'
+              if (isError) {
+                tc.errorMessage = result
+              }
+              // 更新消息的工具调用
+              messageStore.updateMessage(aiMessage.id, {
+                toolCalls: [...toolCalls]
+              })
+            }
           },
           onError: (error) => {
             hasError = true
@@ -180,12 +261,16 @@ export class ConversationService {
     handlers: {
       aiMessage: Message
       sessionId: string
+      toolCalls: ToolCall[]
       onContent: (content: string) => void
+      onThinking: (thinking: string) => void
+      onToolUse: (toolCall: ToolCall) => void
+      onToolResult: (toolCallId: string, result: string, isError: boolean) => void
       onError: (error: string) => void
       onDone: () => void
     }
   ): void {
-    const { onContent, onError, onDone } = handlers
+    const { onContent, onThinking, onToolUse, onToolResult, onError, onDone } = handlers
 
     switch (event.type) {
       case 'content':
@@ -195,20 +280,33 @@ export class ConversationService {
         break
 
       case 'thinking':
-        // 思考内容暂时作为普通内容处理
+        // 处理思考内容
         if (event.content) {
-          onContent(event.content)
+          onThinking(event.content)
         }
         break
 
       case 'tool_use':
-        // TODO: 处理工具调用显示
-        console.debug('Tool use:', event.toolName, event.toolInput)
+        // 处理工具调用
+        if (event.toolName && event.toolCallId) {
+          const toolCall: ToolCall = {
+            id: event.toolCallId,
+            name: event.toolName,
+            arguments: event.toolInput || {},
+            status: 'running'
+          }
+          onToolUse(toolCall)
+        }
         break
 
       case 'tool_result':
-        // TODO: 处理工具结果
-        console.debug('Tool result:', event.toolResult)
+        // 处理工具结果
+        if (event.toolCallId) {
+          const result = typeof event.toolResult === 'string'
+            ? event.toolResult
+            : JSON.stringify(event.toolResult, null, 2)
+          onToolResult(event.toolCallId, result, false)
+        }
         break
 
       case 'error':

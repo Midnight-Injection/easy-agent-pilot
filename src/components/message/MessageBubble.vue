@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import type { Message } from '@/stores/message'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import ToolCallDisplay from './ToolCallDisplay.vue'
+import ThinkingDisplay from './ThinkingDisplay.vue'
 import CompressionMessageBubble from './CompressionMessageBubble.vue'
 
 const { t } = useI18n()
@@ -24,6 +25,61 @@ const formattedTime = computed(() => {
     minute: '2-digit',
     hour12: false
   })
+})
+
+// 处理用户消息中的文件引用
+interface MessagePart {
+  type: 'text' | 'file-mention'
+  content: string
+}
+
+const processedUserMessage = computed(() => {
+  if (!isUser.value) return []
+
+  const content = props.message.content
+  const parts: MessagePart[] = []
+
+  // 匹配 @文件路径 的正则表达式
+  // @后面跟非空格字符，直到遇到空格或行尾
+  const regex = /@([^\s]+)/g
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(content)) !== null) {
+    // 添加 @ 之前的文本
+    if (match.index > lastIndex) {
+      parts.push({
+        type: 'text',
+        content: content.slice(lastIndex, match.index)
+      })
+    }
+
+    // 添加文件引用
+    parts.push({
+      type: 'file-mention',
+      content: match[1] // 不包含 @ 符号
+    })
+
+    lastIndex = match.index + match[0].length
+  }
+
+  // 添加剩余的文本
+  if (lastIndex < content.length) {
+    parts.push({
+      type: 'text',
+      content: content.slice(lastIndex)
+    })
+  }
+
+  // 如果没有匹配到任何文件引用，返回整个文本
+  if (parts.length === 0) {
+    parts.push({
+      type: 'text',
+      content: content
+    })
+  }
+
+  return parts
 })
 
 // 用户消息状态文本和图标
@@ -87,6 +143,16 @@ const handleRetry = () => {
       <span class="avatar-icon">🤖</span>
     </div>
     <div class="message-bubble__body">
+      <!-- 思考过程显示 -->
+      <Transition name="slide-fade">
+        <div
+          v-if="isAssistant && message.thinking"
+          class="message-bubble__thinking"
+        >
+          <ThinkingDisplay :thinking="message.thinking" />
+        </div>
+      </Transition>
+
       <div class="message-bubble__content">
         <MarkdownRenderer
           v-if="!isUser"
@@ -96,7 +162,19 @@ const handleRetry = () => {
           v-else
           class="message-bubble__text"
         >
-          {{ message.content }}
+          <template
+            v-for="(part, index) in processedUserMessage"
+            :key="index"
+          >
+            <span
+              v-if="part.type === 'file-mention'"
+              class="file-mention"
+            >
+              <span class="file-mention__icon">📄</span>
+              <span class="file-mention__path">{{ part.content }}</span>
+            </span>
+            <span v-else>{{ part.content }}</span>
+          </template>
         </div>
         <span
           v-if="isStreaming"
@@ -105,8 +183,10 @@ const handleRetry = () => {
       </div>
 
       <!-- 工具调用显示 -->
-      <div
+      <TransitionGroup
         v-if="isAssistant && message.toolCalls && message.toolCalls.length > 0"
+        name="tool-call"
+        tag="div"
         class="message-bubble__tool-calls"
       >
         <ToolCallDisplay
@@ -114,7 +194,7 @@ const handleRetry = () => {
           :key="toolCall.id"
           :tool-call="toolCall"
         />
-      </div>
+      </TransitionGroup>
 
       <!-- 时间戳和状态信息 -->
       <div class="message-bubble__meta">
@@ -225,19 +305,26 @@ const handleRetry = () => {
 .message-bubble__body {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-1);
+  gap: var(--spacing-2);
   min-width: 0;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
 }
 
+/* 思考过程显示 - 顶部区域，淡紫色渐变背景 */
+.message-bubble__thinking {
+  width: 100%;
+  animation: fadeSlideDown 0.3s ease-out;
+}
+
+/* 消息内容 - 中间区域 */
 .message-bubble__content {
   padding: var(--spacing-2) var(--spacing-3);
   border-radius: var(--radius-lg);
   font-size: var(--font-size-sm);
   line-height: 1.6;
-  width: fit-content;
-  max-width: 100%;
+  width: 100%;
+  animation: fadeIn 0.2s ease-out;
 }
 
 /* AI 消息样式 */
@@ -266,6 +353,60 @@ const handleRetry = () => {
   word-break: break-word;
 }
 
+/* 文件引用样式 */
+/* 文件引用样式 - 更突出的视觉效果 */
+.file-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  margin: 0 2px;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.12), rgba(96, 165, 250, 0.08));
+  color: var(--color-primary);
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  border-radius: var(--radius-md);
+  font-size: 0.85em;
+  font-family: var(--font-family-mono);
+  text-decoration: none;
+  transition: all var(--transition-fast) var(--easing-default);
+  vertical-align: baseline;
+  cursor: default;
+}
+
+.file-mention:hover {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(96, 165, 250, 0.15));
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: 0 2px 8px rgba(96, 165, 250, 0.15);
+}
+
+.file-mention__icon {
+  flex-shrink: 0;
+  font-size: 1em;
+  opacity: 0.9;
+}
+
+.file-mention__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* 暗色模式下的文件引用 */
+:global([data-theme='dark']) .file-mention,
+:global(.dark) .file-mention {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.18), rgba(96, 165, 250, 0.1));
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+:global([data-theme='dark']) .file-mention:hover,
+:global(.dark) .file-mention:hover {
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.28), rgba(96, 165, 250, 0.18));
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
 .message-bubble__cursor {
   display: inline-block;
   width: 2px;
@@ -275,10 +416,12 @@ const handleRetry = () => {
   animation: blink 1s step-end infinite;
 }
 
-/* 工具调用显示 */
+/* 工具调用显示 - 底部区域，橙色渐变边框 */
 .message-bubble__tool-calls {
-  margin-top: var(--spacing-2);
-  max-width: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
 }
 
 /* 元信息（时间戳和状态） */
@@ -289,6 +432,7 @@ const handleRetry = () => {
   font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
   padding: 0 var(--spacing-1);
+  margin-top: var(--spacing-1);
 }
 
 .message-bubble--user .message-bubble__meta {
@@ -366,10 +510,72 @@ const handleRetry = () => {
   background-color: var(--color-error-light);
   border-radius: var(--radius-sm);
   border-left: 2px solid var(--color-error);
+  animation: shake 0.4s ease-out;
 }
 
+/* 动画关键帧 */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-3px); }
+  40%, 80% { transform: translateX(3px); }
+}
+
+/* 思考过程动画 */
+.thinking-enter-active {
+  animation: fadeSlideDown 0.3s ease-out;
+}
+
+.thinking-leave-active {
+  animation: fadeSlideDown 0.2s ease-in reverse;
+}
+
+/* 工具调用动画 */
+.tool-call-enter-active {
+  animation: toolCallEnter 0.3s ease-out;
+}
+
+.tool-call-leave-active {
+  animation: toolCallEnter 0.2s ease-in reverse;
+}
+
+@keyframes toolCallEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 单个工具调用项动画 */
+.tool-call-move {
+  transition: transform 0.3s ease-out;
 }
 </style>

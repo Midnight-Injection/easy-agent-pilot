@@ -1,10 +1,10 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::PathBuf;
-use std::collections::HashMap;
-use std::io::Write;
 use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
 
 /// MCP market item category
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -153,13 +153,19 @@ pub async fn fetch_mcp_market(query: McpMarketQuery) -> Result<McpMarketListResp
                     Ok(data) => Ok(data),
                     Err(e) => {
                         // If parsing fails, return mock data
-                        eprintln!("Failed to parse ModelScope response: {}, using mock data", e);
+                        eprintln!(
+                            "Failed to parse ModelScope response: {}, using mock data",
+                            e
+                        );
                         Ok(get_mock_market_data(query))
                     }
                 }
             } else {
                 // API not available, return mock data for development
-                eprintln!("ModelScope API returned status: {}, using mock data", response.status());
+                eprintln!(
+                    "ModelScope API returned status: {}, using mock data",
+                    response.status()
+                );
                 Ok(get_mock_market_data(query))
             }
         }
@@ -532,7 +538,10 @@ fn get_mock_market_data(query: McpMarketQuery) -> McpMarketListResponse {
                 .filter(|item| {
                     item.name.to_lowercase().contains(&search_lower)
                         || item.description.to_lowercase().contains(&search_lower)
-                        || item.tags.iter().any(|t| t.to_lowercase().contains(&search_lower))
+                        || item
+                            .tags
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(&search_lower))
                 })
                 .collect();
         }
@@ -546,7 +555,11 @@ fn get_mock_market_data(query: McpMarketQuery) -> McpMarketListResponse {
     let end = std::cmp::min(start + page_size as usize, filtered_items.len());
 
     let items: Vec<McpMarketItem> = if start < filtered_items.len() {
-        filtered_items.into_iter().skip(start).take(page_size as usize).collect()
+        filtered_items
+            .into_iter()
+            .skip(start)
+            .take(page_size as usize)
+            .collect()
     } else {
         vec![]
     };
@@ -580,12 +593,18 @@ pub async fn fetch_mcp_market_detail(mcp_id: String) -> Result<McpMarketDetail, 
                 match response.json::<McpMarketDetail>().await {
                     Ok(data) => Ok(data),
                     Err(e) => {
-                        eprintln!("Failed to parse ModelScope detail response: {}, using mock data", e);
+                        eprintln!(
+                            "Failed to parse ModelScope detail response: {}, using mock data",
+                            e
+                        );
                         Ok(get_mock_market_detail(&mcp_id))
                     }
                 }
             } else {
-                eprintln!("ModelScope API returned status: {}, using mock data", response.status());
+                eprintln!(
+                    "ModelScope API returned status: {}, using mock data",
+                    response.status()
+                );
                 Ok(get_mock_market_detail(&mcp_id))
             }
         }
@@ -754,7 +773,10 @@ Requires a GitHub Personal Access Token with appropriate scopes."#.to_string(),
         id: mcp_id.to_string(),
         name: format!("{} MCP", mcp_id.trim_start_matches("mcp-")),
         description: "An MCP server for AI assistants.".to_string(),
-        full_description: format!("## {} MCP\n\nThis MCP provides integration capabilities for AI assistants.", mcp_id.trim_start_matches("mcp-")),
+        full_description: format!(
+            "## {} MCP\n\nThis MCP provides integration capabilities for AI assistants.",
+            mcp_id.trim_start_matches("mcp-")
+        ),
         author: "Community".to_string(),
         author_url: None,
         license: "MIT".to_string(),
@@ -764,7 +786,8 @@ Requires a GitHub Personal Access Token with appropriate scopes."#.to_string(),
         rating: 4.0,
         category: "other".to_string(),
         install_command: Some(format!("npx -y @community/{}", mcp_id)),
-        config_example: format!(r#"{{
+        config_example: format!(
+            r#"{{
   "mcpServers": {{
     "{}": {{
       "command": "npx",
@@ -772,11 +795,16 @@ Requires a GitHub Personal Access Token with appropriate scopes."#.to_string(),
       "env": {{}}
     }}
   }}
-}}"#, mcp_id.trim_start_matches("mcp-"), mcp_id),
+}}"#,
+            mcp_id.trim_start_matches("mcp-"),
+            mcp_id
+        ),
         tags: vec!["mcp".to_string()],
-        version_history: vec![
-            McpVersion { version: "1.0.0".to_string(), release_notes: "Initial release".to_string(), released_at: "2024-01-01T00:00:00Z".to_string() },
-        ],
+        version_history: vec![McpVersion {
+            version: "1.0.0".to_string(),
+            release_notes: "Initial release".to_string(),
+            released_at: "2024-01-01T00:00:00Z".to_string(),
+        }],
         requirements: vec!["Node.js >= 16".to_string()],
         created_at: "2024-01-01T00:00:00Z".to_string(),
         updated_at: "2024-02-01T00:00:00Z".to_string(),
@@ -810,7 +838,11 @@ pub struct McpInstallResult {
 }
 
 /// Get CLI settings.json path
-fn get_cli_settings_path(cli_path: &str, scope: &str, project_path: Option<&str>) -> Result<PathBuf, String> {
+fn get_cli_settings_path(
+    cli_path: &str,
+    scope: &str,
+    project_path: Option<&str>,
+) -> Result<PathBuf, String> {
     let cli = PathBuf::from(cli_path);
     let cli_name = cli
         .file_stem()
@@ -820,7 +852,9 @@ fn get_cli_settings_path(cli_path: &str, scope: &str, project_path: Option<&str>
     let settings_path = if scope == "project" {
         // Project-level settings
         if let Some(proj_path) = project_path {
-            PathBuf::from(proj_path).join(".claude").join("settings.json")
+            PathBuf::from(proj_path)
+                .join(".claude")
+                .join("settings.json")
         } else {
             return Err("Project path is required for project-level installation".to_string());
         }
@@ -872,11 +906,8 @@ fn perform_rollback(settings_path: &PathBuf, backup_path: &Option<String>) -> (b
 #[tauri::command]
 pub async fn install_mcp_to_cli(input: McpInstallInput) -> Result<McpInstallResult, String> {
     // Get the settings file path
-    let settings_path = get_cli_settings_path(
-        &input.cli_path,
-        &input.scope,
-        input.project_path.as_deref(),
-    )?;
+    let settings_path =
+        get_cli_settings_path(&input.cli_path, &input.scope, input.project_path.as_deref())?;
 
     // Track whether the parent directory was newly created
     let _parent_existed = settings_path.parent().map(|p| p.exists()).unwrap_or(false);
@@ -893,10 +924,9 @@ pub async fn install_mcp_to_cli(input: McpInstallInput) -> Result<McpInstallResu
 
     // Read existing settings or create new
     let mut settings: serde_json::Value = if settings_path.exists() {
-        let content = fs::read_to_string(&settings_path)
-            .map_err(|e| format!("读取配置文件失败: {}", e))?;
-        serde_json::from_str(&content)
-            .unwrap_or_else(|_| serde_json::json!({}))
+        let content =
+            fs::read_to_string(&settings_path).map_err(|e| format!("读取配置文件失败: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
@@ -904,8 +934,7 @@ pub async fn install_mcp_to_cli(input: McpInstallInput) -> Result<McpInstallResu
     // Create backup
     let backup_path = if settings_path.exists() {
         let backup = settings_path.with_extension("json.backup");
-        fs::copy(&settings_path, &backup)
-            .map_err(|e| format!("创建备份失败: {}", e))?;
+        fs::copy(&settings_path, &backup).map_err(|e| format!("创建备份失败: {}", e))?;
         Some(backup.to_string_lossy().to_string())
     } else {
         None
@@ -933,7 +962,8 @@ pub async fn install_mcp_to_cli(input: McpInstallInput) -> Result<McpInstallResu
         if let Some(mcp_servers) = obj.get_mut("mcpServers") {
             if let Some(servers_obj) = mcp_servers.as_object_mut() {
                 // Use sanitized name as key
-                let server_key = input.mcp_name
+                let server_key = input
+                    .mcp_name
                     .replace(' ', "-")
                     .replace(|c: char| !c.is_alphanumeric() && c != '-', "")
                     .to_lowercase();
@@ -1005,16 +1035,17 @@ pub async fn install_mcp_to_cli(input: McpInstallInput) -> Result<McpInstallResu
 
 /// Rollback MCP installation
 #[tauri::command]
-pub async fn rollback_mcp_install(config_path: String, backup_path: Option<String>) -> Result<McpInstallResult, String> {
+pub async fn rollback_mcp_install(
+    config_path: String,
+    backup_path: Option<String>,
+) -> Result<McpInstallResult, String> {
     let settings_path = PathBuf::from(&config_path);
 
     if let Some(backup) = &backup_path {
         let backup = PathBuf::from(backup);
         if backup.exists() {
-            fs::copy(&backup, &settings_path)
-                .map_err(|e| format!("恢复备份失败: {}", e))?;
-            fs::remove_file(&backup)
-                .map_err(|e| format!("删除备份文件失败: {}", e))?;
+            fs::copy(&backup, &settings_path).map_err(|e| format!("恢复备份失败: {}", e))?;
+            fs::remove_file(&backup).map_err(|e| format!("删除备份文件失败: {}", e))?;
 
             return Ok(McpInstallResult {
                 success: true,
@@ -1029,8 +1060,7 @@ pub async fn rollback_mcp_install(config_path: String, backup_path: Option<Strin
 
     // If no backup, just delete the settings file if it exists
     if settings_path.exists() {
-        fs::remove_file(&settings_path)
-            .map_err(|e| format!("删除配置文件失败: {}", e))?;
+        fs::remove_file(&settings_path).map_err(|e| format!("删除配置文件失败: {}", e))?;
     }
 
     Ok(McpInstallResult {
@@ -1080,8 +1110,18 @@ fn get_all_cli_configs() -> Vec<CliConfigInfo> {
 
     // Standard CLI config paths
     let cli_configs = vec![
-        ("claude", "claude", home.join(".claude").join("settings.json"), "global"),
-        ("codex", "codex", home.join(".codex").join("settings.json"), "global"),
+        (
+            "claude",
+            "claude",
+            home.join(".claude").join("settings.json"),
+            "global",
+        ),
+        (
+            "codex",
+            "codex",
+            home.join(".codex").join("settings.json"),
+            "global",
+        ),
     ];
 
     for (cli_name, cli_path, config_path, scope) in cli_configs {
@@ -1156,9 +1196,7 @@ pub fn list_installed_mcps() -> Result<Vec<InstalledMcp>, String> {
                 .and_then(|v| v.as_object())
                 .map(|obj| {
                     obj.iter()
-                        .filter_map(|(k, v)| {
-                            v.as_str().map(|s| (k.clone(), s.to_string()))
-                        })
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -1226,7 +1264,10 @@ pub fn toggle_installed_mcp(
     let mut settings: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse settings file: {}", e))?;
 
-    if let Some(mcp_servers) = settings.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
+    if let Some(mcp_servers) = settings
+        .get_mut("mcpServers")
+        .and_then(|v| v.as_object_mut())
+    {
         if let Some(mcp_config) = mcp_servers.get_mut(&mcp_name) {
             if let Some(config_obj) = mcp_config.as_object_mut() {
                 if disabled {
@@ -1260,13 +1301,15 @@ pub fn uninstall_mcp(config_path: String, mcp_name: String) -> Result<McpInstall
     // Create backup
     let backup_path = {
         let backup = settings_path.with_extension("json.backup");
-        fs::copy(&settings_path, &backup)
-            .map_err(|e| format!("Failed to create backup: {}", e))?;
+        fs::copy(&settings_path, &backup).map_err(|e| format!("Failed to create backup: {}", e))?;
         Some(backup.to_string_lossy().to_string())
     };
 
     // Remove the MCP server
-    if let Some(mcp_servers) = settings.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
+    if let Some(mcp_servers) = settings
+        .get_mut("mcpServers")
+        .and_then(|v| v.as_object_mut())
+    {
         mcp_servers.remove(&mcp_name);
     }
 
@@ -1306,17 +1349,23 @@ pub struct McpUpdateCheckResult {
 
 /// Check for MCP updates by comparing with market versions
 #[tauri::command]
-pub async fn check_mcp_updates(mcp_names: Vec<String>) -> Result<Vec<McpUpdateCheckResult>, String> {
+pub async fn check_mcp_updates(
+    mcp_names: Vec<String>,
+) -> Result<Vec<McpUpdateCheckResult>, String> {
     let mut results = Vec::new();
 
     for mcp_name in mcp_names {
         // Try to fetch market detail to get latest version
-        let market_detail = fetch_mcp_market_detail(format!("mcp-{}", mcp_name.replace(' ', "-"))).await;
+        let market_detail =
+            fetch_mcp_market_detail(format!("mcp-{}", mcp_name.replace(' ', "-"))).await;
 
         let (latest_version, update_notes) = match market_detail {
             Ok(detail) => {
                 let latest = detail.version_history.first().map(|v| v.version.clone());
-                let notes = detail.version_history.first().map(|v| v.release_notes.clone());
+                let notes = detail
+                    .version_history
+                    .first()
+                    .map(|v| v.release_notes.clone());
                 (latest, notes)
             }
             Err(_) => (None, None),
@@ -1362,8 +1411,7 @@ pub fn update_installed_mcp(
     // Create backup
     let backup_path = {
         let backup = settings_path.with_extension("json.backup");
-        fs::copy(&settings_path, &backup)
-            .map_err(|e| format!("Failed to create backup: {}", e))?;
+        fs::copy(&settings_path, &backup).map_err(|e| format!("Failed to create backup: {}", e))?;
         Some(backup.to_string_lossy().to_string())
     };
 
@@ -1426,8 +1474,7 @@ pub struct InstalledMcpTestResult {
 
 /// 获取数据库连接
 fn get_db_connection() -> Result<rusqlite::Connection, String> {
-    let persistence_dir = crate::commands::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = crate::commands::get_persistence_dir_path().map_err(|e| e.to_string())?;
     let db_path = persistence_dir.join("data").join("easy-agent.db");
     rusqlite::Connection::open(&db_path).map_err(|e| e.to_string())
 }
@@ -1440,7 +1487,7 @@ fn send_jsonrpc_request(
     params: serde_json::Value,
     request_id: i64,
 ) -> Result<serde_json::Value, String> {
-    use std::io::{Read, Write, BufRead};
+    use std::io::{BufRead, Read, Write};
 
     // 构造 JSON-RPC 请求
     let request = serde_json::json!({
@@ -1454,15 +1501,22 @@ fn send_jsonrpc_request(
     let request_str = serde_json::to_string(&request)
         .map_err(|e| format!("Failed to serialize request: {}", e))?;
 
-    writeln!(writer, "Content-Length: {}\r\n\r\n{}", request_str.len(), request_str)
-        .map_err(|e| format!("Failed to write request: {}", e))?;
+    writeln!(
+        writer,
+        "Content-Length: {}\r\n\r\n{}",
+        request_str.len(),
+        request_str
+    )
+    .map_err(|e| format!("Failed to write request: {}", e))?;
 
-    writer.flush()
+    writer
+        .flush()
         .map_err(|e| format!("Failed to flush writer: {}", e))?;
 
     // 读取响应头
     let mut header_line = String::new();
-    reader.read_line(&mut header_line)
+    reader
+        .read_line(&mut header_line)
         .map_err(|e| format!("Failed to read header: {}", e))?;
 
     // 解析 Content-Length
@@ -1473,12 +1527,14 @@ fn send_jsonrpc_request(
 
     // 读取空行
     let mut empty_line = String::new();
-    reader.read_line(&mut empty_line)
+    reader
+        .read_line(&mut empty_line)
         .map_err(|e| format!("Failed to read separator: {}", e))?;
 
     // 读取响应体
     let mut response_body = vec![0u8; content_length];
-    reader.read_exact(&mut response_body)
+    reader
+        .read_exact(&mut response_body)
         .map_err(|e| format!("Failed to read response body: {}", e))?;
 
     let response_str = String::from_utf8(response_body)
@@ -1499,9 +1555,9 @@ pub fn test_installed_mcp_connection(
     args: Vec<String>,
     env: HashMap<String, String>,
 ) -> Result<InstalledMcpTestResult, String> {
-    use std::process::{Command, Stdio};
-    use std::io::{BufReader, BufWriter};
     use chrono::Utc;
+    use std::io::{BufReader, BufWriter};
+    use std::process::{Command, Stdio};
     use uuid::Uuid;
 
     // 启动 MCP 进程
@@ -1514,8 +1570,14 @@ pub fn test_installed_mcp_connection(
         .spawn()
         .map_err(|e| format!("Failed to start MCP process: {}", e))?;
 
-    let stdin = child.stdin.take().ok_or_else(|| "Failed to get stdin".to_string())?;
-    let stdout = child.stdout.take().ok_or_else(|| "Failed to get stdout".to_string())?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Failed to get stdin".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to get stdout".to_string())?;
 
     let mut writer = BufWriter::new(stdin);
     let mut reader = BufReader::new(stdout);
@@ -1531,7 +1593,8 @@ pub fn test_installed_mcp_connection(
             }
         });
 
-        let init_response = send_jsonrpc_request(&mut writer, &mut reader, "initialize", init_params, 1)?;
+        let init_response =
+            send_jsonrpc_request(&mut writer, &mut reader, "initialize", init_params, 1)?;
 
         // 检查是否有错误
         if let Some(error) = init_response.get("error") {
@@ -1545,13 +1608,25 @@ pub fn test_installed_mcp_connection(
         });
         let notification_str = serde_json::to_string(&initialized_notification)
             .map_err(|e| format!("Failed to serialize notification: {}", e))?;
-        writeln!(writer, "Content-Length: {}\r\n\r\n{}", notification_str.len(), notification_str)
-            .map_err(|e| format!("Failed to write notification: {}", e))?;
-        writer.flush()
+        writeln!(
+            writer,
+            "Content-Length: {}\r\n\r\n{}",
+            notification_str.len(),
+            notification_str
+        )
+        .map_err(|e| format!("Failed to write notification: {}", e))?;
+        writer
+            .flush()
             .map_err(|e| format!("Failed to flush writer: {}", e))?;
 
         // 发送 tools/list 请求
-        let tools_response = send_jsonrpc_request(&mut writer, &mut reader, "tools/list", serde_json::json!({}), 2)?;
+        let tools_response = send_jsonrpc_request(
+            &mut writer,
+            &mut reader,
+            "tools/list",
+            serde_json::json!({}),
+            2,
+        )?;
 
         // 检查是否有错误
         if let Some(error) = tools_response.get("error") {
@@ -1588,7 +1663,11 @@ pub fn test_installed_mcp_connection(
 
     // 保存测试结果到数据库
     let conn = get_db_connection()?;
-    let status = if test_result.success { "success" } else { "failed" };
+    let status = if test_result.success {
+        "success"
+    } else {
+        "failed"
+    };
     let result_id = Uuid::new_v4().to_string();
 
     // 使用 UPSERT（INSERT OR REPLACE）
