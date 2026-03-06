@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-export type SettingsTab = 'general' | 'agents' | 'agentConfig' | 'integration' | 'theme' | 'data' | 'providerSwitch' | 'lsp'
+export type SettingsTab = 'general' | 'agents' | 'agentConfig' | 'integration' | 'theme' | 'data' | 'providerSwitch' | 'lsp' | 'marketplace'
 
 export type AppMode = 'chat' | 'plan'
 export type MainContentMode = 'chat' | 'fileEditor'

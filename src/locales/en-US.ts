@@ -1087,5 +1087,43 @@ export default {
     navigate: 'Navigate',
     select: 'Select',
     close: 'Close',
+  },
+
+  // Marketplace page (integrated MCP/Skills/Plugins market)
+  marketplace: {
+    title: 'Marketplace',
+    subtitle: 'Discover and install MCP servers, Skills, and Plugins to extend AI capabilities',
+    tabs: {
+      mcp: 'MCP Servers',
+      skills: 'Skills',
+      plugins: 'Plugins'
+    },
+    search: 'Search...',
+    allCategories: 'All Categories',
+    allTypes: 'All Types',
+    loading: 'Loading...',
+    noResults: 'No results found',
+    installed: 'Installed',
+    reinstall: 'Reinstall',
+    install: 'Install',
+    by: 'by',
+    // Install modal
+    installMcp: 'Install MCP Server',
+    installSkill: 'Install Skill',
+    installPlugin: 'Install Plugin',
+    selectAgent: 'Select Target Agent',
+    selectAgentPlaceholder: 'Select the agent to install to',
+    noCliAgent: 'No CLI Agent available, please configure CLI path first',
+    installScope: 'Install Scope',
+    scopeGlobal: 'Global',
+    scopeProject: 'Current Project',
+    command: 'Command',
+    args: 'Arguments',
+    envVars: 'Environment Variables',
+    envKey: 'Key',
+    envValue: 'Value',
+    selectComponents: 'Select components to install',
+    installSuccess: 'Installation successful!',
+    installFailed: 'Installation failed'
   }
 }

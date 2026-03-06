@@ -15,6 +15,7 @@ const navItems: NavItem[] = [
   { id: 'general', labelKey: 'settings.nav.general', icon: 'settings' },
   { id: 'agents', labelKey: 'settings.nav.agents', icon: 'bot' },
   { id: 'agentConfig', labelKey: 'settings.nav.agentConfig', icon: 'settings-2' },
+  { id: 'marketplace', labelKey: 'settings.nav.marketplace', icon: 'store' },
   { id: 'providerSwitch', labelKey: 'settings.nav.providerSwitch', icon: 'repeat' },
   { id: 'theme', labelKey: 'settings.nav.theme', icon: 'palette' },
   { id: 'lsp', labelKey: 'settings.nav.lsp', icon: 'languages' },

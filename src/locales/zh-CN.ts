@@ -274,7 +274,7 @@ export default {
       agentConfig: '技能配置',
       integration: '智能体集成',
       mcp: 'MCP 服务器',
-      marketplace: '市场源管理',
+      marketplace: '资源市场',
       skills: 'Skills',
       plugins: 'Plugins',
       theme: '主题',
@@ -1087,5 +1087,43 @@ export default {
     navigate: '导航',
     select: '选择',
     close: '关闭'
+  },
+
+  // 市场页面（整合的 MCP/Skills/Plugins 市场）
+  marketplace: {
+    title: '资源市场',
+    subtitle: '发现和安装 MCP 服务器、Skills 和 Plugins，扩展 AI 的能力',
+    tabs: {
+      mcp: 'MCP 服务器',
+      skills: 'Skills',
+      plugins: 'Plugins'
+    },
+    search: '搜索...',
+    allCategories: '全部分类',
+    allTypes: '全部类型',
+    loading: '加载中...',
+    noResults: '没有找到结果',
+    installed: '已安装',
+    reinstall: '重新安装',
+    install: '安装',
+    by: '作者',
+    // 安装弹窗
+    installMcp: '安装 MCP 服务器',
+    installSkill: '安装 Skill',
+    installPlugin: '安装 Plugin',
+    selectAgent: '选择目标 Agent',
+    selectAgentPlaceholder: '选择要安装到的 Agent',
+    noCliAgent: '没有可用的 CLI Agent，请先配置 CLI 路径',
+    installScope: '安装范围',
+    scopeGlobal: '全局',
+    scopeProject: '当前项目',
+    command: '命令',
+    args: '参数',
+    envVars: '环境变量',
+    envKey: '变量名',
+    envValue: '变量值',
+    selectComponents: '选择要安装的组件',
+    installSuccess: '安装成功！',
+    installFailed: '安装失败'
   }
 }
