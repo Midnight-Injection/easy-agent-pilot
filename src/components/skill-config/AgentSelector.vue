@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAgentStore, type AgentConfig } from '@/stores/agent'
 import { EaIcon } from '@/components/common'
@@ -14,6 +14,10 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const agentStore = useAgentStore()
+
+// 下拉菜单展开状态
+const isOpen = ref(false)
+const dropdownRef = ref<HTMLElement | null>(null)
 
 // 分组智能体
 const cliAgents = computed(() =>
@@ -33,9 +37,30 @@ watch(() => agentStore.agents, (agents) => {
   }
 }, { immediate: true })
 
+// 点击外部关闭下拉菜单
+function handleClickOutside(event: MouseEvent) {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
+    isOpen.value = false
+  }
+}
+
+// 切换下拉菜单
+function toggleDropdown() {
+  isOpen.value = !isOpen.value
+}
+
 function selectAgent(agent: AgentConfig) {
   emit('update:modelValue', agent)
+  isOpen.value = false
 }
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 function getAgentIcon(type: string) {
   return type === 'cli' ? 'lucide:terminal' : 'lucide:bot'
@@ -52,10 +77,15 @@ function getAgentTypeLabel(type: string) {
       {{ t('settings.agentConfig.selectAgent') }}
     </div>
 
-    <div class="agent-selector__dropdown">
+    <div
+      ref="dropdownRef"
+      class="agent-selector__dropdown"
+      :class="{ 'agent-selector__dropdown--open': isOpen }"
+    >
       <div
         class="agent-selector__current"
         :class="{ 'agent-selector__current--placeholder': !modelValue }"
+        @click="toggleDropdown"
       >
         <template v-if="modelValue">
           <EaIcon
@@ -220,8 +250,7 @@ function getAgentTypeLabel(type: string) {
   transition: all 0.2s;
 }
 
-.agent-selector__dropdown:focus-within .agent-selector__menu,
-.agent-selector__dropdown:hover .agent-selector__menu {
+.agent-selector__dropdown--open .agent-selector__menu {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);

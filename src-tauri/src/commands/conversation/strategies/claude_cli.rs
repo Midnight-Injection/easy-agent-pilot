@@ -215,16 +215,6 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
 
         let full_command = build_full_claude_command(&cli_path, &input_text, &args);
         log_info!("Claude CLI command: {}", full_command);
-        log_info!(
-            "执行参数: session_id={}, output_format={}, model={:?}, message_count={}, input_chars={}, schema_chars={}",
-            session_id,
-            cli_output_format,
-            model_id,
-            messages.len(),
-            input_text.chars().count(),
-            schema_text.map(|s| s.chars().count()).unwrap_or(0)
-        );
-
         // 执行命令
         let mut cmd = TokioCommand::new(&cli_path);
         cmd.arg("-p").arg(&input_text).args(&args);
@@ -289,6 +279,7 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
                 "[stdout] 已读取完成，长度 {} 字符",
                 full_output.chars().count()
             );
+            log_info!("[stdout] 输出预览: {}", preview_text(&full_output, 500));
 
             if should_abort(&session_id_clone).await {
                 return StdoutReadOutcome::none();
@@ -302,7 +293,11 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
 
             if let Some(event) = parse_claude_json_blob_output(&session_id_clone, normalized) {
                 log_info!("[stdout] 发送事件: {}, event_type: {}", event_name_clone, event.event_type);
-                let _ = app_clone.emit(&event_name_clone, event);
+                log_info!("[stdout] 事件内容长度: {:?}", event.content.as_ref().map(|c| c.len()));
+                match app_clone.emit(&event_name_clone, &event) {
+                    Ok(_) => log_info!("[stdout] 事件发送成功"),
+                    Err(e) => log_error!("[stdout] 事件发送失败: {:?}", e),
+                }
                 return StdoutReadOutcome {
                     emitted_content: true,
                     emitted_error: false,
@@ -311,7 +306,10 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
 
             log_info!("[stdout] 无法解析为结构化输出，直接发送原始内容");
             let event = build_content_event(&session_id_clone, normalized.to_string());
-            let _ = app_clone.emit(&event_name_clone, event);
+            log_info!("[stdout] 发送原始内容事件: {}, event_type: {}", event_name_clone, event.event_type);
+            if let Err(e) = app_clone.emit(&event_name_clone, event) {
+                log_error!("[stdout] 事件发送失败: {:?}", e);
+            }
             StdoutReadOutcome {
                 emitted_content: true,
                 emitted_error: false,
@@ -445,32 +443,41 @@ fn preview_text(text: &str, max_chars: usize) -> String {
 
 /// 解析 `--output-format json` 的整块输出
 fn parse_claude_json_blob_output(session_id: &str, output: &str) -> Option<CliStreamEvent> {
+    log_info!("[parse] 开始解析 JSON blob, 长度: {}", output.chars().count());
+
     let parsed = match parse_json_blob_with_fallback(output) {
         Ok(value) => value,
-        Err(_) => return None,
+        Err(e) => {
+            log_error!("[parse] JSON 解析失败: {:?}", e);
+            return None;
+        }
     };
 
-    // 按要求打印 CLI 完整 JSON 响应
     if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
         log_info!("CLI 返回完整内容:\n{}", pretty);
     }
 
     if let Some(content) = extract_structured_output_from_json_blob(&parsed) {
+        log_info!("[parse] 提取到 structured_output, 长度: {}", content.chars().count());
         return Some(build_content_event(session_id, content));
     }
 
     if let Some(error) = extract_error_from_json_blob(&parsed) {
+        log_info!("[parse] 提取到 error: {}", error);
         return Some(build_error_event(session_id, error));
     }
 
     if let Some(content) = extract_result_content_from_json_blob(&parsed) {
+        log_info!("[parse] 提取到 result.content, 长度: {}", content.chars().count());
         return Some(build_content_event(session_id, content));
     }
 
     if let Ok(raw_json) = serde_json::to_string(&parsed) {
+        log_info!("[parse] 返回原始 JSON, 长度: {}", raw_json.chars().count());
         return Some(build_content_event(session_id, raw_json));
     }
 
+    log_error!("[parse] 无法提取任何内容");
     None
 }
 

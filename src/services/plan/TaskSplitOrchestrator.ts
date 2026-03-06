@@ -39,6 +39,7 @@ interface ExecutionRequest {
 
 interface StreamPayload {
   type: string
+  session_id?: string
   content?: string
   error?: string
 }
@@ -63,9 +64,10 @@ export class TaskSplitOrchestrator {
     const provider = agent.provider || 'claude'
     const sessionId = crypto.randomUUID()
 
-    const eventName = this.getEventName(agent.type, provider)
+    // 先设置 activeSessionId，再调用 getEventName
     this.activeSessionId = sessionId
     this.activeAgentType = agent.type
+    const eventName = this.getEventName(agent.type, provider)
 
     let fullContent = ''
     const streamErrors: string[] = []
@@ -98,6 +100,7 @@ export class TaskSplitOrchestrator {
       request.baseUrl = agent.baseUrl
     }
 
+    console.log('[TaskSplitOrchestrator] 准备注册事件监听器:', eventName)
     this.activeUnlisten = await listen<StreamPayload>(eventName, (event) => {
       const payload = event.payload
       console.log('[TaskSplitOrchestrator] 收到事件:', eventName, 'payload:', JSON.stringify(payload))
@@ -108,6 +111,7 @@ export class TaskSplitOrchestrator {
         streamErrors.push(payload.error)
       }
     })
+    console.log('[TaskSplitOrchestrator] 事件监听器注册完成, unlisten:', typeof this.activeUnlisten)
     console.log('[TaskSplitOrchestrator] 开始监听事件:', eventName)
     console.log('[TaskSplitOrchestrator] 请求参数:', JSON.stringify({
       sessionId,
@@ -118,9 +122,7 @@ export class TaskSplitOrchestrator {
     }))
 
     try {
-      console.log('[TaskSplitOrchestrator] 调用 invoke execute_agent...')
       await invoke('execute_agent', { request })
-      console.log('[TaskSplitOrchestrator] invoke 完成, fullContent length:', fullContent.length)
       if (fullContent.trim().length > 0) {
         return fullContent
       }
