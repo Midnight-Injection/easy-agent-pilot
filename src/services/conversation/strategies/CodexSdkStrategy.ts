@@ -5,7 +5,7 @@ import type {
   AgentStrategy,
   ConversationContext,
   StreamEvent,
-  SdkExecutionRequest,
+  ExecutionRequest,
   SdkStreamEvent
 } from './types'
 
@@ -28,7 +28,15 @@ export class CodexSdkStrategy implements AgentStrategy {
     context: ConversationContext,
     onEvent: (event: StreamEvent) => void
   ): Promise<void> {
-    const { sessionId, agent, messages, tools } = context
+    const {
+      sessionId,
+      agent,
+      messages,
+      tools,
+      mcpServers,
+      executionMode,
+      responseMode
+    } = context
 
     // 验证必要配置
     if (!agent.apiKey) {
@@ -64,8 +72,10 @@ export class CodexSdkStrategy implements AgentStrategy {
       )
 
       // 构建请求
-      const request: SdkExecutionRequest = {
+      const request: ExecutionRequest = {
         sessionId,
+        agentType: 'sdk',
+        provider: 'codex',
         apiKey: agent.apiKey,
         baseUrl: agent.baseUrl,
         modelId: agent.modelId,
@@ -76,20 +86,39 @@ export class CodexSdkStrategy implements AgentStrategy {
             content: m.content
           })),
         maxTokens: 4096,
-        tools
+        tools,
+        mcpServers,
+        executionMode: executionMode ?? 'chat',
+        responseMode: responseMode ?? 'stream_text'
       }
 
-      // 调用后端命令
-      await invoke('execute_codex_sdk', { request })
+      console.info('[AI Execute] start', {
+        provider: 'codex',
+        mode: request.executionMode,
+        responseMode: request.responseMode,
+        sessionId
+      })
+      await invoke('execute_agent', { request })
+      console.info('[AI Execute] done', {
+        provider: 'codex',
+        mode: request.executionMode,
+        sessionId
+      })
 
     } catch (error) {
       if (this.abortController?.signal.aborted) {
         onEvent({ type: 'done' })
         return
       }
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      console.error('[AI Execute] failed', {
+        provider: 'codex',
+        sessionId: this.currentSessionId,
+        error: errorMessage
+      })
       onEvent({
         type: 'error',
-        error: error instanceof Error ? error.message : String(error)
+        error: errorMessage
       })
     } finally {
       this.cleanup()
@@ -100,6 +129,7 @@ export class CodexSdkStrategy implements AgentStrategy {
     if (this.abortController) {
       this.abortController.abort()
     }
+    this.abortExecution()
     this.cleanup()
   }
 
@@ -108,12 +138,16 @@ export class CodexSdkStrategy implements AgentStrategy {
       this.unlistenStream()
       this.unlistenStream = null
     }
+    this.abortController = null
+    this.currentSessionId = null
+  }
+
+  private abortExecution(): void {
     if (this.currentSessionId) {
       // 通知后端停止执行
-      invoke('abort_sdk_execution', { sessionId: this.currentSessionId }).catch(() => {
-        // 忽略错误
+      invoke('abort_sdk_execution', { sessionId: this.currentSessionId }).catch((error) => {
+        console.warn('[AI Execute] abort failed', error)
       })
-      this.currentSessionId = null
     }
   }
 

@@ -71,6 +71,17 @@ export class ConversationService {
       // 更新会话最后消息
       sessionStore.updateLastMessage(sessionId, content.slice(0, 50))
 
+      // 如果会话名称是默认名称（未命名会话），则用第一条消息的前几个字更新
+      const session = sessionStore.sessions.find(s => s.id === sessionId)
+      if (session && (session.name === '未命名会话' || session.name.startsWith('新会话'))) {
+        // 提取前20个字符作为会话名称，去掉换行符
+        const newTitle = content.replace(/\n/g, ' ').slice(0, 20).trim()
+        const finalTitle = newTitle.length < content.length ? newTitle + '...' : newTitle
+        if (finalTitle) {
+          await sessionStore.updateSession(sessionId, { name: finalTitle })
+        }
+      }
+
       // 创建流式 AI 响应消息
       const aiMessage = await messageStore.addMessage({
         sessionId,
@@ -142,7 +153,9 @@ export class ConversationService {
         agent,
         messages,
         workingDirectory,
-        mcpServers
+        mcpServers,
+        executionMode: 'chat',
+        responseMode: 'stream_text'
       }
 
       // 执行对话
@@ -168,7 +181,7 @@ export class ConversationService {
 
     let accumulatedContent = ''
     let accumulatedThinking = ''
-    let toolCalls: ToolCall[] = []
+    const toolCalls: ToolCall[] = []
     let hasError = false
 
     try {
@@ -242,6 +255,20 @@ export class ConversationService {
           }
         })
       })
+
+      // 兜底：部分后端/CLI 场景可能不会显式发出 done 事件，避免状态长期卡在“生成中”
+      if (sessionExecutionStore.getIsSending(sessionId)) {
+        if (!hasError) {
+          await messageStore.updateMessage(aiMessage.id, {
+            status: 'completed'
+          })
+          sessionStore.updateLastMessage(
+            sessionId,
+            accumulatedContent.slice(0, 50)
+          )
+        }
+        sessionExecutionStore.endSending(sessionId)
+      }
     } catch (error) {
       hasError = true
       const errorMessage = error instanceof Error ? error.message : String(error)

@@ -60,6 +60,16 @@ export interface ConversationContext {
   workingDirectory?: string
   /** MCP 服务器配置列表 */
   mcpServers?: McpServerConfig[]
+  /** 执行模式（普通会话/任务拆分） */
+  executionMode?: 'chat' | 'task_split'
+  /** 响应模式（流式文本/单轮 JSON） */
+  responseMode?: 'stream_text' | 'json_once'
+  /** CLI 输出格式覆盖 */
+  cliOutputFormat?: 'text' | 'json' | 'stream-json'
+  /** JSON Schema（json_once 模式可选） */
+  jsonSchema?: string
+  /** 额外 CLI 参数 */
+  extraCliArgs?: string[]
 }
 
 /**
@@ -167,6 +177,34 @@ export interface SdkExecutionRequest {
   tools?: ToolDefinition[]
   /** MCP 服务器配置列表 */
   mcpServers?: McpServerConfig[]
+}
+
+/**
+ * 统一执行请求
+ */
+export interface ExecutionRequest {
+  sessionId: string
+  agentType: 'cli' | 'sdk'
+  provider: string
+  cliPath?: string
+  apiKey?: string
+  baseUrl?: string
+  modelId?: string
+  messages: Array<{
+    role: 'user' | 'assistant' | 'system'
+    content: string
+  }>
+  workingDirectory?: string
+  allowedTools?: string[]
+  systemPrompt?: string
+  maxTokens?: number
+  tools?: ToolDefinition[]
+  cliOutputFormat?: 'text' | 'json' | 'stream-json'
+  jsonSchema?: string
+  extraCliArgs?: string[]
+  mcpServers?: McpServerConfig[]
+  executionMode?: 'chat' | 'task_split'
+  responseMode?: 'stream_text' | 'json_once'
 }
 
 /**

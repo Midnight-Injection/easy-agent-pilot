@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { invoke } from '@tauri-apps/api/core'
 import type { AgentConfig } from '@/stores/agent'
+import type { ExecutionRequest } from '@/services/conversation/strategies/types'
 
 export interface SplitChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -16,25 +17,9 @@ interface ExecuteTurnParams {
   cliOutputFormat?: 'text' | 'json' | 'stream-json'
   jsonSchema?: string
   extraCliArgs?: string[]
+  executionMode?: 'chat' | 'task_split'
+  responseMode?: 'stream_text' | 'json_once'
   onContent: (delta: string) => void
-}
-
-interface ExecutionRequest {
-  sessionId: string
-  agentType: string
-  provider: string
-  cliPath?: string
-  apiKey?: string
-  baseUrl?: string
-  modelId?: string
-  messages: SplitChatMessage[]
-  workingDirectory?: string
-  allowedTools?: string[]
-  systemPrompt?: string
-  maxTokens?: number
-  cliOutputFormat?: 'text' | 'json' | 'stream-json'
-  jsonSchema?: string
-  extraCliArgs?: string[]
 }
 
 interface StreamPayload {
@@ -59,6 +44,8 @@ export class TaskSplitOrchestrator {
       cliOutputFormat,
       jsonSchema,
       extraCliArgs,
+      executionMode,
+      responseMode,
       onContent
     } = params
     const provider = agent.provider || 'claude'
@@ -74,13 +61,15 @@ export class TaskSplitOrchestrator {
 
     const request: ExecutionRequest = {
       sessionId,
-      agentType: agent.type,
+      agentType: agent.type as 'cli' | 'sdk',
       provider,
       messages,
       modelId: modelId || undefined,
       workingDirectory,
       systemPrompt,
-      maxTokens: agent.type === 'sdk' ? 4096 : undefined
+      maxTokens: agent.type === 'sdk' ? 4096 : undefined,
+      executionMode: executionMode ?? 'task_split',
+      responseMode: responseMode ?? 'json_once'
     }
 
     if (agent.type === 'cli') {
@@ -100,10 +89,8 @@ export class TaskSplitOrchestrator {
       request.baseUrl = agent.baseUrl
     }
 
-    console.log('[TaskSplitOrchestrator] 准备注册事件监听器:', eventName)
     this.activeUnlisten = await listen<StreamPayload>(eventName, (event) => {
       const payload = event.payload
-      console.log('[TaskSplitOrchestrator] 收到事件:', eventName, 'payload:', JSON.stringify(payload))
       if (payload.type === 'content' && payload.content) {
         fullContent += payload.content
         onContent(payload.content)
@@ -111,23 +98,28 @@ export class TaskSplitOrchestrator {
         streamErrors.push(payload.error)
       }
     })
-    console.log('[TaskSplitOrchestrator] 事件监听器注册完成, unlisten:', typeof this.activeUnlisten)
-    console.log('[TaskSplitOrchestrator] 开始监听事件:', eventName)
-    console.log('[TaskSplitOrchestrator] 请求参数:', JSON.stringify({
-      sessionId,
-      agentType: agent.type,
+    console.info('[AI Execute] start', {
       provider,
-      cliOutputFormat,
-      jsonSchemaLength: jsonSchema?.length
-    }))
+      mode: request.executionMode,
+      responseMode: request.responseMode,
+      outputFormat: request.cliOutputFormat,
+      sessionId
+    })
 
     try {
       await invoke('execute_agent', { request })
+      console.info('[AI Execute] done', {
+        provider,
+        mode: request.executionMode,
+        sessionId
+      })
       if (fullContent.trim().length > 0) {
         return fullContent
       }
       if (streamErrors.length > 0) {
-        throw new Error(streamErrors[streamErrors.length - 1])
+        const error = streamErrors[streamErrors.length - 1]
+        console.error('[AI Execute] failed', { provider, sessionId, error })
+        throw new Error(error)
       }
       return fullContent
     } finally {

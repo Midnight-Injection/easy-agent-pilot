@@ -103,29 +103,24 @@ export const useWindowStateStore = defineStore('windowState', () => {
     try {
       // 获取当前窗口所在的显示器
       const monitor = await currentMonitor()
-      console.log('[WindowState] 获取显示器信息:', monitor)
       if (monitor) {
         // 获取屏幕的逻辑尺寸（考虑 DPI 缩放）
         const screenSize = monitor.size
         const scaleFactor = monitor.scaleFactor
-        console.log('[WindowState] 屏幕物理尺寸:', screenSize.width, 'x', screenSize.height, '缩放因子:', scaleFactor)
 
         // 计算逻辑尺寸（物理尺寸 / 缩放因子）
         const logicalWidth = Math.floor(screenSize.width / scaleFactor)
         const logicalHeight = Math.floor(screenSize.height / scaleFactor)
-        console.log('[WindowState] 屏幕逻辑尺寸:', logicalWidth, 'x', logicalHeight)
 
         // 按比例计算窗口大小
         const width = Math.max(Math.floor(logicalWidth * DEFAULT_WIDTH_RATIO), MIN_WIDTH)
         const height = Math.max(Math.floor(logicalHeight * DEFAULT_HEIGHT_RATIO), MIN_HEIGHT)
-        console.log('[WindowState] 计算的窗口尺寸:', width, 'x', height, '比例:', DEFAULT_WIDTH_RATIO, 'x', DEFAULT_HEIGHT_RATIO)
         return { width, height }
       }
     } catch (error) {
       console.error('[WindowState] 获取屏幕尺寸失败:', error)
     }
     // 如果无法获取屏幕尺寸，使用默认值
-    console.log('[WindowState] 使用默认尺寸: 1400 x 900')
     return { width: 1400, height: 900 }
   }
 
@@ -135,7 +130,6 @@ export const useWindowStateStore = defineStore('windowState', () => {
 
     // 获取所有显示器
     const monitors = await availableMonitors()
-    console.log('[WindowState] 可用显示器数量:', monitors.length)
 
     // 首先设置窗口大小
     await appWindow.setSize(new LogicalSize(state.width, state.height))
@@ -159,7 +153,6 @@ export const useWindowStateStore = defineStore('windowState', () => {
         const logicalX = Math.floor(monitorPosition.x / scaleFactor) + state.x
         const logicalY = Math.floor(monitorPosition.y / scaleFactor) + state.y
 
-        console.log('[WindowState] 设置窗口位置到显示器', state.monitorIndex, '逻辑位置:', logicalX, logicalY)
         await appWindow.setPosition(new LogicalPosition(logicalX, logicalY))
       } else if (isValidPosition) {
         // 没有显示器信息，使用保存的绝对位置
@@ -175,7 +168,6 @@ export const useWindowStateStore = defineStore('windowState', () => {
   function debouncedSave(): void {
     // 初始化期间不保存状态
     if (isInitializing) {
-      console.log('[WindowState] 初始化期间跳过保存')
       return
     }
     if (saveTimeout.value) {
@@ -183,7 +175,6 @@ export const useWindowStateStore = defineStore('windowState', () => {
     }
     saveTimeout.value = setTimeout(async () => {
       const currentState = await getCurrentWindowState()
-      console.log('[WindowState] 保存窗口状态（逻辑像素）:', currentState)
       await saveWindowStateToDb(currentState)
     }, SAVE_DELAY)
   }
@@ -192,34 +183,27 @@ export const useWindowStateStore = defineStore('windowState', () => {
   async function initWindowState(): Promise<void> {
     // 设置初始化标记，防止在初始化期间保存状态
     isInitializing = true
-    console.log('[WindowState] 开始初始化窗口状态...')
 
     try {
       // 从数据库加载保存的状态
       const savedState = await loadWindowStateFromDb()
-      console.log('[WindowState] 保存的状态:', savedState)
       const appWindow = getCurrentWindow()
 
       // 检查是否需要重新计算窗口大小（版本号不匹配时强制重新计算）
       const needsRecalculate = !savedState || savedState.version !== WINDOW_STATE_VERSION
-      console.log('[WindowState] 是否需要重新计算:', needsRecalculate, '当前版本:', WINDOW_STATE_VERSION, '保存版本:', savedState?.version)
 
       if (needsRecalculate) {
         // 版本不匹配或没有保存的状态，使用动态计算的默认尺寸
-        console.log('[WindowState] 使用动态计算的默认尺寸')
         const defaultSize = await calculateDefaultWindowSize()
-        console.log('[WindowState] 设置窗口大小（逻辑尺寸）:', defaultSize.width, 'x', defaultSize.height)
         // 使用 LogicalSize 设置窗口大小（自动处理 DPI 缩放）
         await appWindow.setSize(new LogicalSize(defaultSize.width, defaultSize.height))
         await appWindow.center()
-        console.log('[WindowState] 窗口已居中')
 
         // 等待一下确保窗口已经完全设置好
         await new Promise(resolve => setTimeout(resolve, 100))
 
         // 获取当前位置（居中后的位置）
         const currentState = await getCurrentWindowState()
-        console.log('[WindowState] 当前窗口状态:', currentState)
 
         // 保存新的状态（带版本号）
         const newState: WindowState = {
@@ -232,17 +216,13 @@ export const useWindowStateStore = defineStore('windowState', () => {
           isMaximized: false
         }
         await saveWindowStateToDb(newState)
-        console.log('[WindowState] 已保存新版本的窗口状态')
       } else if (savedState) {
         // 版本匹配，验证保存的状态是否有效
         const isValidSize = savedState.width >= MIN_WIDTH && savedState.height >= MIN_HEIGHT
-        console.log('[WindowState] 保存的状态是否有效:', isValidSize, '最小尺寸:', MIN_WIDTH, 'x', MIN_HEIGHT)
         if (isValidSize) {
-          console.log('[WindowState] 应用保存的窗口状态')
           await applyWindowState(savedState)
         } else {
           // 保存的状态无效，使用动态计算的默认尺寸
-          console.log('[WindowState] 保存的状态无效，使用动态计算的默认尺寸')
           const defaultSize = await calculateDefaultWindowSize()
           await appWindow.setSize(new LogicalSize(defaultSize.width, defaultSize.height))
           await appWindow.center()
@@ -250,12 +230,10 @@ export const useWindowStateStore = defineStore('windowState', () => {
       }
 
       isLoaded.value = true
-      console.log('[WindowState] 窗口状态初始化完成')
 
       // 显示窗口
       await appWindow.show()
       await appWindow.setFocus()
-      console.log('[WindowState] 窗口已显示')
 
       // 监听窗口大小变化
       await appWindow.onResized(() => {
@@ -269,7 +247,6 @@ export const useWindowStateStore = defineStore('windowState', () => {
     } finally {
       // 初始化完成，清除标记
       isInitializing = false
-      console.log('[WindowState] 初始化标记已清除')
     }
   }
 

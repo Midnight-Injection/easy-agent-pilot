@@ -529,7 +529,7 @@ export const useTaskStore = defineStore('task', () => {
   async function createTasksFromSplit(planId: string, taskInputs: CreateTaskInput[]): Promise<Task[]> {
     const notificationStore = useNotificationStore()
 
-    // 转换输入格式
+    // 转换输入格式 - Rust后端期望Vec<String>而非JSON字符串
     const rustInputs = taskInputs.map(input => ({
       plan_id: planId,
       parent_id: input.parentId ?? null,
@@ -540,9 +540,9 @@ export const useTaskStore = defineStore('task', () => {
       dependencies: input.dependencies ?? null,
       order: input.order ?? null,
       max_retries: input.maxRetries ?? null,
-      implementation_steps: input.implementationSteps ? JSON.stringify(input.implementationSteps) : null,
-      test_steps: input.testSteps ? JSON.stringify(input.testSteps) : null,
-      acceptance_criteria: input.acceptanceCriteria ? JSON.stringify(input.acceptanceCriteria) : null
+      implementation_steps: input.implementationSteps ?? null,
+      test_steps: input.testSteps ?? null,
+      acceptance_criteria: input.acceptanceCriteria ?? null
     }))
 
     try {

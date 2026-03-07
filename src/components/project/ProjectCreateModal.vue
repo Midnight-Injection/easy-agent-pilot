@@ -34,8 +34,8 @@ const nameInputRef = ref<HTMLInputElement | null>(null)
 
 // 表单有效性校验
 const isFormValid = computed(() => {
-  // 名称必填
-  if (!form.value.name.trim()) return false
+  // 名称和路径不能同时为空
+  if (!form.value.name.trim() && !form.value.path.trim()) return false
 
   // 路径不能有错误
   if (pathError.value) return false
@@ -121,24 +121,54 @@ const handleBrowse = async () => {
   }
 }
 
+// 从路径中提取文件夹名称
+const extractNameFromPath = (path: string): string => {
+  // 处理 ~ 开头的路径
+  let normalizedPath = path
+  if (path.startsWith('~')) {
+    normalizedPath = path.slice(1)
+  }
+  // 移除末尾的斜杠
+  normalizedPath = normalizedPath.replace(/\/+$/, '')
+  // 获取最后一个路径段作为名称
+  const segments = normalizedPath.split('/')
+  return segments[segments.length - 1] || ''
+}
+
 const handleSubmit = async () => {
-  // 校验必填字段
-  if (!form.value.name.trim()) {
-    errorMessage.value = '请输入项目名称'
+  // 校验：名称和路径不能同时为空
+  if (!form.value.name.trim() && !form.value.path.trim()) {
+    errorMessage.value = '请输入项目名称或选择项目路径'
     return
   }
 
-  // 验证路径（如果有输入）
-  if (form.value.path.trim()) {
-    await validatePath(form.value.path.trim())
-    if (pathError.value) {
+  // 确定最终的项目名称
+  let projectName = form.value.name.trim()
+  let projectPath = form.value.path.trim()
+
+  // 如果名称为空，从路径中提取
+  if (!projectName && projectPath) {
+    projectName = extractNameFromPath(projectPath)
+    if (!projectName) {
+      errorMessage.value = '无法从路径中提取项目名称，请手动输入'
       return
     }
   }
 
+  // 验证路径（如果有输入）
+  if (projectPath) {
+    await validatePath(projectPath)
+    if (pathError.value) {
+      return
+    }
+  } else {
+    // 如果路径为空，使用项目名称作为默认路径
+    projectPath = `~/${projectName}`
+  }
+
   emit('submit', {
-    name: form.value.name.trim(),
-    path: form.value.path.trim() || `~/${form.value.name.trim()}`,
+    name: projectName,
+    path: projectPath,
     description: form.value.description.trim() || undefined
   })
 }
@@ -157,15 +187,14 @@ const handleSubmit = async () => {
       @submit.prevent="handleSubmit"
     >
       <div class="form-group">
-        <label class="form-label">项目名称 *</label>
+        <label class="form-label">项目名称</label>
         <input
           ref="nameInputRef"
           v-model="form.name"
           type="text"
           class="form-input"
           :class="{ 'form-input--error': errorMessage }"
-          placeholder="输入项目名称"
-          required
+          placeholder="留空将使用路径文件夹名"
         >
         <span
           v-if="errorMessage"
@@ -208,7 +237,7 @@ const handleSubmit = async () => {
           v-else
           class="form-hint"
         >
-          留空将使用项目名称作为目录名
+          留空将使用项目名称作为目录名；若名称为空，将以路径文件夹名作为名称
         </span>
       </div>
 

@@ -78,11 +78,6 @@ export const logger = {
  */
 export function setLogFilterEnabled(enabled: boolean) {
   localStorage.setItem('LOG_FILTER_ENABLED', String(enabled))
-  if (enabled) {
-    console.log('日志过滤已启用')
-  } else {
-    console.log('日志过滤已禁用')
-  }
 }
 
 export default logger

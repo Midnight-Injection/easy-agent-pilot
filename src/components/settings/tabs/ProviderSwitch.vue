@@ -124,9 +124,8 @@ async function handleSave(input: CreateProviderProfileInput | UpdateProviderProf
 }
 
 // 简单的成功/错误提示
-function showSuccess(message: string) {
+function showSuccess(_message: string) {
   // 这里可以使用 notification store 或者其他方式显示提示
-  console.log('Success:', message)
 }
 
 function showError(message: string) {

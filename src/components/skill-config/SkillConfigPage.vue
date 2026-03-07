@@ -96,9 +96,8 @@ function handleViewSkillDetail(config: UnifiedSkillConfig) {
   skillConfigStore.viewSkillDetail(config)
 }
 
-function handleEditSkill(config: UnifiedSkillConfig) {
+function handleEditSkill(_config: UnifiedSkillConfig) {
   // TODO: 实现 Skills 编辑
-  console.log('Edit skill:', config.id)
 }
 
 function handleDeleteSkill(config: UnifiedSkillConfig) {
@@ -124,9 +123,8 @@ function handleViewPluginDetail(config: UnifiedPluginConfig) {
   skillConfigStore.viewPluginDetail(config)
 }
 
-function handleEditPlugin(config: UnifiedPluginConfig) {
+function handleEditPlugin(_config: UnifiedPluginConfig) {
   // TODO: 实现 Plugins 编辑
-  console.log('Edit plugin:', config.id)
 }
 
 function handleDeletePlugin(config: UnifiedPluginConfig) {

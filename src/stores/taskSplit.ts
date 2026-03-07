@@ -63,6 +63,15 @@ interface TaskSplitAgentStrategy {
   parseOutput(content: string, minTaskCount: number): ParsedAiResult | null
 }
 
+// 持久化的拆分状态（用于关闭弹框后恢复）
+interface PersistedSplitState {
+  messages: SplitMessage[]
+  llmMessages: SplitChatMessage[]
+  splitResult: AITaskItem[] | null
+  currentFormId: string | null
+  context: TaskSplitContext
+}
+
 export const useTaskSplitStore = defineStore('taskSplit', () => {
   const messages = ref<SplitMessage[]>([])
   const isProcessing = ref(false)
@@ -72,7 +81,134 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
 
   const llmMessages = ref<SplitChatMessage[]>([])
 
+  // 存储每个planId的持久化状态
+  const persistedStates = new Map<string, PersistedSplitState>()
+
+  // 保存当前状态（用于关闭弹框前保存）
+  function persistCurrentState() {
+    if (!context.value) return
+    const planId = context.value.planId
+
+    // 如果正在处理中，标记最后一条assistant消息为取消状态
+    if (isProcessing.value && messages.value.length > 0) {
+      const lastMessage = messages.value[messages.value.length - 1]
+      if (lastMessage.role === 'assistant') {
+        lastMessage.cancelled = true
+      }
+    }
+
+    // 深拷贝保存状态
+    persistedStates.set(planId, {
+      messages: messages.value.map(msg => ({
+        ...msg,
+        formSchema: msg.formSchema ? JSON.parse(JSON.stringify(msg.formSchema)) : undefined,
+        formValues: msg.formValues ? JSON.parse(JSON.stringify(msg.formValues)) : undefined
+      })),
+      llmMessages: [...llmMessages.value],
+      splitResult: splitResult.value ? JSON.parse(JSON.stringify(splitResult.value)) : null,
+      currentFormId: currentFormId.value,
+      context: { ...context.value }
+    })
+
+    // 保存后重置处理状态
+    isProcessing.value = false
+  }
+
+  // 恢复持久化状态
+  function restorePersistedState(planId: string): boolean {
+    const persisted = persistedStates.get(planId)
+    if (!persisted) return false
+
+    // 深拷贝恢复消息（确保复杂对象如formSchema也被正确复制）
+    messages.value = persisted.messages.map(msg => ({
+      ...msg,
+      formSchema: msg.formSchema ? JSON.parse(JSON.stringify(msg.formSchema)) : undefined,
+      formValues: msg.formValues ? JSON.parse(JSON.stringify(msg.formValues)) : undefined
+    }))
+
+    // 检查最后一条消息是否被取消
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.cancelled && lastMsg.role === 'assistant') {
+      // 如果最后一条是被取消的assistant消息，且内容不完整，移除它
+      if (!lastMsg.formSchema && !lastMsg.content.includes('DONE')) {
+        messages.value.pop()
+      }
+    }
+
+    // 重新构建llmMessages，基于清理后的messages
+    llmMessages.value = [
+      {
+        role: 'system',
+        content: buildPlanSplitSystemPrompt()
+      }
+    ]
+
+    // 根据清理后的消息重建LLM历史
+    for (const msg of messages.value) {
+      if (msg.role === 'user') {
+        // 用户消息：如果有formValues则使用表单响应prompt，否则使用显示内容
+        if (msg.formValues && msg.formSchema) {
+          llmMessages.value.push({
+            role: 'user',
+            content: buildFormResponsePrompt(msg.formSchema.formId, msg.formValues)
+          })
+        } else {
+          llmMessages.value.push({
+            role: 'user',
+            content: msg.content
+          })
+        }
+      } else if (msg.role === 'assistant' && msg.rawContent && !msg.cancelled) {
+        // assistant消息：使用原始内容（只有未被取消的才加入历史）
+        llmMessages.value.push({
+          role: 'assistant',
+          content: msg.rawContent
+        })
+      }
+    }
+
+    // 深拷贝恢复拆分结果
+    splitResult.value = persisted.splitResult
+      ? JSON.parse(JSON.stringify(persisted.splitResult))
+      : null
+    currentFormId.value = persisted.currentFormId
+
+    // 如果恢复后有拆分结果，需要重新计算currentFormId
+    if (splitResult.value && splitResult.value.length > 0) {
+      // 拆分已完成，不需要表单
+      currentFormId.value = null
+    } else {
+      // 检查是否有待处理的表单
+      const lastFormMessage = [...messages.value]
+        .reverse()
+        .find(msg => msg.formSchema && !msg.formValues)
+      currentFormId.value = lastFormMessage?.formSchema?.formId ?? null
+    }
+
+    return true
+  }
+
+  // 清理指定planId的持久化状态
+  function clearPersistedState(planId: string) {
+    persistedStates.delete(planId)
+  }
+
+  // 检查是否有持久化状态
+  function hasPersistedState(planId: string): boolean {
+    return persistedStates.has(planId)
+  }
+
   async function initSession(nextContext: TaskSplitContext) {
+    // 检查是否有可恢复的状态
+    const hasState = hasPersistedState(nextContext.planId)
+    if (hasState) {
+      // 恢复状态
+      context.value = nextContext
+      restorePersistedState(nextContext.planId)
+      return
+    }
+
+    // 没有可恢复的状态，开始新会话
     reset()
     context.value = nextContext
 
@@ -139,9 +275,10 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     }
 
     const prompt = buildFormResponsePrompt(formId, values)
+    const displayContent = formatFormResponseSummary(lastFormMessage?.formSchema, values)
     await submitUserMessage(prompt, {
       visible: true,
-      displayContent: '我已提交表单信息，请继续拆分。'
+      displayContent
     })
   }
 
@@ -174,8 +311,6 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     if (!context.value) return
     const strategy = resolveTaskSplitStrategy(agent)
 
-    logger.info('[runAssistantTurnInternal] 使用策略:', strategy.name)
-
     const assistantMessage: SplitMessage = {
       id: crypto.randomUUID(),
       role: 'assistant',
@@ -185,16 +320,12 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     messages.value.push(assistantMessage)
 
     try {
-      logger.info('[runAssistantTurnInternal] 开始执行策略...')
       const finalContent = await strategy.executeTurn({
         agent,
         context: context.value,
         messages: llmMessages.value,
         onContent: (delta) => { assistantMessage.content += delta }
       })
-
-      logger.info('[runAssistantTurnInternal] 策略执行完成, finalContent length:', finalContent?.length || 0)
-      logger.info('[runAssistantTurnInternal] finalContent preview:', previewText(finalContent || '', 500))
 
       assistantMessage.rawContent = finalContent
       llmMessages.value.push({ role: 'assistant', content: finalContent })
@@ -229,8 +360,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
   }
 
   async function executeTurnWithJsonStructuredOutput(params: TaskSplitTurnExecutionParams): Promise<string> {
-    const { agent, context: splitContext, messages: splitMessages, onContent } = params
-    logger.info('[executeTurnWithJsonStructuredOutput] 开始执行, agent:', agent.name, 'modelId:', splitContext.modelId)
+    const { agent, context: splitContext, messages: splitMessages } = params
     const result = await taskSplitOrchestrator.executeTurn({
       agent,
       modelId: splitContext.modelId,
@@ -239,9 +369,12 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
       systemPrompt: splitMessages.find(msg => msg.role === 'system')?.content,
       cliOutputFormat: 'json',
       jsonSchema: buildPlanSplitJsonSchema(splitContext.granularity),
-      onContent
+      executionMode: 'task_split',
+      responseMode: 'json_once',
+      onContent: () => {
+        // 任务拆分采用单轮结构化输出，不在消息区展示 JSON 流片段
+      }
     })
-    logger.info('[executeTurnWithJsonStructuredOutput] 执行完成, result length:', result?.length || 0)
     return result
   }
 
@@ -625,49 +758,34 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
   }
 
   function parseClaudeCliOutput(content: string, minTaskCount: number): ParsedAiResult | null {
-    logger.info('[parseClaudeCliOutput] 开始解析, content length:', content.length)
-    logger.info('[parseClaudeCliOutput] content preview:', previewText(content, 500))
-
     const jsonCandidates = extractJsonCandidates(content)
-    logger.info('[parseClaudeCliOutput] 提取到 JSON 候选项数量:', jsonCandidates.length)
 
     for (let i = jsonCandidates.length - 1; i >= 0; i -= 1) {
-      const candidatePreview = previewText(jsonCandidates[i], 200)
-      logger.info(`[parseClaudeCliOutput] 处理候选项 ${i}:`, candidatePreview)
-
       try {
         const parsed = JSON.parse(jsonCandidates[i])
         if (!parsed || typeof parsed !== 'object') {
-          logger.info(`[parseClaudeCliOutput] 候选项 ${i} 不是对象，跳过`)
           continue
         }
 
         const record = parsed as Record<string, unknown>
-        logger.info('[parseClaudeCliOutput] 解析成功，检查 structured_output:', !!record.structured_output)
 
         // 优先处理 structured_output 字段
         if (record.structured_output && typeof record.structured_output === 'object') {
-          logger.info('[parseClaudeCliOutput] 找到 structured_output，开始标准化')
           const normalized = normalizeAIOutput(record.structured_output, minTaskCount)
-          logger.info('[parseClaudeCliOutput] 标准化结果:', normalized.output ? '成功' : `失败: ${normalized.error}`)
           // 无论成功还是失败，都返回结果（包含错误信息）
           return normalized
         }
 
         // 如果没有 structured_output，尝试直接解析
-        logger.info('[parseClaudeCliOutput] 没有 structured_output，尝试直接解析')
         const normalized = normalizeAIOutput(record, minTaskCount)
         if (normalized.output) {
-          logger.info('[parseClaudeCliOutput] 直接解析成功')
           return normalized
         }
-        logger.info('[parseClaudeCliOutput] 直接解析失败:', normalized.error)
       } catch (e) {
         logger.error(`[parseClaudeCliOutput] 候选项 ${i} JSON 解析失败:`, e)
       }
     }
 
-    logger.error('[parseClaudeCliOutput] 所有候选项都解析失败，返回 null')
     return null
   }
 
@@ -781,8 +899,38 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
       candidateCount: debug.candidateCount,
       attempts: debug.attempts
     })
-    logger.info('[TaskSplitParser] raw content', debug.rawContent)
-    logger.info('[TaskSplitParser] sanitized content', debug.sanitizedContent)
+    logger.error('[TaskSplitParser] raw content', debug.rawContent)
+    logger.error('[TaskSplitParser] sanitized content', debug.sanitizedContent)
+  }
+
+  function formatFormResponseSummary(
+    schema: DynamicFormSchema | undefined,
+    values: Record<string, unknown>
+  ): string {
+    if (!schema) {
+      return '已提交表单信息'
+    }
+
+    const fieldMap = new Map(schema.fields.map(field => [field.name, field]))
+    const lines = Object.entries(values).map(([key, value]) => {
+      const field = fieldMap.get(key)
+      const label = field?.label ?? key
+
+      if (Array.isArray(value)) {
+        const selected = value.map(item => {
+          const option = field?.options?.find(opt => opt.value === item)
+          return option?.label ?? String(item)
+        })
+        return `${label}：${selected.join('、')}`
+      }
+      if (typeof value === 'boolean') {
+        return `${label}：${value ? '是' : '否'}`
+      }
+      const option = field?.options?.find(opt => opt.value === value)
+      return `${label}：${option?.label ?? String(value ?? '')}`
+    })
+
+    return lines.length > 0 ? lines.join('\n') : '已提交表单信息'
   }
 
   function updateSplitTask(index: number, updates: Partial<AITaskItem>) {
@@ -830,6 +978,10 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     removeSplitTask,
     addSplitTask,
     abort,
-    reset
+    reset,
+    // 持久化相关
+    persistCurrentState,
+    clearPersistedState,
+    hasPersistedState
   }
 })

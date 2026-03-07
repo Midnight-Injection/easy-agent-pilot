@@ -220,8 +220,21 @@ const confirmDeleteProject = () => {
 }
 
 // ========== 会话操作 ==========
-const handleAddSession = () => {
-  uiStore.openSessionCreateModal()
+const handleAddSession = async (projectId: string) => {
+  try {
+    projectStore.setCurrentProject(projectId)
+    const newSession = await sessionStore.createSession({
+      projectId,
+      name: '未命名会话',
+      agentType: 'claude',
+      status: 'idle'
+    })
+    projectStore.incrementSessionCount(projectId)
+    uiStore.setMainContentMode('chat')
+    sessionStore.openSession(newSession.id)
+  } catch (error) {
+    console.error('[UnifiedPanel] 创建会话失败:', error)
+  }
 }
 
 const handleSelectSession = async (id: string) => {
@@ -850,7 +863,7 @@ const startProjectWatcher = async (project: Project) => {
                 v-if="getProjectTab(project.id) === 'sessions'"
                 class="tab-action-btn"
                 :title="t('session.createSession')"
-                @click="handleAddSession"
+                @click.stop="handleAddSession(project.id)"
               >
                 <EaIcon
                   name="plus"

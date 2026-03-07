@@ -108,13 +108,10 @@ const toggleAll = () => {
 
 // 监听智能体变化，初始化 MCP 选择（默认全选）
 watch(currentAgentId, async (newAgentId) => {
-  console.log('[McpPluginSelector] currentAgentId changed:', newAgentId)
   const sessionId = currentSessionId.value
-  console.log('[McpPluginSelector] sessionId:', sessionId)
   if (!sessionId || !newAgentId) return
 
   // 根据智能体类型加载 MCP 配置
-  console.log('[McpPluginSelector] 加载 MCP 配置...')
 
   let allIds: string[] = []
 
@@ -128,7 +125,6 @@ watch(currentAgentId, async (newAgentId) => {
     allIds = agentConfigStore.getMcpConfigs(newAgentId).map(c => c.id)
   }
 
-  console.log('[McpPluginSelector] MCP IDs:', allIds)
 
   // 切换智能体时，重置 MCP 选择为新智能体的全部 MCP
   if (allIds.length > 0) {

@@ -110,6 +110,10 @@ pub struct ExecutionRequest {
     pub extra_cli_args: Option<Vec<String>>,
     /// MCP 服务器配置列表
     pub mcp_servers: Option<Vec<McpServerConfig>>,
+    /// 执行模式（chat/task_split）
+    pub execution_mode: Option<String>,
+    /// 响应模式（stream_text/json_once）
+    pub response_mode: Option<String>,
 }
 
 /// 消息输入

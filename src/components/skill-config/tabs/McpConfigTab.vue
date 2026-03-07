@@ -103,7 +103,6 @@ function removeHeaderItem(index: number) {
 
 // 测试 MCP 配置
 async function handleTest(config: UnifiedMcpConfig) {
-  console.log('[MCP Test] Starting test for config:', config.name, config)
   testingConfig.value = config
   testIsLoading.value = true
   testTools.value = []
@@ -112,26 +111,21 @@ async function handleTest(config: UnifiedMcpConfig) {
   callResult.value = null
 
   try {
-    console.log('[MCP Test] Calling listMcpTools...')
     const result = await skillConfigStore.listMcpTools(config)
-    console.log('[MCP Test] Result:', result)
     if (result.success) {
       testTools.value = result.tools
     } else {
       testError.value = result.message || '加载工具列表失败'
     }
   } catch (error) {
-    console.error('[MCP Test] Failed to load tools:', error)
     testError.value = String(error)
   } finally {
     testIsLoading.value = false
-    console.log('[MCP Test] Test completed')
   }
 }
 
 // 编辑 MCP 配置
 function handleEdit(config: UnifiedMcpConfig) {
-  console.log('handleEdit called with config:', config)
   editingConfig.value = config
 }
 

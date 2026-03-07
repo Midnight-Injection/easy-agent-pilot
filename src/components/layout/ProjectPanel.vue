@@ -533,6 +533,8 @@ const handleFileSelect = async (path: string, project: Project) => {
   transition: all var(--transition-fast) var(--easing-default);
   position: relative;
   outline: none;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .project-item:hover {
@@ -624,17 +626,18 @@ const handleFileSelect = async (path: string, project: Project) => {
 }
 
 .project-item__badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   background-color: var(--color-primary);
   color: var(--color-text-inverse);
   border-radius: var(--radius-full);
-  font-size: var(--font-size-xs);
+  font-size: 10px;
   font-weight: var(--font-weight-medium);
+  flex-shrink: 0;
 }
 
 .project-item__edit {

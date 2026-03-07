@@ -136,8 +136,24 @@ const handleModalKeydown = (e: KeyboardEvent) => {
   }
 }
 
-const handleAdd = () => {
-  uiStore.openSessionCreateModal()
+const handleAdd = async () => {
+  if (!projectStore.currentProjectId) return
+
+  try {
+    // 直接创建未命名会话，不需要弹框
+    const newSession = await sessionStore.createSession({
+      projectId: projectStore.currentProjectId,
+      name: '未命名会话',
+      agentType: 'claude',
+      status: 'idle'
+    })
+    projectStore.incrementSessionCount(projectStore.currentProjectId)
+    // 自动选中新创建的会话（添加到打开列表）
+    sessionStore.openSession(newSession.id)
+  } catch (error) {
+    // 错误已在 sessionStore.createSession 中处理并显示通知
+    console.error('Session creation failed in component:', error)
+  }
 }
 
 const handleSelectSession = async (id: string) => {

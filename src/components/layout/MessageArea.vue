@@ -385,20 +385,14 @@ const mentionSearchText = ref('')
 
 // 打开文件选择器
 const openFileMention = (x: number, y: number, query: string, start: number) => {
-  console.log('[openFileMention] called with:', { x, y, query, start })
-  console.log('[openFileMention] sessionId:', sessionStore.currentSessionId)
-  console.log('[openFileMention] currentProject:', currentProject.value)
 
   if (!sessionStore.currentSessionId) {
-    console.log('[openFileMention] 没有当前会话，返回')
     return
   }
   if (!currentProject.value) {
-    console.log('[openFileMention] 没有当前项目，返回')
     return
   }
 
-  console.log('[openFileMention] 打开文件选择器')
   showFileMention.value = true
   fileMentionPosition.value = { x, y, width: 280, height: 0 }
   mentionStart.value = start

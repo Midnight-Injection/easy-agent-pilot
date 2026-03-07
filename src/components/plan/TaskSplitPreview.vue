@@ -362,10 +362,12 @@ function removeStep(type: 'implementationSteps' | 'testSteps' | 'acceptanceCrite
 
 <style scoped>
 .task-preview {
+  height: 100%;
   flex: 1;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--color-border, #e2e8f0);
+  min-height: 0;
+  border-top: none;
   overflow: hidden;
 }
 

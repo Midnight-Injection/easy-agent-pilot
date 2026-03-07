@@ -5,21 +5,9 @@ import type {
   AgentStrategy,
   ConversationContext,
   StreamEvent,
-  CliExecutionRequest,
+  ExecutionRequest,
   CliStreamEvent
 } from './types'
-
-// 简单的日志函数
-const log = (level: 'info' | 'error' | 'debug', ...args: unknown[]) => {
-  const prefix = `[ClaudeCliStrategy][${level.toUpperCase()}]`
-  if (level === 'error') {
-    console.error(prefix, ...args)
-  } else if (level === 'debug') {
-    console.debug(prefix, ...args)
-  } else {
-    console.log(prefix, ...args)
-  }
-}
 
 /**
  * Claude CLI 策略
@@ -33,22 +21,25 @@ export class ClaudeCliStrategy implements AgentStrategy {
   private currentSessionId: string | null = null
 
   supports(agent: AgentConfig): boolean {
-    const result = agent.type === 'cli' && agent.provider === 'claude'
-    log('debug', `supports check: type=${agent.type}, provider=${agent.provider}, result=${result}`)
-    return result
+    return agent.type === 'cli' && agent.provider === 'claude'
   }
 
   async execute(
     context: ConversationContext,
     onEvent: (event: StreamEvent) => void
   ): Promise<void> {
-    const { sessionId, agent, messages, workingDirectory, mcpServers } = context
-
-    log('info', `开始执行, sessionId: ${sessionId}`)
-    log('info', `智能体配置:`, { id: agent.id, name: agent.name, cliPath: agent.cliPath, modelId: agent.modelId })
-    log('info', `消息数量: ${messages.length}`)
-    log('debug', `工作目录: ${workingDirectory}`)
-    log('debug', `MCP 服务器数量: ${mcpServers?.length || 0}`)
+    const {
+      sessionId,
+      agent,
+      messages,
+      workingDirectory,
+      mcpServers,
+      cliOutputFormat,
+      jsonSchema,
+      extraCliArgs,
+      executionMode,
+      responseMode
+    } = context
 
     this.currentSessionId = sessionId
     this.abortController = new AbortController()
@@ -56,26 +47,23 @@ export class ClaudeCliStrategy implements AgentStrategy {
     try {
       // 监听流式事件
       const eventName = `claude-stream-${sessionId}`
-      log('info', `注册事件监听: ${eventName}`)
 
       this.unlistenStream = await listen<CliStreamEvent>(
         eventName,
         (event) => {
           const payload = event.payload
-          log('debug', `收到事件:`, payload)
           const streamEvent = this.transformEvent(payload)
           if (streamEvent) {
-            log('debug', `转换后事件:`, streamEvent)
             onEvent(streamEvent)
-          } else {
-            log('debug', `事件转换返回 null`)
           }
         }
       )
 
       // 构建请求
-      const request: CliExecutionRequest = {
+      const request: ExecutionRequest = {
         sessionId,
+        agentType: 'cli',
+        provider: 'claude',
         cliPath: agent.cliPath || 'claude',
         // 只有当 modelId 非空且不是 "default" 时才传递
         modelId: agent.modelId && agent.modelId.trim() && agent.modelId !== 'default'
@@ -89,25 +77,39 @@ export class ClaudeCliStrategy implements AgentStrategy {
           })),
         workingDirectory,
         allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch'],
-        mcpServers
+        mcpServers,
+        cliOutputFormat: cliOutputFormat ?? (responseMode === 'json_once' ? 'json' : 'stream-json'),
+        jsonSchema,
+        extraCliArgs,
+        executionMode: executionMode ?? 'chat',
+        responseMode: responseMode ?? 'stream_text'
       }
 
-      log('info', `调用后端命令, cliPath: ${request.cliPath}`)
-
-      // 调用后端命令
-      await invoke('execute_claude_cli', { request })
-
-      log('info', `后端命令执行完成`)
+      console.info('[AI Execute] start', {
+        provider: 'claude',
+        mode: request.executionMode,
+        responseMode: request.responseMode,
+        outputFormat: request.cliOutputFormat,
+        sessionId
+      })
+      await invoke('execute_agent', { request })
+      console.info('[AI Execute] done', {
+        provider: 'claude',
+        mode: request.executionMode,
+        sessionId
+      })
 
     } catch (error) {
-      log('error', `执行出错:`, error)
       if (this.abortController?.signal.aborted) {
-        log('info', `执行被中断`)
         onEvent({ type: 'done' })
         return
       }
       const errorMessage = error instanceof Error ? error.message : String(error)
-      log('error', `发送错误事件: ${errorMessage}`)
+      console.error('[AI Execute] failed', {
+        provider: 'claude',
+        sessionId: this.currentSessionId,
+        error: errorMessage
+      })
       onEvent({
         type: 'error',
         error: errorMessage
@@ -118,25 +120,28 @@ export class ClaudeCliStrategy implements AgentStrategy {
   }
 
   abort(): void {
-    log('info', `中断执行`)
     if (this.abortController) {
       this.abortController.abort()
     }
+    this.abortExecution()
     this.cleanup()
   }
 
   private cleanup(): void {
-    log('debug', `清理资源`)
     if (this.unlistenStream) {
       this.unlistenStream()
       this.unlistenStream = null
     }
+    this.abortController = null
+    this.currentSessionId = null
+  }
+
+  private abortExecution(): void {
     if (this.currentSessionId) {
       // 通知后端停止执行
-      invoke('abort_cli_execution', { sessionId: this.currentSessionId }).catch((e) => {
-        log('debug', `中断后端执行失败:`, e)
+      invoke('abort_cli_execution', { sessionId: this.currentSessionId }).catch((error) => {
+        console.warn('[AI Execute] abort failed', error)
       })
-      this.currentSessionId = null
     }
   }
 
@@ -188,7 +193,6 @@ export class ClaudeCliStrategy implements AgentStrategy {
       case 'done':
         return { type: 'done', ...baseEvent }
       default:
-        log('debug', `未知事件类型: ${event.type}`)
         return null
     }
   }

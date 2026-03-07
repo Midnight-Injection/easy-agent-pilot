@@ -48,6 +48,8 @@ pub async fn execute_claude_cli(
         json_schema: request.json_schema,
         extra_cli_args: request.extra_cli_args,
         mcp_servers: request.mcp_servers,
+        execution_mode: None,
+        response_mode: None,
     };
 
     // 调用策略执行
@@ -81,6 +83,8 @@ pub async fn execute_codex_cli(app: AppHandle, request: CliExecutionRequest) -> 
         json_schema: request.json_schema,
         extra_cli_args: request.extra_cli_args,
         mcp_servers: request.mcp_servers,
+        execution_mode: None,
+        response_mode: None,
     };
 
     // 调用策略执行
@@ -117,6 +121,8 @@ pub async fn execute_claude_sdk(
         json_schema: None,
         extra_cli_args: None,
         mcp_servers: request.mcp_servers,
+        execution_mode: None,
+        response_mode: None,
     };
 
     // 调用策略执行
@@ -148,6 +154,8 @@ pub async fn execute_codex_sdk(app: AppHandle, request: SdkExecutionRequest) -> 
         json_schema: None,
         extra_cli_args: None,
         mcp_servers: request.mcp_servers,
+        execution_mode: None,
+        response_mode: None,
     };
 
     // 调用策略执行

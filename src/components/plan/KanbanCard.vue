@@ -72,7 +72,6 @@ function handleDragStart(event: DragEvent) {
     return
   }
 
-  console.log('[KanbanCard] handleDragStart:', props.task.id)
 
   // 设置拖拽数据
   if (event.dataTransfer) {
@@ -85,7 +84,6 @@ function handleDragStart(event: DragEvent) {
 
 // 拖拽结束
 function handleDragEnd(event: DragEvent) {
-  console.log('[KanbanCard] handleDragEnd:', props.task.id)
   emit('dragEnd', event)
 }
 

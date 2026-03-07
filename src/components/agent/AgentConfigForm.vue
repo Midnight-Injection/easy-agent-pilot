@@ -277,14 +277,13 @@ const handleScanConfig = () => {
 }
 
 // 处理导入扫描结果
-const handleImportConfig = (items: {
+const handleImportConfig = (_items: {
   mcpServers: string[]
   skills: string[]
   plugins: string[]
 }) => {
   // 这里可以根据选中的项目进行后续处理
   // 目前先关闭弹窗，后续可以扩展为自动配置
-  console.log('Import config:', items)
   showScanModal.value = false
 }
 </script>

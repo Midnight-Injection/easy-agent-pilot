@@ -125,6 +125,17 @@ pub fn create_project(input: CreateProjectInput) -> Result<Project, String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
+    // 解析并创建项目目录
+    let resolved_path = resolve_path(&input.path)?;
+
+    // 如果目录不存在，则创建
+    if !resolved_path.exists() {
+        fs::create_dir_all(&resolved_path)
+            .map_err(|e| format!("创建项目目录失败: {}", e))?;
+    } else if !resolved_path.is_dir() {
+        return Err("路径已存在但不是目录".to_string());
+    }
+
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 

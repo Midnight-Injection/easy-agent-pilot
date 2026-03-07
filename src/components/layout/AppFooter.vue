@@ -39,7 +39,6 @@ const statusClass = computed(() => {
 // 处理压缩
 function handleCompress() {
   // TODO: 实现压缩功能
-  console.log('Compress session:', sessionStore.currentSessionId)
 }
 </script>
 

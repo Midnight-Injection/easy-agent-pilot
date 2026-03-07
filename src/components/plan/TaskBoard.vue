@@ -113,7 +113,6 @@ async function confirmStartExecution() {
     // 目前先更新计划状态,后续需要在执行任务时使用这个路径
     await planStore.startPlanExecution(planStore.currentPlanId)
     showProjectSelectDialog.value = false
-    console.log('开始执行,项目路径:', selectedProject.path)
   } catch (error) {
     console.error('Failed to start execution:', error)
   }

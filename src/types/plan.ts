@@ -340,5 +340,6 @@ export interface SplitMessage {
   rawContent?: string
   formSchema?: DynamicFormSchema
   formValues?: Record<string, any>
+  cancelled?: boolean // 标记消息是否被取消（关闭弹框时AI正在处理中）
   timestamp: string
 }
