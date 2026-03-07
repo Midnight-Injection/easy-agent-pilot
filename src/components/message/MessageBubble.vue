@@ -2,20 +2,30 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/stores/message'
+import { conversationService } from '@/services/conversation'
+import { EaIcon } from '@/components/common'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import ToolCallDisplay from './ToolCallDisplay.vue'
 import ThinkingDisplay from './ThinkingDisplay.vue'
 import CompressionMessageBubble from './CompressionMessageBubble.vue'
 
 const { t } = useI18n()
-const props = defineProps<{ message: Message }>()
+const props = defineProps<{ message: Message; sessionId?: string }>()
 const emit = defineEmits<{ retry: [message: Message] }>()
 
 const isUser = computed(() => props.message.role === 'user')
 const isAssistant = computed(() => props.message.role === 'assistant')
 const isCompression = computed(() => props.message.role === 'compression')
 const isStreaming = computed(() => props.message.status === 'streaming')
+const isInterrupted = computed(() => props.message.status === 'interrupted')
 const isError = computed(() => props.message.status === 'error')
+
+// 停止流式输出
+const handleStop = () => {
+  if (props.message.status === 'streaming' && props.sessionId) {
+    conversationService.abort(props.sessionId, props.message.id)
+  }
+}
 
 // 格式化时间戳为 HH:MM 格式
 const formattedTime = computed(() => {
@@ -105,6 +115,8 @@ const assistantStatusInfo = computed(() => {
   switch (props.message.status) {
     case 'streaming':
       return { text: '生成中', icon: 'loading', class: 'status--streaming' }
+    case 'interrupted':
+      return { text: t('message.status.interrupted'), icon: 'square', class: 'status--interrupted' }
     case 'error':
       return { text: '生成失败', icon: 'error', class: 'status--error' }
     case 'completed':
@@ -235,8 +247,24 @@ const handleRetry = () => {
             v-else-if="assistantStatusInfo.icon === 'check'"
             class="status-icon"
           >✓</span>
+          <span
+            v-else-if="assistantStatusInfo.icon === 'square'"
+            class="status-icon status-icon--interrupted"
+          >⏹</span>
           <span class="status-text">{{ assistantStatusInfo.text }}</span>
         </span>
+        <!-- 停止按钮 - 仅在流式输出时显示 -->
+        <button
+          v-if="isAssistant && isStreaming"
+          class="message-bubble__stop"
+          :title="t('common.stop')"
+          @click="handleStop"
+        >
+          <EaIcon
+            name="square"
+            :size="12"
+          />
+        </button>
         <!-- 重试按钮 - 用户消息失败 -->
         <button
           v-if="isUser && isError"
@@ -482,6 +510,33 @@ const handleRetry = () => {
 
 .message-bubble__status.status--error {
   color: var(--color-error);
+}
+
+.message-bubble__status.status--interrupted {
+  color: var(--color-warning, #f59e0b);
+}
+
+/* 停止按钮 */
+.message-bubble__stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--easing-default);
+}
+
+.message-bubble__stop:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.message-bubble__stop :deep(.ea-icon) {
+  color: var(--color-text-secondary);
 }
 
 /* 重试按钮 */

@@ -104,6 +104,7 @@ export default {
     clearSearch: 'Clear Search',
     retry: 'Retry',
     refresh: 'Refresh',
+    stop: 'Stop',
     justNow: 'Just now',
     minutesAgo: '{n} min ago',
     hoursAgo: '{n}h ago',

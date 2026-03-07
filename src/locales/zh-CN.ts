@@ -104,6 +104,7 @@ export default {
     clearSearch: '清除搜索',
     retry: '重试',
     refresh: '刷新',
+    stop: '停止',
     justNow: '刚刚',
     minutesAgo: '{n}分钟前',
     hoursAgo: '{n}小时前',

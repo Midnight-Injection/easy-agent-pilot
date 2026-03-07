@@ -199,6 +199,7 @@ const handleRetry = (message: Message) => {
         v-for="message in currentMessages"
         :key="message.id"
         :message="message"
+        :session-id="sessionStore.currentSessionId || undefined"
         @retry="handleRetry"
       />
     </TransitionGroup>
