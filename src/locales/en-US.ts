@@ -256,6 +256,14 @@ export default {
     clearMessages: 'Clear Messages',
     clearMessagesConfirm: 'Are you sure you want to clear all messages in this session? This action cannot be undone.',
     clearMessagesSuccess: 'Messages cleared',
+    // Message status
+    status: {
+      pending: 'Pending',
+      streaming: 'Streaming',
+      completed: 'Completed',
+      error: 'Error',
+      interrupted: 'Interrupted'
+    },
     // Empty state
     emptyWelcome: 'Welcome to Easy Agent Pilot',
     emptyHint: 'Type your question in the input box below to start chatting with AI',

@@ -256,6 +256,14 @@ export default {
     clearMessages: '清空消息',
     clearMessagesConfirm: '确定要清空当前会话的所有消息吗？此操作不可撤销。',
     clearMessagesSuccess: '消息已清空',
+    // 消息状态
+    status: {
+      pending: '等待中',
+      streaming: '生成中',
+      completed: '已完成',
+      error: '出错',
+      interrupted: '已中断'
+    },
     // 空状态
     emptyWelcome: '欢迎使用 Easy Agent Pilot',
     emptyHint: '在下方输入框中输入您的问题，开始与 AI 助手对话',

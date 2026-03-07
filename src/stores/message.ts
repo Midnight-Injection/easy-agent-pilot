@@ -6,7 +6,7 @@ import { getErrorMessage } from '@/utils/api'
 import type { CompressionStrategy } from './token'
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'compression'
-export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error'
+export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'interrupted'
 export type ToolCallStatus = 'pending' | 'running' | 'success' | 'error'
 
 export interface ToolCall {
