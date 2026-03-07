@@ -11,7 +11,7 @@ import { CodexSdkStrategy } from './strategies/CodexSdkStrategy'
  */
 export class AgentExecutor {
   private strategies: AgentStrategy[] = []
-  private currentStrategy: AgentStrategy | null = null
+  private activeStrategies: Map<string, AgentStrategy> = new Map()
 
   constructor() {
     // 注册默认策略
@@ -49,7 +49,7 @@ export class AgentExecutor {
     context: ConversationContext,
     onEvent: (event: StreamEvent) => void
   ): Promise<void> {
-    const { agent } = context
+    const { agent, sessionId } = context
 
     // 查找支持的策略
     const strategy = this.getSupportedStrategy(agent)
@@ -61,22 +61,25 @@ export class AgentExecutor {
       return
     }
 
-    this.currentStrategy = strategy
+    // 将策略注册到 activeStrategies
+    this.activeStrategies.set(sessionId, strategy)
 
     try {
       await strategy.execute(context, onEvent)
     } finally {
-      this.currentStrategy = null
+      // 从 Map 中移除
+      this.activeStrategies.delete(sessionId)
     }
   }
 
   /**
-   * 中断当前执行
+   * 中断指定会话的执行
    */
-  abort(): void {
-    if (this.currentStrategy) {
-      this.currentStrategy.abort()
-      this.currentStrategy = null
+  abort(sessionId: string): void {
+    const strategy = this.activeStrategies.get(sessionId)
+    if (strategy) {
+      strategy.abort()
+      this.activeStrategies.delete(sessionId)
     }
   }
 
