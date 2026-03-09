@@ -1,4 +1,4 @@
-﻿use anyhow::Result;
+use anyhow::Result;
 use rusqlite::{params, Connection};
 
 /// 鏁版嵁搴撳垵濮嬪寲 SQL 鑴氭湰
@@ -687,6 +687,8 @@ pub fn init_database() -> Result<()> {
 
     // tasks 琛ㄦ坊鍔犳柊瀛楁锛堥噸璇曡鏁般€佹渶澶ч噸璇曘€侀敊璇俊鎭€佸疄鐜版楠ゃ€佹祴璇曟楠ゃ€侀獙鏀舵爣鍑嗭級
     let tasks_migrations = [
+        "ALTER TABLE tasks ADD COLUMN agent_id TEXT",
+        "ALTER TABLE tasks ADD COLUMN model_id TEXT",
         "ALTER TABLE tasks ADD COLUMN retry_count INTEGER DEFAULT 0",
         "ALTER TABLE tasks ADD COLUMN max_retries INTEGER DEFAULT 3",
         "ALTER TABLE tasks ADD COLUMN error_message TEXT",
@@ -736,6 +738,53 @@ pub fn init_database() -> Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_task_split_sessions_plan ON task_split_sessions(plan_id)";
     if let Err(e) = conn.execute(task_split_sessions_index_sql, []) {
         println!("Task split sessions index migration warning: {}", e);
+    }
+
+    let task_split_sessions_migrations = [
+        "ALTER TABLE task_split_sessions ADD COLUMN execution_session_id TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN execution_request_json TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN llm_messages_json TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN messages_json TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN form_queue_json TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN current_form_index INTEGER",
+        "ALTER TABLE task_split_sessions ADD COLUMN error_message TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN started_at TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN completed_at TEXT",
+        "ALTER TABLE task_split_sessions ADD COLUMN stopped_at TEXT",
+    ];
+    for migration in task_split_sessions_migrations {
+        if let Err(e) = conn.execute(migration, []) {
+            let err_str = e.to_string();
+            if !err_str.contains("duplicate column name") {
+                println!("Task split sessions migration warning: {}", e);
+            }
+        }
+    }
+
+    let plan_split_logs_table_sql = r#"
+        CREATE TABLE IF NOT EXISTS plan_split_logs (
+            id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            log_type TEXT NOT NULL,
+            content TEXT NOT NULL,
+            metadata TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
+        )
+    "#;
+    if let Err(e) = conn.execute(plan_split_logs_table_sql, []) {
+        println!("Plan split logs table migration warning: {}", e);
+    }
+
+    let plan_split_logs_indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_plan_split_logs_plan ON plan_split_logs(plan_id, created_at ASC)",
+        "CREATE INDEX IF NOT EXISTS idx_plan_split_logs_session ON plan_split_logs(session_id, created_at ASC)",
+    ];
+    for migration in plan_split_logs_indexes {
+        if let Err(e) = conn.execute(migration, []) {
+            println!("Plan split logs index migration warning: {}", e);
+        }
     }
 
     // task_execution_results 琛紙瀛樺偍浠诲姟鎵ц瀹屾垚/澶辫触鍚庣殑缁撴瀯鍖栫粨鏋滐級
@@ -919,5 +968,3 @@ pub fn init_database() -> Result<()> {
     println!("Database initialized successfully");
     Ok(())
 }
-
-

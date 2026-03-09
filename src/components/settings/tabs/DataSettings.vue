@@ -588,7 +588,7 @@ const cancelClear = () => {
           @click="loadSessions"
         >
           <EaIcon
-            name="refresh"
+            name="refresh-cw"
             :size="14"
           />
           {{ t('common.retry') }}

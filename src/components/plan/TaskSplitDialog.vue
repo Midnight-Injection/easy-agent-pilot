@@ -7,7 +7,11 @@ import { useProjectStore } from '@/stores/project'
 import DynamicForm from './DynamicForm.vue'
 import TaskSplitPreview from './TaskSplitPreview.vue'
 import TaskResplitModal from './TaskResplitModal.vue'
-import type { FormField, AITaskItem, TaskResplitConfig } from '@/types/plan'
+import ThinkingDisplay from '@/components/message/ThinkingDisplay.vue'
+import ToolCallDisplay from '@/components/message/ToolCallDisplay.vue'
+import MarkdownRenderer from '@/components/message/MarkdownRenderer.vue'
+import type { AITaskItem, TaskResplitConfig, PlanSplitLogRecord } from '@/types/plan'
+import type { ToolCall } from '@/stores/message'
 
 const planStore = usePlanStore()
 const taskSplitStore = useTaskSplitStore()
@@ -26,16 +30,11 @@ const resplitTargetTask = ref<AITaskItem | null>(null)
 const showPreview = computed(() => taskSplitStore.splitResult !== null)
 
 // 当前表单数据
-const activeFormSchema = computed(() => {
-  const formId = taskSplitStore.currentFormId
-  if (!formId) return null
-
-  const matched = [...taskSplitStore.messages]
-    .reverse()
-    .find(message => message.formSchema?.formId === formId && !message.formValues)
-
-  return matched?.formSchema ?? null
-})
+const activeFormSchema = computed(() => taskSplitStore.activeFormSchema)
+const showStopButton = computed(() =>
+  taskSplitStore.session?.status === 'running' || taskSplitStore.session?.status === 'waiting_input'
+)
+const showLoadingIndicator = computed(() => taskSplitStore.session?.status === 'running')
 
 function scrollMessagesToBottom() {
   const container = messagesContainerRef.value
@@ -62,40 +61,6 @@ const messageRenderState = computed(() => {
   ].join('|')
 })
 
-// 格式化字段值显示
-function formatFieldValue(field: FormField, value: any): string {
-  if (value === undefined || value === null) return '-'
-
-  // 处理多选
-  if (field.type === 'multiselect' && Array.isArray(value)) {
-    if (value.length === 0) return '-'
-    const labels = value.map(v => {
-      const option = field.options?.find(opt => opt.value === v)
-      return option?.label || v
-    })
-    return labels.join('、')
-  }
-
-  // 处理单选/下拉
-  if ((field.type === 'select' || field.type === 'radio') && field.options) {
-    const option = field.options.find(opt => opt.value === value)
-    return option?.label || String(value)
-  }
-
-  // 处理复选框
-  if (field.type === 'checkbox') {
-    return value ? '是' : '否'
-  }
-
-  // 处理日期
-  if (field.type === 'date') {
-    return String(value)
-  }
-
-  // 其他类型直接返回字符串
-  return String(value)
-}
-
 async function initializeDialogSession() {
   const dialogContext = planStore.splitDialogContext
   if (!dialogContext) return
@@ -121,10 +86,10 @@ async function restartSplit() {
   const dialogContext = planStore.splitDialogContext
   if (!dialogContext) return
 
-  // 清理持久化状态
-  taskSplitStore.clearPersistedState(dialogContext.planId)
-
-  // 重置当前状态
+  if (showStopButton.value) {
+    await taskSplitStore.stop()
+  }
+  await taskSplitStore.clearPlanSplitSessions(dialogContext.planId)
   taskSplitStore.reset()
 
   // 开始新会话
@@ -201,8 +166,7 @@ async function confirmSplit() {
     // 同步更新计划状态为"已拆分"
     await planStore.markPlanAsReady(planId)
 
-    // 清理持久化状态（任务创建成功后不再需要恢复）
-    taskSplitStore.clearPersistedState(planId)
+    await taskSplitStore.clearPlanSplitSessions(planId)
 
     // 重置并关闭对话框
     taskSplitStore.reset()
@@ -216,16 +180,12 @@ async function confirmSplit() {
 
 // 关闭对话框（保存状态以便下次恢复）
 async function closeDialog() {
-  try {
-    await taskSplitStore.abort()
-    // 保存当前状态（只有当有消息时才保存）
-    if (taskSplitStore.messages.length > 0 && typeof taskSplitStore.persistCurrentState === 'function') {
-      taskSplitStore.persistCurrentState()
-    }
-  } catch (error) {
-    console.error('[TaskSplitDialog] closeDialog error:', error)
-  }
+  taskSplitStore.detach()
   planStore.closeSplitDialog()
+}
+
+async function stopSplitTask() {
+  await taskSplitStore.stop()
 }
 
 // 监听对话框打开
@@ -234,6 +194,8 @@ watch(() => planStore.splitDialogVisible, async (visible) => {
     await initializeDialogSession()
     await nextTick()
     scrollMessagesToBottom()
+  } else {
+    taskSplitStore.detach()
   }
 })
 
@@ -241,6 +203,40 @@ watch(messageRenderState, async () => {
   await nextTick()
   scrollMessagesToBottom()
 }, { flush: 'post' })
+
+function createToolCallFromLog(log: PlanSplitLogRecord, logs: PlanSplitLogRecord[]): ToolCall | null {
+  if (log.type !== 'tool_use') return null
+  let metadata: Record<string, any> = {}
+  try {
+    metadata = log.metadata ? JSON.parse(log.metadata) : {}
+  } catch {
+    metadata = {}
+  }
+  const toolCallId = metadata.toolCallId || ''
+  const resultLog = logs.find(item => {
+    if (item.type !== 'tool_result') return false
+    try {
+      const resultMetadata = item.metadata ? JSON.parse(item.metadata) : {}
+      return resultMetadata.toolCallId === toolCallId
+    } catch {
+      return false
+    }
+  })
+
+  return {
+    id: toolCallId || log.id,
+    name: metadata.toolName || 'tool',
+    arguments: (() => {
+      try {
+        return metadata.toolInput ? JSON.parse(metadata.toolInput) : {}
+      } catch {
+        return {}
+      }
+    })(),
+    status: resultLog ? 'success' : 'running',
+    result: resultLog?.content
+  }
+}
 </script>
 
 <template>
@@ -285,48 +281,10 @@ watch(messageRenderState, async () => {
                   v-show="shouldRenderMessage(message)"
                   :key="message.id"
                   class="message"
-                  :class="[message.role, { cancelled: message.cancelled }]"
+                  :class="[message.role]"
                 >
                   <div class="message-content">
                     <p>{{ message.content }}</p>
-
-                    <!-- 已取消的标记 -->
-                    <div
-                      v-if="message.cancelled"
-                      class="cancelled-badge"
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                      >
-                        <circle
-                          cx="12"
-                          cy="12"
-                          r="10"
-                        />
-                        <path d="M15 9l-6 6M9 9l6 6" />
-                      </svg>
-                      <span>已取消</span>
-                    </div>
-
-                    <!-- 已提交的表单显示用户选择值 -->
-                    <div
-                      v-if="message.formSchema && message.formValues"
-                      class="submitted-values"
-                    >
-                      <div
-                        v-for="field in message.formSchema.fields"
-                        :key="field.name"
-                        class="submitted-value-item"
-                      >
-                        <span class="field-label">{{ field.label }}:</span>
-                        <span class="field-value">{{ formatFieldValue(field, message.formValues[field.name]) }}</span>
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -346,9 +304,41 @@ watch(messageRenderState, async () => {
                   </div>
                 </div>
 
-                <!-- 加载指示器 -->
                 <div
-                  v-if="taskSplitStore.isProcessing"
+                  v-if="taskSplitStore.logs.length > 0"
+                  class="split-log-panel"
+                >
+                  <div class="split-log-panel__header">
+                    <span>执行明细</span>
+                    <span class="split-log-panel__status">{{ taskSplitStore.session?.status || '' }}</span>
+                  </div>
+                  <div class="split-log-panel__body">
+                    <template
+                      v-for="log in taskSplitStore.logs"
+                      :key="log.id"
+                    >
+                      <ThinkingDisplay
+                        v-if="log.type === 'thinking'"
+                        :thinking="log.content"
+                      />
+                      <ToolCallDisplay
+                        v-else-if="log.type === 'tool_use' && createToolCallFromLog(log, taskSplitStore.logs)"
+                        :tool-call="createToolCallFromLog(log, taskSplitStore.logs)!"
+                      />
+                      <div
+                        v-else-if="log.type !== 'tool_result'"
+                        class="split-log-panel__entry"
+                        :class="`split-log-panel__entry--${log.type}`"
+                      >
+                        <div class="split-log-panel__entry-type">{{ log.type }}</div>
+                        <MarkdownRenderer :content="log.content" />
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <div
+                  v-if="showLoadingIndicator"
                   class="message assistant"
                 >
                   <div class="message-content loading">
@@ -381,12 +371,25 @@ watch(messageRenderState, async () => {
             v-if="!showPreview"
             class="idle-area"
           >
-            <span class="idle-hint">请根据上方 AI 动态表单逐步补充需求</span>
+            <span class="idle-hint">
+              {{
+                taskSplitStore.session?.status === 'running'
+                  ? '后台正在执行拆分，可关闭弹框稍后回来查看'
+                  : '请根据上方 AI 动态表单逐步补充需求'
+              }}
+            </span>
+            <button
+              v-if="showStopButton"
+              class="btn btn-danger"
+              @click="stopSplitTask"
+            >
+              停止任务
+            </button>
             <button
               class="btn btn-secondary"
               @click="closeDialog"
             >
-              取消
+              关闭
             </button>
           </div>
 
@@ -396,11 +399,18 @@ watch(messageRenderState, async () => {
             class="confirm-area"
           >
             <button
+              v-if="showStopButton"
+              class="btn btn-danger"
+              @click="stopSplitTask"
+            >
+              停止任务
+            </button>
+            <button
               class="btn btn-secondary"
               :disabled="isConfirming"
               @click="closeDialog"
             >
-              取消
+              关闭
             </button>
             <button
               class="btn btn-secondary"
@@ -731,6 +741,57 @@ watch(messageRenderState, async () => {
   gap: var(--spacing-3, 0.75rem);
 }
 
+.split-log-panel {
+  margin-top: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.92));
+  overflow: hidden;
+}
+
+.split-log-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.split-log-panel__status {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.split-log-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.8rem;
+}
+
+.split-log-panel__entry {
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.75rem;
+  background: white;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.split-log-panel__entry-type {
+  margin-bottom: 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #6366f1;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.split-log-panel__entry--error .split-log-panel__entry-type {
+  color: #dc2626;
+}
+
 .btn {
   padding: var(--spacing-2, 0.5rem) var(--spacing-4, 1rem);
   border-radius: 0.72rem;
@@ -761,6 +822,18 @@ watch(messageRenderState, async () => {
 .btn-secondary:hover {
   background: linear-gradient(180deg, #ffffff, #f5f9ff);
   border-color: rgba(99, 102, 241, 0.35);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+  border: none;
+  box-shadow: 0 9px 18px rgba(220, 38, 38, 0.2);
+}
+
+.btn-danger:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(220, 38, 38, 0.24);
 }
 
 /* 取消状态的消息样式 */

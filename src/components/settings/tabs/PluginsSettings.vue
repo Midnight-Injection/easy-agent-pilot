@@ -139,6 +139,14 @@ const openPluginDetail = async (plugin: PluginMarketItem) => {
   await settingsStore.fetchPluginDetail(plugin.id)
 }
 
+// Open plugin detail by id (for installed plugins)
+const openPluginDetailById = async (pluginId: string) => {
+  selectedPluginId.value = pluginId
+  activeDetailTab.value = 'overview'
+  showDetailModal.value = true
+  await settingsStore.fetchPluginDetail(pluginId)
+}
+
 // Close detail modal
 const closeDetailModal = () => {
   showDetailModal.value = false
@@ -387,7 +395,7 @@ onMounted(async () => {
         />
         <p>{{ settingsStore.installedPluginsError }}</p>
         <EaButton
-          type="primary"
+          type="secondary"
           size="small"
           @click="settingsStore.loadInstalledPlugins"
         >
@@ -502,6 +510,15 @@ onMounted(async () => {
               <span class="plugin-toggle__slider" />
             </label>
             <button
+              class="plugin-action-btn plugin-action-btn--info"
+              @click="openPluginDetailById(plugin.id)"
+            >
+              <EaIcon
+                name="eye"
+                :size="16"
+              />
+            </button>
+            <button
               class="plugin-action-btn plugin-action-btn--danger"
               @click="openUninstallConfirm(plugin.id)"
             >
@@ -593,11 +610,11 @@ onMounted(async () => {
               {{ settingsStore.pluginsMarketError }}
             </p>
             <EaButton
-              type="primary"
+              type="secondary"
               @click="retryLoad"
             >
               <EaIcon
-                name="refresh"
+                name="refresh-cw"
                 :size="16"
               />
               {{ t('common.retry') }}
@@ -752,7 +769,7 @@ onMounted(async () => {
               />
               <p>{{ settingsStore.pluginDetailError }}</p>
               <EaButton
-                type="primary"
+                type="secondary"
                 size="small"
                 @click="() => selectedPluginId && settingsStore.fetchPluginDetail(selectedPluginId)"
               >
@@ -1565,6 +1582,11 @@ onMounted(async () => {
 .plugin-action-btn--danger:hover {
   background-color: rgba(239, 68, 68, 0.1);
   color: var(--color-error, #ef4444);
+}
+
+.plugin-action-btn--info:hover {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: var(--color-info, #3b82f6);
 }
 
 /* Market Layout */

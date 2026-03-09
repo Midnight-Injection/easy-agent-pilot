@@ -32,6 +32,7 @@ pub async fn execute_claude_cli(
     // 转换为统一请求格式
     let unified_request = ExecutionRequest {
         session_id: request.session_id,
+        plan_id: None,
         agent_type: "cli".to_string(),
         provider: "claude".to_string(),
         cli_path: Some(request.cli_path),
@@ -67,6 +68,7 @@ pub async fn execute_codex_cli(app: AppHandle, request: CliExecutionRequest) -> 
     // 转换为统一请求格式
     let unified_request = ExecutionRequest {
         session_id: request.session_id,
+        plan_id: None,
         agent_type: "cli".to_string(),
         provider: "codex".to_string(),
         cli_path: Some(request.cli_path),
@@ -105,6 +107,7 @@ pub async fn execute_claude_sdk(
     // 转换为统一请求格式
     let unified_request = ExecutionRequest {
         session_id: request.session_id,
+        plan_id: None,
         agent_type: "sdk".to_string(),
         provider: "claude".to_string(),
         cli_path: None,
@@ -139,6 +142,7 @@ pub async fn execute_codex_sdk(app: AppHandle, request: SdkExecutionRequest) -> 
     // 转换为统一请求格式
     let unified_request = ExecutionRequest {
         session_id: request.session_id,
+        plan_id: None,
         agent_type: "sdk".to_string(),
         provider: "codex".to_string(),
         cli_path: None,

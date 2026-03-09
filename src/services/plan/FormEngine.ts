@@ -453,9 +453,10 @@ export class FormEngine {
 
     schema.fields.forEach(field => {
       const value = values[field.name]
+      const isEmptyArray = Array.isArray(value) && value.length === 0
 
       // 必填验证
-      if (field.required && (value === undefined || value === null || value === '')) {
+      if (field.required && (value === undefined || value === null || value === '' || isEmptyArray)) {
         errors[field.name] = `${field.label} 是必填项`
         return
       }

@@ -833,7 +833,6 @@ function canEdit(plan: Plan): boolean {
       <div
         v-if="showCreateDialog"
         class="dialog-overlay"
-        @click.self="closeCreateDialog"
       >
         <div class="dialog">
           <div class="dialog-header">
@@ -958,24 +957,13 @@ function canEdit(plan: Plan): boolean {
             <!-- 定时执行设置 -->
             <div class="form-field schedule-field">
               <label>执行方式</label>
-              <div class="schedule-options">
-                <label class="schedule-option">
-                  <input
-                    v-model="executionMode"
-                    type="radio"
-                    value="immediate"
-                  >
-                  <span class="schedule-option-label">立即执行</span>
-                </label>
-                <label class="schedule-option">
-                  <input
-                    v-model="executionMode"
-                    type="radio"
-                    value="scheduled"
-                  >
-                  <span class="schedule-option-label">定时执行</span>
-                </label>
-              </div>
+              <select
+                v-model="executionMode"
+                class="execution-mode-select"
+              >
+                <option value="immediate">立即执行</option>
+                <option value="scheduled">定时执行</option>
+              </select>
               <div
                 v-if="executionMode === 'scheduled'"
                 class="schedule-datetime"
@@ -1072,24 +1060,13 @@ function canEdit(plan: Plan): boolean {
               class="form-field schedule-field"
             >
               <label>执行方式</label>
-              <div class="schedule-options">
-                <label class="schedule-option">
-                  <input
-                    v-model="editExecutionMode"
-                    type="radio"
-                    value="immediate"
-                  >
-                  <span class="schedule-option-label">立即执行</span>
-                </label>
-                <label class="schedule-option">
-                  <input
-                    v-model="editExecutionMode"
-                    type="radio"
-                    value="scheduled"
-                  >
-                  <span class="schedule-option-label">定时执行</span>
-                </label>
-              </div>
+              <select
+                v-model="editExecutionMode"
+                class="execution-mode-select"
+              >
+                <option value="immediate">立即执行</option>
+                <option value="scheduled">定时执行</option>
+              </select>
               <div
                 v-if="editExecutionMode === 'scheduled'"
                 class="schedule-datetime"
@@ -1891,26 +1868,44 @@ function canEdit(plan: Plan): boolean {
 }
 
 .schedule-field {
-  margin-top: 0.5rem;
+  margin-top: var(--spacing-4, 1rem);
+  padding-top: var(--spacing-3, 0.75rem);
+  border-top: 1px solid var(--color-border, #e2e8f0);
 }
 
-.schedule-options {
-  display: flex;
-  gap: 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.schedule-option {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-  cursor: pointer;
+.execution-mode-select {
+  width: 100%;
+  padding: var(--spacing-2, 0.5rem) var(--spacing-8, 2rem) var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
   font-size: var(--font-size-sm, 13px);
   color: var(--color-text-primary, #1e293b);
+  background-color: var(--color-surface, #fff);
+  cursor: pointer;
+  transition: all var(--transition-fast, 150ms);
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-3, 0.75rem) center;
+  background-size: 16px;
 }
 
-.schedule-option input[type="radio"] {
-  cursor: pointer;
+.execution-mode-select:hover {
+  border-color: var(--color-primary, #60a5fa);
+}
+
+.execution-mode-select:focus {
+  outline: none;
+  border-color: var(--color-primary, #60a5fa);
+  box-shadow: 0 0 0 3px var(--color-primary-light, #dbeafe);
+}
+
+.execution-mode-select option {
+  padding: var(--spacing-2, 0.5rem);
+  background-color: var(--color-surface, #fff);
+  color: var(--color-text-primary, #1e293b);
 }
 
 .schedule-datetime {

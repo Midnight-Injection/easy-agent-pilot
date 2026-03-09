@@ -293,6 +293,8 @@ export const useTaskStore = defineStore('task', () => {
       status: updates.status ?? null,
       priority: updates.priority ?? null,
       assignee: updates.assignee ?? null,
+      agent_id: updates.agentId ?? null,
+      model_id: updates.modelId ?? null,
       session_id: updates.sessionId ?? null,
       progress_file: updates.progressFile ?? null,
       dependencies: updates.dependencies ?? null,

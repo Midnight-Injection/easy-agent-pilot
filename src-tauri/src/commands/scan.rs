@@ -2,6 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -791,100 +792,529 @@ pub struct ScanCliSessionsResult {
     pub error_message: Option<String>,
 }
 
-/// 从会话jsonl文件中提取会话信息
-fn extract_session_info(session_path: &PathBuf) -> Option<ScannedCliSession> {
-    let file_name = session_path.file_stem()?.to_string_lossy().to_string();
+const FAST_SESSION_SCAN_LINE_LIMIT: usize = 120;
+const FULL_SESSION_SCAN_SIZE_THRESHOLD: u64 = 256 * 1024;
+const UNKNOWN_MESSAGE_COUNT: i32 = -1;
 
-    // 读取文件获取元数据
-    if let Ok(content) = fs::read_to_string(session_path) {
-        let mut first_message: Option<String> = None;
-        let mut message_count = 0;
-        let mut project_path: Option<String> = None;
-        let mut earliest_timestamp: Option<String> = None;
-        let mut latest_timestamp: Option<String> = None;
+fn is_separator_only_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.len() < 3 {
+        return false;
+    }
 
-        for line in content.lines() {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-                // 统计消息数量（只统计user和assistant类型的消息）
-                if let Some(msg_type) = json.get("type").and_then(|v| v.as_str()) {
-                    if msg_type == "user" || msg_type == "assistant" {
-                        message_count += 1;
+    let mut has_separator = false;
+    for ch in trimmed.chars() {
+        match ch {
+            '-' | '=' | '_' => has_separator = true,
+            '|' | ':' | ' ' | '\t' => {}
+            _ => return false,
+        }
+    }
 
-                        // 获取第一条用户消息
-                        if first_message.is_none() && msg_type == "user" {
-                            if let Some(message) = json.get("message") {
-                                if let Some(content) = message.get("content") {
-                                    if let Some(text) = content.as_str() {
-                                        first_message = Some(text.chars().take(100).collect());
-                                    } else if let Some(arr) = content.as_array() {
-                                        // 处理数组格式的content
-                                        for item in arr {
-                                            if let Some(text) =
-                                                item.get("text").and_then(|t| t.as_str())
-                                            {
-                                                first_message =
-                                                    Some(text.chars().take(100).collect());
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+    has_separator
+}
+
+fn clean_display_text(text: &str) -> Option<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let without_local_command = trimmed
+        .strip_prefix("<local-command-stdout>")
+        .and_then(|value| value.strip_suffix("</local-command-stdout>"))
+        .unwrap_or(trimmed)
+        .trim();
+
+    let normalized_lines: Vec<&str> = without_local_command
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !is_separator_only_line(line))
+        .collect();
+
+    let normalized = normalized_lines.join("\n");
+    let normalized = normalized.trim();
+
+    if normalized.is_empty() {
+        return None;
+    }
+
+    Some(normalized.to_string())
+}
+
+fn format_json_string(text: &str) -> Option<String> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        return format_json_value(&value);
+    }
+
+    clean_display_text(text)
+}
+
+fn format_json_value(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::Null => None,
+        serde_json::Value::String(text) => clean_display_text(text),
+        serde_json::Value::Bool(_) | serde_json::Value::Number(_) => Some(value.to_string()),
+        serde_json::Value::Array(items) => {
+            let parts: Vec<String> = items.iter().filter_map(format_content_block).collect();
+
+            if parts.is_empty() {
+                None
+            } else {
+                Some(parts.join("\n\n"))
+            }
+        }
+        serde_json::Value::Object(_) => serde_json::to_string_pretty(value)
+            .ok()
+            .and_then(|text| clean_display_text(&text)),
+    }
+}
+
+fn format_content_block(value: &serde_json::Value) -> Option<String> {
+    if !value.is_object() {
+        return format_json_value(value);
+    }
+
+    let block_type = value.get("type").and_then(|v| v.as_str());
+
+    match block_type {
+        Some("input_text") | Some("output_text") | Some("text") => value
+            .get("text")
+            .and_then(|v| v.as_str())
+            .and_then(clean_display_text),
+        Some("thinking") => value
+            .get("thinking")
+            .and_then(|v| v.as_str())
+            .and_then(clean_display_text)
+            .map(|text| format!("[Thinking]\n{}", text)),
+        Some("tool_use") => {
+            let tool_name = value
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let tool_input = value
+                .get("input")
+                .and_then(format_json_value)
+                .unwrap_or_default();
+
+            if tool_input.is_empty() {
+                Some(format!("[Tool Use] {}", tool_name))
+            } else {
+                Some(format!("[Tool Use] {}\n{}", tool_name, tool_input))
+            }
+        }
+        Some("tool_result") => {
+            let tool_use_id = value
+                .get("tool_use_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let result = value
+                .get("content")
+                .and_then(format_json_value)
+                .unwrap_or_default();
+
+            if result.is_empty() {
+                Some(format!("[Tool Result] {}", tool_use_id))
+            } else {
+                Some(format!("[Tool Result] {}\n{}", tool_use_id, result))
+            }
+        }
+        _ => {
+            if let Some(text) = value.get("text").and_then(|v| v.as_str()) {
+                return clean_display_text(text);
+            }
+
+            if let Some(content) = value.get("content") {
+                return format_json_value(content);
+            }
+
+            serde_json::to_string_pretty(value)
+                .ok()
+                .and_then(|text| clean_display_text(&text))
+        }
+    }
+}
+
+fn cleanup_empty_parent_dirs(path: &PathBuf) {
+    if let Some(parent) = path.parent() {
+        if let Ok(entries) = fs::read_dir(parent) {
+            if entries.count() == 0 {
+                let _ = fs::remove_dir(parent);
+
+                if let Some(grandparent) = parent.parent() {
+                    if grandparent
+                        .file_name()
+                        .map(|n| n == "projects")
+                        .unwrap_or(false)
+                    {
+                        return;
+                    }
+                    if let Ok(entries) = fs::read_dir(grandparent) {
+                        if entries.count() == 0 {
+                            let _ = fs::remove_dir(grandparent);
                         }
-                    }
-                }
-
-                // 获取项目路径
-                if project_path.is_none() {
-                    project_path = json
-                        .get("cwd")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                }
-
-                // 获取时间戳
-                if let Some(timestamp) = json.get("timestamp").and_then(|v| v.as_str()) {
-                    let ts = timestamp.to_string();
-                    if earliest_timestamp.is_none() || &ts < earliest_timestamp.as_ref().unwrap() {
-                        earliest_timestamp = Some(ts.clone());
-                    }
-                    if latest_timestamp.is_none() || &ts > latest_timestamp.as_ref().unwrap() {
-                        latest_timestamp = Some(ts);
                     }
                 }
             }
         }
-
-        // 获取文件元数据作为备选时间
-        let metadata = fs::metadata(session_path).ok()?;
-        let modified = metadata
-            .modified()
-            .ok()
-            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
-        let modified_str = chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339();
-
-        Some(ScannedCliSession {
-            session_id: file_name,
-            session_path: session_path.to_string_lossy().to_string(),
-            project_path,
-            first_message,
-            message_count,
-            created_at: earliest_timestamp.unwrap_or_else(|| modified_str.clone()),
-            updated_at: latest_timestamp.unwrap_or(modified_str),
-        })
-    } else {
-        None
     }
+}
+
+fn delete_cli_session_path(path: &PathBuf, cleanup_empty_dirs: bool) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("会话文件不存在: {}", path.display()));
+    }
+
+    fs::remove_file(path).map_err(|e| format!("无法删除会话文件: {}", e))?;
+
+    if cleanup_empty_dirs {
+        cleanup_empty_parent_dirs(path);
+    }
+
+    Ok(())
+}
+
+fn extract_payload_message_content(
+    top_level_type: &str,
+    payload: &serde_json::Value,
+) -> Option<String> {
+    let payload_type = payload
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+
+    match (top_level_type, payload_type) {
+        ("response_item", "message") => payload.get("content").and_then(format_json_value),
+        ("response_item", "function_call") => {
+            let tool_name = payload
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let arguments = payload
+                .get("arguments")
+                .and_then(|v| v.as_str())
+                .and_then(format_json_string)
+                .unwrap_or_default();
+
+            if arguments.is_empty() {
+                Some(format!("[Tool Use] {}", tool_name))
+            } else {
+                Some(format!("[Tool Use] {}\n{}", tool_name, arguments))
+            }
+        }
+        ("response_item", "function_call_output") => {
+            let call_id = payload
+                .get("call_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
+            let output = payload
+                .get("output")
+                .and_then(format_json_value)
+                .unwrap_or_default();
+
+            if output.is_empty() {
+                Some(format!("[Tool Result] {}", call_id))
+            } else {
+                Some(format!("[Tool Result] {}\n{}", call_id, output))
+            }
+        }
+        ("response_item", "reasoning") => {
+            if let Some(summary) = payload.get("summary").and_then(format_json_value) {
+                Some(format!("[Reasoning]\n{}", summary))
+            } else {
+                Some("[Reasoning] 内容不可直接展示".to_string())
+            }
+        }
+        ("event_msg", "agent_message") | ("event_msg", "user_message") => payload
+            .get("message")
+            .and_then(|v| v.as_str())
+            .and_then(clean_display_text),
+        ("event_msg", "token_count") => Some("[Token Count] 使用统计已更新".to_string()),
+        ("event_msg", "task_started") => Some("[Task Started] 任务已开始".to_string()),
+        ("event_msg", "agent_reasoning") => payload
+            .get("text")
+            .and_then(|v| v.as_str())
+            .and_then(clean_display_text)
+            .or_else(|| Some("[Reasoning] 正在分析".to_string())),
+        ("session_meta", _) => {
+            let cwd = payload
+                .get("cwd")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let cli_version = payload
+                .get("cli_version")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+
+            let mut summary = String::from("[Session Meta]");
+            if !cwd.is_empty() {
+                summary.push_str(&format!("\n{}", cwd));
+            }
+            if !cli_version.is_empty() {
+                summary.push_str(&format!("\nCLI {}", cli_version));
+            }
+            Some(summary)
+        }
+        ("turn_context", _) => payload
+            .get("cwd")
+            .and_then(|v| v.as_str())
+            .map(|cwd| format!("[Turn Context]\n{}", cwd))
+            .or_else(|| Some("[Turn Context] 上下文已初始化".to_string())),
+        _ => payload
+            .get("content")
+            .and_then(format_json_value)
+            .or_else(|| payload.get("output").and_then(format_json_value))
+            .or_else(|| {
+                payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .and_then(clean_display_text)
+            })
+            .or_else(|| {
+                serde_json::to_string_pretty(payload)
+                    .ok()
+                    .and_then(|text| clean_display_text(&text))
+            }),
+    }
+}
+
+fn extract_jsonl_project_path(json: &serde_json::Value) -> Option<String> {
+    json.get("cwd")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            json.get("payload")
+                .and_then(|payload| payload.get("cwd"))
+                .and_then(|v| v.as_str())
+        })
+        .map(|s| s.to_string())
+}
+
+fn extract_jsonl_role(json: &serde_json::Value) -> Option<String> {
+    json.get("payload")
+        .and_then(|payload| payload.get("role"))
+        .and_then(|v| v.as_str())
+        .or_else(|| json.get("role").and_then(|v| v.as_str()))
+        .or_else(|| {
+            json.get("message")
+                .and_then(|m| m.get("role"))
+                .and_then(|v| v.as_str())
+        })
+        .map(|s| s.to_string())
+}
+
+fn extract_jsonl_message_type(json: &serde_json::Value) -> String {
+    let top_level_type = json
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    match top_level_type {
+        "response_item" => {
+            if let Some(payload) = json.get("payload") {
+                match payload.get("type").and_then(|v| v.as_str()) {
+                    Some("message") => match payload.get("role").and_then(|v| v.as_str()) {
+                        Some("developer") => "system".to_string(),
+                        Some(role) => role.to_string(),
+                        None => "message".to_string(),
+                    },
+                    Some("function_call") => "tool_use".to_string(),
+                    Some("function_call_output") => "tool_result".to_string(),
+                    Some("reasoning") => "reasoning".to_string(),
+                    Some(other) => other.to_string(),
+                    None => "response_item".to_string(),
+                }
+            } else {
+                "response_item".to_string()
+            }
+        }
+        "event_msg" => {
+            if let Some(payload) = json.get("payload") {
+                match payload.get("type").and_then(|v| v.as_str()) {
+                    Some("agent_message") | Some("user_message") | Some("token_count") => {
+                        "progress".to_string()
+                    }
+                    Some("task_started") => "system".to_string(),
+                    Some("agent_reasoning") => "reasoning".to_string(),
+                    Some(other) => other.to_string(),
+                    None => "event_msg".to_string(),
+                }
+            } else {
+                "event_msg".to_string()
+            }
+        }
+        "session_meta" | "turn_context" => "system".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn extract_jsonl_message_content(json: &serde_json::Value) -> Option<String> {
+    if let Some(payload) = json.get("payload") {
+        let top_level_type = json
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        if let Some(text) = extract_payload_message_content(top_level_type, payload) {
+            return Some(text);
+        }
+    }
+
+    if let Some(message) = json.get("message") {
+        if let Some(content) = message.get("content") {
+            if let Some(text) = format_json_value(content) {
+                return Some(text);
+            }
+        }
+    }
+
+    if let Some(content) = json.get("content") {
+        if let Some(text) = format_json_value(content) {
+            return Some(text);
+        }
+    }
+
+    if let Some(result) = json.get("result") {
+        if let Some(text) = format_json_value(result) {
+            return Some(text);
+        }
+    }
+
+    if let Some(data) = json.get("data") {
+        let progress_type = data
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("progress");
+        let hook_event = data
+            .get("hookEvent")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let hook_name = data
+            .get("hookName")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        let command = data
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+
+        let mut summary = format!("[{}]", progress_type);
+        if !hook_event.is_empty() {
+            summary.push_str(&format!(" {}", hook_event));
+        }
+        if !hook_name.is_empty() {
+            summary.push_str(&format!(" ({})", hook_name));
+        }
+        if !command.is_empty() {
+            summary.push_str(&format!("\n{}", command));
+        }
+        return Some(summary);
+    }
+
+    match json.get("type").and_then(|v| v.as_str()) {
+        Some("file-history-snapshot") => Some("[File Snapshot] 历史文件快照已更新".to_string()),
+        Some(other) => Some(format!("[{}]", other)),
+        None => None,
+    }
+}
+
+fn collect_jsonl_files(dir: &PathBuf, files: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_jsonl_files(&path, files);
+            } else if path.extension().map(|e| e == "jsonl").unwrap_or(false) {
+                files.push(path);
+            }
+        }
+    }
+}
+
+/// 从会话jsonl文件中提取会话信息
+fn extract_session_info(session_path: &PathBuf) -> Option<ScannedCliSession> {
+    let file_name = session_path.file_stem()?.to_string_lossy().to_string();
+    let metadata = fs::metadata(session_path).ok()?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+    let modified_str = chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339();
+    let fast_scan_only = metadata.len() > FULL_SESSION_SCAN_SIZE_THRESHOLD;
+
+    let file = fs::File::open(session_path).ok()?;
+    let reader = BufReader::new(file);
+
+    let mut first_message: Option<String> = None;
+    let mut message_count = if fast_scan_only {
+        UNKNOWN_MESSAGE_COUNT
+    } else {
+        0
+    };
+    let mut project_path: Option<String> = None;
+    let mut earliest_timestamp: Option<String> = None;
+    let mut latest_timestamp: Option<String> = None;
+
+    for (index, line) in reader.lines().enumerate() {
+        let Ok(line) = line else {
+            continue;
+        };
+
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+            let msg_type = extract_jsonl_message_type(&json);
+
+            if !fast_scan_only && (msg_type == "user" || msg_type == "assistant") {
+                message_count += 1;
+            }
+
+            if first_message.is_none() && msg_type == "user" {
+                if let Some(text) = extract_jsonl_message_content(&json) {
+                    let preview: String = text.chars().take(100).collect();
+                    first_message = clean_display_text(&preview);
+                }
+            }
+
+            if project_path.is_none() {
+                project_path = extract_jsonl_project_path(&json);
+            }
+
+            if let Some(timestamp) = json.get("timestamp").and_then(|v| v.as_str()) {
+                let ts = timestamp.to_string();
+                if earliest_timestamp.is_none() || &ts < earliest_timestamp.as_ref().unwrap() {
+                    earliest_timestamp = Some(ts.clone());
+                }
+                if !fast_scan_only
+                    && (latest_timestamp.is_none() || &ts > latest_timestamp.as_ref().unwrap())
+                {
+                    latest_timestamp = Some(ts);
+                }
+            }
+        }
+
+        if fast_scan_only
+            && index >= FAST_SESSION_SCAN_LINE_LIMIT
+            && first_message.is_some()
+            && project_path.is_some()
+        {
+            break;
+        }
+    }
+
+    Some(ScannedCliSession {
+        session_id: file_name,
+        session_path: session_path.to_string_lossy().to_string(),
+        project_path,
+        first_message,
+        message_count,
+        created_at: earliest_timestamp.unwrap_or_else(|| modified_str.clone()),
+        updated_at: latest_timestamp.unwrap_or(modified_str),
+    })
 }
 
 /// 根据 agentId 获取 agent 的 cli_path
 fn get_agent_cli_path(agent_id: &str) -> Result<String, String> {
-    let persistence_dir = super::get_persistence_dir_path()
-        .map_err(|e| e.to_string())?;
+    let persistence_dir = super::get_persistence_dir_path().map_err(|e| e.to_string())?;
     let db_path = persistence_dir.join("data").join("easy-agent.db");
 
-    let conn = Connection::open(&db_path)
-        .map_err(|e| format!("无法打开数据库: {}", e))?;
+    let conn = Connection::open(&db_path).map_err(|e| format!("无法打开数据库: {}", e))?;
 
     let cli_path: Option<String> = conn
         .query_row(
@@ -914,7 +1344,18 @@ pub struct AgentCliSessionsResult {
 
 /// 列出指定 Agent 的 CLI 会话 (Tauri 命令)
 #[tauri::command]
-pub fn list_agent_cli_sessions(
+pub async fn list_agent_cli_sessions(
+    agent_id: String,
+    project_path: Option<String>,
+) -> Result<AgentCliSessionsResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        list_agent_cli_sessions_impl(agent_id, project_path)
+    })
+    .await
+    .map_err(|e| format!("加载会话列表失败: {}", e))?
+}
+
+fn list_agent_cli_sessions_impl(
     agent_id: String,
     project_path: Option<String>,
 ) -> Result<AgentCliSessionsResult, String> {
@@ -936,21 +1377,22 @@ pub fn list_agent_cli_sessions(
     project_paths.sort();
     project_paths.dedup();
 
-    // 如果指定了项目路径，则筛选
-    let result = if project_path.is_some() {
-        scan_cli_sessions(ScanCliSessionsInput {
-            cli_path: Some(cli_path),
-            project_path,
-        })?
-    } else {
+    let sessions = if let Some(ref filter_project) = project_path {
         all_result
+            .sessions
+            .iter()
+            .filter(|session| session.project_path.as_deref() == Some(filter_project.as_str()))
+            .cloned()
+            .collect()
+    } else {
+        all_result.sessions.clone()
     };
 
     Ok(AgentCliSessionsResult {
         agent_id,
-        cli_name: result.cli_name,
-        session_root: result.config_dir,
-        sessions: result.sessions,
+        cli_name: all_result.cli_name,
+        session_root: all_result.config_dir,
+        sessions,
         project_paths,
     })
 }
@@ -995,7 +1437,18 @@ pub struct CliSessionDetail {
 
 /// 读取 CLI 会话详情 (Tauri 命令)
 #[tauri::command]
-pub fn read_cli_session_detail(
+pub async fn read_cli_session_detail(
+    agent_id: String,
+    session_path: String,
+) -> Result<CliSessionDetail, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        read_cli_session_detail_impl(agent_id, session_path)
+    })
+    .await
+    .map_err(|e| format!("读取会话详情失败: {}", e))?
+}
+
+fn read_cli_session_detail_impl(
     _agent_id: String,
     session_path: String,
 ) -> Result<CliSessionDetail, String> {
@@ -1011,8 +1464,7 @@ pub fn read_cli_session_detail(
         .unwrap_or("unknown")
         .to_string();
 
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("无法读取会话文件: {}", e))?;
+    let content = fs::read_to_string(&path).map_err(|e| format!("无法读取会话文件: {}", e))?;
 
     let mut messages = Vec::new();
     let mut first_message: Option<String> = None;
@@ -1023,11 +1475,7 @@ pub fn read_cli_session_detail(
 
     for (line_no, line) in content.lines().enumerate() {
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(line) {
-            let msg_type = json
-                .get("type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
+            let msg_type = extract_jsonl_message_type(&json);
 
             // 统计消息数量
             if msg_type == "user" || msg_type == "assistant" {
@@ -1036,32 +1484,22 @@ pub fn read_cli_session_detail(
 
             // 获取第一条用户消息
             if first_message.is_none() && msg_type == "user" {
-                if let Some(message) = json.get("message") {
-                    if let Some(content_val) = message.get("content") {
-                        if let Some(text) = content_val.as_str() {
-                            first_message = Some(text.chars().take(100).collect());
-                        } else if let Some(arr) = content_val.as_array() {
-                            for item in arr {
-                                if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                                    first_message = Some(text.chars().take(100).collect());
-                                    break;
-                                }
-                            }
-                        }
-                    }
+                if let Some(text) = extract_jsonl_message_content(&json) {
+                    let preview: String = text.chars().take(100).collect();
+                    first_message = clean_display_text(&preview);
                 }
             }
 
             // 获取项目路径
             if project_path.is_none() {
-                project_path = json
-                    .get("cwd")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
+                project_path = extract_jsonl_project_path(&json);
             }
 
             // 获取时间戳
-            let timestamp = json.get("timestamp").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let timestamp = json
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
 
             if let Some(ref ts) = timestamp {
                 if earliest_timestamp.is_none() || ts < earliest_timestamp.as_ref().unwrap() {
@@ -1073,71 +1511,9 @@ pub fn read_cli_session_detail(
             }
 
             // 获取角色
-            let role = json.get("role").and_then(|v| v.as_str()).map(|s| s.to_string())
-                .or_else(|| json.get("message").and_then(|m| m.get("role")).and_then(|v| v.as_str()).map(|s| s.to_string()));
+            let role = extract_jsonl_role(&json);
 
-            // 获取内容 - 尝试多种格式
-            let content = {
-                // 首先尝试 message.content 格式
-                if let Some(message) = json.get("message") {
-                    if let Some(content_val) = message.get("content") {
-                        if let Some(text) = content_val.as_str() {
-                            Some(text.to_string())
-                        } else if let Some(arr) = content_val.as_array() {
-                            let texts: Vec<String> = arr
-                                .iter()
-                                .filter_map(|item| {
-                                    // 尝试 text 字段
-                                    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                                        return Some(text.to_string());
-                                    }
-                                    // 尝试 content 字段（某些格式）
-                                    if let Some(content) = item.get("content").and_then(|c| c.as_str()) {
-                                        return Some(content.to_string());
-                                    }
-                                    None
-                                })
-                                .collect();
-                            if !texts.is_empty() {
-                                Some(texts.join("\n"))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else if let Some(content_val) = json.get("content") {
-                    // 尝试顶层 content 字段
-                    if let Some(text) = content_val.as_str() {
-                        Some(text.to_string())
-                    } else if let Some(arr) = content_val.as_array() {
-                        let texts: Vec<String> = arr
-                            .iter()
-                            .filter_map(|item| item.get("text").and_then(|t| t.as_str()))
-                            .map(|s| s.to_string())
-                            .collect();
-                        if !texts.is_empty() {
-                            Some(texts.join("\n"))
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else if let Some(result) = json.get("result") {
-                    // 某些工具调用结果
-                    if let Some(text) = result.as_str() {
-                        Some(text.to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            };
+            let content = extract_jsonl_message_content(&json);
 
             messages.push(CliSessionMessage {
                 line_no: line_no as i32 + 1,
@@ -1151,8 +1527,7 @@ pub fn read_cli_session_detail(
     }
 
     // 获取文件元数据作为备选时间
-    let metadata = fs::metadata(&path)
-        .map_err(|e| format!("无法获取文件元数据: {}", e))?;
+    let metadata = fs::metadata(&path).map_err(|e| format!("无法获取文件元数据: {}", e))?;
     let modified = metadata
         .modified()
         .map_err(|e| format!("无法获取修改时间: {}", e))?;
@@ -1178,40 +1553,46 @@ pub fn delete_cli_session(
     cleanup_empty_dirs: bool,
 ) -> Result<(), String> {
     let path = PathBuf::from(&session_path);
+    delete_cli_session_path(&path, cleanup_empty_dirs)
+}
 
-    if !path.exists() {
-        return Err(format!("会话文件不存在: {}", session_path));
-    }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteCliSessionsResult {
+    pub deleted_count: usize,
+    pub failed_paths: Vec<String>,
+}
 
-    // 删除会话文件
-    fs::remove_file(&path)
-        .map_err(|e| format!("无法删除会话文件: {}", e))?;
+#[tauri::command]
+pub async fn delete_cli_sessions(
+    _agent_id: String,
+    session_paths: Vec<String>,
+    cleanup_empty_dirs: bool,
+) -> Result<DeleteCliSessionsResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if session_paths.is_empty() {
+            return Err("未提供要删除的会话".to_string());
+        }
 
-    // 如果需要清理空目录
-    if cleanup_empty_dirs {
-        if let Some(parent) = path.parent() {
-            // 检查父目录是否为空
-            if let Ok(entries) = fs::read_dir(parent) {
-                if entries.count() == 0 {
-                    // 删除空目录
-                    let _ = fs::remove_dir(parent);
+        let mut deleted_count = 0;
+        let mut failed_paths = Vec::new();
 
-                    // 继续向上检查并删除空目录（直到 projects 目录）
-                    if let Some(grandparent) = parent.parent() {
-                        if grandparent.file_name().map(|n| n == "projects").unwrap_or(false) {
-                            // 已经到达 projects 目录，停止
-                        } else if let Ok(entries) = fs::read_dir(grandparent) {
-                            if entries.count() == 0 {
-                                let _ = fs::remove_dir(grandparent);
-                            }
-                        }
-                    }
+        for session_path in session_paths {
+            let path = PathBuf::from(&session_path);
+            match delete_cli_session_path(&path, cleanup_empty_dirs) {
+                Ok(()) => deleted_count += 1,
+                Err(error) => {
+                    failed_paths.push(format!("{}: {}", session_path, error));
                 }
             }
         }
-    }
 
-    Ok(())
+        Ok(DeleteCliSessionsResult {
+            deleted_count,
+            failed_paths,
+        })
+    })
+    .await
+    .map_err(|e| format!("批量删除会话失败: {}", e))?
 }
 
 /// 扫描智能体会话历史 (Tauri 命令)
@@ -1301,8 +1682,26 @@ pub fn scan_cli_sessions(input: ScanCliSessionsInput) -> Result<ScanCliSessionsR
             }
         }
         "codex" => {
-            // Codex CLI: 会话存储格式可能不同，需要根据实际情况调整
-            // 暂时返回空列表
+            // Codex CLI: 会话存储在 ~/.codex/sessions/YYYY/MM/DD/*.jsonl
+            let sessions_dir = config_dir.join("sessions");
+            if sessions_dir.exists() {
+                let mut session_files = Vec::new();
+                collect_jsonl_files(&sessions_dir, &mut session_files);
+
+                for session_file in session_files {
+                    if let Some(session) = extract_session_info(&session_file) {
+                        let should_keep = input
+                            .project_path
+                            .as_ref()
+                            .map(|project| session.project_path.as_ref() == Some(project))
+                            .unwrap_or(true);
+
+                        if should_keep {
+                            sessions.push(session);
+                        }
+                    }
+                }
+            }
         }
         "qwen" | "qwen-code" => {
             // Qwen Code: 会话存储格式可能不同，需要根据实际情况调整
@@ -1323,4 +1722,113 @@ pub fn scan_cli_sessions(input: ScanCliSessionsInput) -> Result<ScanCliSessionsR
         scan_success: true,
         error_message: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn extracts_codex_user_message_from_payload_content() {
+        let json = json!({
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "修复会话详情渲染"
+                    }
+                ]
+            }
+        });
+
+        assert_eq!(extract_jsonl_message_type(&json), "user");
+        assert_eq!(
+            extract_jsonl_message_content(&json).as_deref(),
+            Some("修复会话详情渲染")
+        );
+        assert_eq!(extract_jsonl_role(&json).as_deref(), Some("user"));
+    }
+
+    #[test]
+    fn strips_separator_only_lines_from_display_text() {
+        let text = "---\nname: demo\n-----\n|------|------|\nvalue";
+        assert_eq!(
+            clean_display_text(text).as_deref(),
+            Some("name: demo\nvalue")
+        );
+    }
+
+    #[test]
+    fn extracts_codex_assistant_output_text() {
+        let json = json!({
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": "会话详情恢复正常"
+                    }
+                ]
+            }
+        });
+
+        assert_eq!(extract_jsonl_message_type(&json), "assistant");
+        assert_eq!(
+            extract_jsonl_message_content(&json).as_deref(),
+            Some("会话详情恢复正常")
+        );
+    }
+
+    #[test]
+    fn extracts_codex_tool_call_and_output() {
+        let call = json!({
+            "type": "response_item",
+            "payload": {
+                "type": "function_call",
+                "name": "exec_command",
+                "arguments": "{\"cmd\":\"pwd\"}"
+            }
+        });
+        let output = json!({
+            "type": "response_item",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call_123",
+                "output": "Chunk ID: abc\nProcess exited with code 0"
+            }
+        });
+
+        assert_eq!(extract_jsonl_message_type(&call), "tool_use");
+        assert!(extract_jsonl_message_content(&call)
+            .unwrap_or_default()
+            .contains("exec_command"));
+
+        assert_eq!(extract_jsonl_message_type(&output), "tool_result");
+        assert!(extract_jsonl_message_content(&output)
+            .unwrap_or_default()
+            .contains("call_123"));
+    }
+
+    #[test]
+    fn extracts_codex_project_path_from_payload() {
+        let json = json!({
+            "type": "session_meta",
+            "payload": {
+                "cwd": "/tmp/demo-project",
+                "cli_version": "0.112.0"
+            }
+        });
+
+        assert_eq!(
+            extract_jsonl_project_path(&json).as_deref(),
+            Some("/tmp/demo-project")
+        );
+        assert_eq!(extract_jsonl_message_type(&json), "system");
+    }
 }

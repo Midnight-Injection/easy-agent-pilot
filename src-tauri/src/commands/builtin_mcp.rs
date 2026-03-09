@@ -97,7 +97,8 @@ pub fn get_builtin_tools() -> Vec<McpTool> {
         },
         McpTool {
             name: "get_system_info".to_string(),
-            description: "Get system information including OS, architecture, and memory.".to_string(),
+            description: "Get system information including OS, architecture, and memory."
+                .to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -111,16 +112,16 @@ pub fn get_builtin_tools() -> Vec<McpTool> {
 pub async fn call_builtin_tool(tool_name: &str, params: Value) -> Result<Value, String> {
     match tool_name {
         "echo" => {
-            let input: EchoInput = serde_json::from_value(params)
-                .map_err(|e| format!("Invalid params: {}", e))?;
+            let input: EchoInput =
+                serde_json::from_value(params).map_err(|e| format!("Invalid params: {}", e))?;
             Ok(json!({
                 "echoed": input.message,
                 "length": input.message.len()
             }))
         }
         "add" => {
-            let input: AddInput = serde_json::from_value(params)
-                .map_err(|e| format!("Invalid params: {}", e))?;
+            let input: AddInput =
+                serde_json::from_value(params).map_err(|e| format!("Invalid params: {}", e))?;
             let result = input.a + input.b;
             Ok(json!({
                 "a": input.a,

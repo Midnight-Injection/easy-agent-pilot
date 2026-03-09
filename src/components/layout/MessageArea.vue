@@ -18,7 +18,6 @@ import CompressionConfirmDialog from '@/components/common/CompressionConfirmDial
 import TokenProgressBar from '@/components/common/TokenProgressBar.vue'
 import type { Message } from '@/stores/message'
 import FileMentionDropdown from './FileMentionDropdown.vue'
-import McpPluginSelector from './McpPluginSelector.vue'
 
 const { t } = useI18n()
 const messageStore = useMessageStore()
@@ -888,8 +887,6 @@ watch(() => sessionStore.currentSessionId, async (sessionId) => {
             </Transition>
           </div>
 
-          <!-- MCP 插件选择器 -->
-          <McpPluginSelector />
         </div>
 
         <!-- 输入框容器 -->

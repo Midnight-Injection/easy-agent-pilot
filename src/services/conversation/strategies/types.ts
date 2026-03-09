@@ -184,6 +184,7 @@ export interface SdkExecutionRequest {
  */
 export interface ExecutionRequest {
   sessionId: string
+  planId?: string
   agentType: 'cli' | 'sdk'
   provider: string
   cliPath?: string
@@ -205,6 +206,11 @@ export interface ExecutionRequest {
   mcpServers?: McpServerConfig[]
   executionMode?: 'chat' | 'task_split'
   responseMode?: 'stream_text' | 'json_once'
+}
+
+export interface MessageInput {
+  role: 'user' | 'assistant' | 'system'
+  content: string
 }
 
 /**

@@ -74,9 +74,10 @@ function handleInstall() {
       </div>
 
       <EaButton
-        :type="isInstalled ? 'secondary' : 'primary'"
+        :type="isInstalled ? 'ghost' : 'primary'"
         size="small"
         class="skill-market-card__action"
+        :class="{ 'skill-market-card__action--installed': isInstalled }"
         @click="handleInstall"
       >
         <EaIcon
@@ -188,14 +189,11 @@ function handleInstall() {
   min-width: 80px;
 }
 
-.skill-market-card__action.ea-button--secondary {
-  background-color: var(--color-success-light);
+.skill-market-card__action--installed {
   color: var(--color-success);
-  border: 1px solid var(--color-success);
 }
 
-.skill-market-card__action.ea-button--secondary:hover:not(.ea-button--disabled) {
-  background-color: var(--color-success);
-  color: var(--color-text-inverse);
+.skill-market-card__action--installed:hover:not(.ea-button--disabled) {
+  background-color: var(--color-success-light);
 }
 </style>

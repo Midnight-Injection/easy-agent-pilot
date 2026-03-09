@@ -20,15 +20,16 @@ export function buildPlanSplitSystemPrompt(): string {
   return `你是项目规划助手，通过渐进式对话收集需求，最终拆分为可执行任务。
 
 核心规则：
-1. 每次只输出一个 form_request（单字段）收集一个信息
-2. 收到用户回复后，再输出下一个问题
+1. 信息不足时输出 form_request 收集信息，可一次输出多个表单 forms
+2. 每个表单可以包含多个字段，字段类型必须适合收集需求信息
 3. 信息充分后输出 task_split（status=DONE）
 4. 任务需可执行、有明确边界、包含实现/测试步骤和验收标准
 5. 用 dependsOn 指定任务依赖关系
+6. 最终回答内容必须是单个 JSON 对象，不要夹带解释文字
 
 禁止事项：
 - 禁止输出 markdown 代码块或额外解释
-- 禁止一次性输出多个问题`.trim()
+- 禁止输出无法解析的非 JSON 内容`.trim()
 }
 
 export function buildPlanSplitKickoffPrompt(context: PlanSplitPromptContext): string {
@@ -79,14 +80,14 @@ export function buildFormResponsePrompt(formId: string, values: Record<string, u
     .map(([key, val]) => `${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
     .join(', ')
 
-  return `用户回答: ${valueStr}
+  return `表单 ${formId} 用户回答: ${valueStr}
 
 继续：需要更多信息则输出 form_request；信息足够则输出 task_split（status=DONE）。`.trim()
 }
 
 export function buildOutputCorrectionPrompt(minTaskCount: number): string {
   return `输出格式错误，请重新输出：
-- form_request：fields 只能有一个字段
+- form_request：必须输出 forms 数组（兼容单个 formSchema 但优先 forms）
 - task_split：必须含 status:DONE，tasks >= ${minTaskCount}
 - 禁止 markdown 代码块和额外文字`
 }
@@ -119,10 +120,60 @@ export function buildPlanSplitJsonSchema(minTaskCount: number): string {
           required: ['type']
         },
         then: {
-          required: ['type', 'formSchema'],
+          required: ['type'],
           properties: {
             type: { const: 'form_request' },
             question: { type: 'string' },
+            forms: {
+              type: 'array',
+              minItems: 1,
+              items: {
+                type: 'object',
+                required: ['formId', 'title', 'fields'],
+                properties: {
+                  formId: { type: 'string', minLength: 1 },
+                  title: { type: 'string', minLength: 1 },
+                  description: { type: 'string' },
+                  submitText: { type: 'string' },
+                  fields: {
+                    type: 'array',
+                    minItems: 1,
+                    items: {
+                      type: 'object',
+                      required: ['name', 'label', 'type'],
+                      properties: {
+                        name: { type: 'string', minLength: 1 },
+                        label: { type: 'string', minLength: 1 },
+                        type: {
+                          type: 'string',
+                          enum: ['text', 'textarea', 'select', 'multiselect', 'number', 'checkbox', 'radio', 'date', 'slider']
+                        },
+                        required: { type: 'boolean' },
+                        placeholder: { type: 'string' },
+                        options: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            required: ['label', 'value'],
+                            properties: {
+                              label: { type: 'string' },
+                              value: {}
+                            },
+                            additionalProperties: true
+                          }
+                        },
+                        validation: {
+                          type: 'object',
+                          additionalProperties: true
+                        }
+                      },
+                      additionalProperties: true
+                    }
+                  }
+                },
+                additionalProperties: true
+              }
+            },
             formSchema: {
               type: 'object',
               required: ['formId', 'title', 'fields'],
@@ -134,7 +185,6 @@ export function buildPlanSplitJsonSchema(minTaskCount: number): string {
                 fields: {
                   type: 'array',
                   minItems: 1,
-                  maxItems: 1,
                   items: {
                     type: 'object',
                     required: ['name', 'label', 'type'],

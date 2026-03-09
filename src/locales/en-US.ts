@@ -200,9 +200,9 @@ export default {
     noProjectsHint: 'Create your first project to start chatting with AI',
     createProject: 'Create Project',
     createFirstProject: 'Create First Project',
-    deleteProject: 'Delete Project',
-    confirmDeleteTitle: 'Confirm Delete Project',
-    confirmDeleteMessage: 'Are you sure you want to delete project "{name}"?\nThis will also delete all sessions in this project. This action cannot be undone.'
+    deleteProject: 'Remove Project',
+    confirmDeleteTitle: 'Remove Project',
+    confirmDeleteMessage: 'Remove project "{name}" from management?\n\nThis will only remove the project from the list. Your local files and folders will NOT be deleted. Associated sessions will be removed from the database.'
   },
 
   // Session panel
@@ -374,7 +374,29 @@ export default {
       confirmDelete: 'Confirm Delete',
       confirmDeleteMessage: 'Are you sure you want to delete CLI config "{name}"?',
       verificationFailed: 'Verification Failed',
-      cliNameOther: 'Other'
+      cliNameOther: 'Other',
+      // CLI Installer
+      installer: {
+        title: 'CLI Installer',
+        installed: 'Installed',
+        notInstalled: 'Not Installed',
+        recommended: 'Recommended',
+        install: 'Install',
+        installing: 'Installing...',
+        installSuccess: 'Installation successful',
+        installFailed: 'Installation failed',
+        detecting: 'Detecting environment...',
+        noMethodAvailable: 'No installation method available. Please install npm or Homebrew first.',
+        checkUpdate: 'Check Update',
+        upgrade: 'Upgrade',
+        upgrading: 'Upgrading...',
+        newVersion: 'New version',
+        versionUpToDate: 'Up to date',
+        checkUpdateFailed: 'Check update failed',
+        logs: 'Install Logs',
+        clearLogs: 'Clear',
+        cancel: 'Cancel'
+      }
     },
     agent: {
       title: 'Agent Configuration',
@@ -521,12 +543,20 @@ export default {
       projectPath: 'Project Path',
       view: 'View',
       delete: 'Delete',
+      batchDelete: 'Delete Selected',
+      selectAll: 'Select All',
+      clearSelection: 'Clear Selection',
+      selectedCount: '{n} selected',
       detailTitle: 'Session Details',
       messageCount: 'Message Count',
       sessionPath: 'Session File Path',
       rawJson: 'Raw JSON',
       confirmDeleteTitle: 'Delete Session',
       confirmDeleteDesc: 'This will remove the session file and cannot be undone.',
+      confirmBatchDeleteTitle: 'Delete Sessions',
+      confirmBatchDeleteDesc: 'This will remove {n} session files and cannot be undone.',
+      partialDeleteFailed: '{n} sessions failed to delete:',
+      moreSelected: '+{n} more sessions',
       justNow: 'Just now',
       minutesAgo: '{n} min ago',
       hoursAgo: '{n}h ago',
@@ -1139,13 +1169,6 @@ export default {
     enUS: 'English'
   },
 
-  // MCP 插件选择器
-  mcpSelector: {
-    selected: '{enabled}/{total} plugins selected',
-    noPlugins: 'No plugins available',
-    selectAll: 'Select all'
-  },
-
   // 文件引用
   fileMention: {
     searchFiles: 'Search files...',
@@ -1204,6 +1227,7 @@ export default {
     subtitle: 'Manage and organize your AI memories',
     // Categories
     categories: 'Categories',
+    categoryTitle: 'Memory Categories',
     allMemories: 'All Memories',
     userInfo: 'User Info',
     projectMemory: 'Project Memory',
@@ -1212,10 +1236,16 @@ export default {
     newCategory: 'New Category',
     categoryName: 'Category Name',
     categoryDescription: 'Category Description',
+    categoryNamePlaceholder: 'Enter category name',
+    createCategory: 'Create',
     // Memory list
     memories: 'Memories',
     noMemories: 'No memories yet',
     noMemoriesHint: 'Send messages in conversations, messages are automatically captured to memory',
+    emptyTitle: 'No memories yet',
+    emptyHint: 'Send messages in conversations, messages are automatically captured to memory',
+    noSession: 'No Session',
+    selected: '{count} selected',
     searchPlaceholder: 'Search memories...',
     // Source types
     sourceAuto: 'Auto-captured',
@@ -1312,6 +1342,9 @@ export default {
     dependencies: 'Dependencies',
     selectDependencies: 'Select dependencies',
     circularDependencyError: 'Would cause circular dependency, cannot select',
-    noTasksAvailable: 'No tasks available to select as dependencies'
+    noTasksAvailable: 'No tasks available to select as dependencies',
+    selectAgent: 'Agent (Optional)',
+    selectAgentPlaceholder: 'Use default agent',
+    selectModel: 'Model (Optional)'
   }
 }

@@ -12,6 +12,7 @@ use crate::commands::conversation::abort::{
 };
 use crate::commands::conversation::strategy::AgentExecutionStrategy;
 use crate::commands::conversation::types::{CliStreamEvent, ExecutionRequest, McpServerConfig};
+use crate::commands::plan_split::{record_plan_split_event, SplitStreamRecord};
 
 /// Claude CLI 策略
 pub struct ClaudeCliStrategy;
@@ -41,6 +42,32 @@ struct StdoutReadOutcome {
     emitted_error: bool,
 }
 
+fn emit_cli_event(
+    app: &AppHandle,
+    event_name: &str,
+    plan_id: Option<&String>,
+    event: &CliStreamEvent,
+) {
+    let _ = app.emit(event_name, event);
+
+    if let Some(plan_id) = plan_id {
+        let _ = record_plan_split_event(
+            app,
+            plan_id,
+            &event.session_id,
+            SplitStreamRecord {
+                event_type: event.event_type.clone(),
+                content: event.content.clone(),
+                tool_name: event.tool_name.clone(),
+                tool_call_id: event.tool_call_id.clone(),
+                tool_input: event.tool_input.clone(),
+                tool_result: event.tool_result.clone(),
+                error: event.error.clone(),
+            },
+        );
+    }
+}
+
 impl StdoutReadOutcome {
     fn none() -> Self {
         Self {
@@ -62,7 +89,13 @@ fn build_mcp_config_json(servers: &[McpServerConfig]) -> String {
             "stdio" => {
                 let mut args_list = Vec::new();
                 if let Some(args_str) = &server.args {
-                    args_list.extend(args_str.split_whitespace().map(|s: &str| s.to_string()));
+                    // 优先尝试 JSON 数组解析
+                    if let Ok(arr) = serde_json::from_str::<Vec<String>>(args_str) {
+                        args_list = arr;
+                    } else {
+                        // 回退到换行符分割（兼容旧格式）
+                        args_list.extend(args_str.lines().filter(|l| !l.is_empty()).map(|s| s.to_string()));
+                    }
                 }
 
                 let mut env_map = serde_json::Map::new();
@@ -137,6 +170,12 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
             .unwrap_or_else(|| "claude".to_string());
         let model_id = request.model_id.clone();
         let working_directory = request.working_directory.clone();
+
+        // 调试日志：检查收到的消息
+        log_info!("收到的消息数量: {}", request.messages.len());
+        for (i, msg) in request.messages.iter().enumerate() {
+            log_info!("消息[{}]: role={}, content_len={}", i, msg.role, msg.content.len());
+        }
         let allowed_tools = request.allowed_tools.clone();
         let cli_output_format = request
             .cli_output_format
@@ -151,6 +190,7 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
             .as_deref()
             .map(str::trim)
             .filter(|schema| !schema.is_empty());
+        let plan_id = request.plan_id.clone();
 
         // 构建命令参数（prompt 通过 `-p <prompt>` 单独传递）
         let mut args = vec!["--output-format".to_string(), cli_output_format.clone()];
@@ -178,17 +218,15 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
             }
         }
 
-        // 添加 MCP 服务器配置
-        if let Some(servers) = &mcp_servers {
-            if !servers.is_empty() {
-                let mcp_config = build_mcp_config_json(servers);
-                log_info!("MCP 配置: {}", mcp_config);
-                args.push("--mcp-config".to_string());
-                args.push(mcp_config);
-                // 使用严格模式，只使用传入的 MCP 配置
-                args.push("--strict-mcp-config".to_string());
-            }
-        }
+        // MCP 配置暂时禁用，不传递给 Claude CLI
+        // if let Some(servers) = &mcp_servers {
+        //     if !servers.is_empty() {
+        //         let mcp_config = build_mcp_config_json(servers);
+        //         log_info!("MCP 配置: {}", mcp_config);
+        //         args.push("--mcp-config".to_string());
+        //         args.push(mcp_config);
+        //     }
+        // }
 
         if let Some(schema) = schema_text {
             args.push("--json-schema".to_string());
@@ -252,7 +290,7 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
         let session_id_clone = session_id.clone();
         let app_clone = app.clone();
         let event_name_clone = event_name.clone();
-        let output_format_clone = cli_output_format.clone();
+        let plan_id_clone = plan_id.clone();
 
         // 处理标准输出
         let stdout_handle = tokio::spawn(async move {
@@ -261,19 +299,35 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
                 let mut lines = reader.lines();
 
                 while let Ok(Some(line)) = lines.next_line().await {
+                    log_info!("[stdout] 原始行: {}", line);
+
                     if should_abort(&session_id_clone).await {
                         break;
                     }
 
                     match serde_json::from_str::<serde_json::Value>(&line) {
                         Ok(json_value) => {
+                            let event_type = json_value.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+                            log_info!("[stdout] JSON type: {}", event_type);
                             let event = parse_claude_json_output(&session_id_clone, &json_value);
                             if let Some(event) = event {
-                                let _ = app_clone.emit(&event_name_clone, event);
+                                log_info!(
+                                    "[stdout] 发送事件: type={}, content_len={:?}",
+                                    event.event_type,
+                                    event.content.as_ref().map(|c| c.len())
+                                );
+                                emit_cli_event(
+                                    &app_clone,
+                                    &event_name_clone,
+                                    plan_id_clone.as_ref(),
+                                    &event,
+                                );
+                            } else {
+                                log_info!("[stdout] 解析返回 None");
                             }
                         }
-                        Err(_) => {
-                            log_error!("[stdout] JSON 解析失败");
+                        Err(e) => {
+                            log_error!("[stdout] JSON 解析失败: {:?}", e);
                         }
                     }
                 }
@@ -313,10 +367,13 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
                     "[stdout] 事件内容长度: {:?}",
                     event.content.as_ref().map(|c| c.len())
                 );
-                match app_clone.emit(&event_name_clone, &event) {
-                    Ok(_) => log_info!("[stdout] 事件发送成功"),
-                    Err(e) => log_error!("[stdout] 事件发送失败: {:?}", e),
-                }
+                emit_cli_event(
+                    &app_clone,
+                    &event_name_clone,
+                    plan_id_clone.as_ref(),
+                    &event,
+                );
+                log_info!("[stdout] 事件发送成功");
                 return StdoutReadOutcome {
                     emitted_content: true,
                     emitted_error: false,
@@ -330,9 +387,12 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
                 event_name_clone,
                 event.event_type
             );
-            if let Err(e) = app_clone.emit(&event_name_clone, event) {
-                log_error!("[stdout] 事件发送失败: {:?}", e);
-            }
+            emit_cli_event(
+                &app_clone,
+                &event_name_clone,
+                plan_id_clone.as_ref(),
+                &event,
+            );
             StdoutReadOutcome {
                 emitted_content: true,
                 emitted_error: false,
@@ -342,6 +402,7 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
         let session_id_clone = session_id.clone();
         let app_clone = app.clone();
         let event_name_clone = event_name.clone();
+        let plan_id_clone = plan_id.clone();
 
         // 处理标准错误
         let stderr_handle = tokio::spawn(async move {
@@ -372,7 +433,12 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
             if !error_lines.is_empty() {
                 let error_msg = error_lines.join("\n");
                 let event = build_error_event(&session_id_clone, error_msg);
-                let _ = app_clone.emit(&event_name_clone, event);
+                emit_cli_event(
+                    &app_clone,
+                    &event_name_clone,
+                    plan_id_clone.as_ref(),
+                    &event,
+                );
             }
         });
 
@@ -391,6 +457,21 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
 
         // 注销进程 PID
         unregister_session_pid(&session_id).await;
+
+        let done_event = CliStreamEvent {
+            event_type: "done".to_string(),
+            session_id: session_id.clone(),
+            content: None,
+            tool_name: None,
+            tool_call_id: None,
+            tool_input: None,
+            tool_result: None,
+            error: None,
+            input_tokens: None,
+            output_tokens: None,
+            model: None,
+        };
+        emit_cli_event(&app, &event_name, plan_id.as_ref(), &done_event);
 
         // 清理中断标志
         clear_abort_flag(&session_id).await;
@@ -731,6 +812,23 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
             let delta_type = delta.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
             match delta_type {
+                "thinking_delta" => {
+                    // 处理思考内容
+                    let thinking = delta.get("thinking").and_then(|t| t.as_str())?;
+                    Some(CliStreamEvent {
+                        event_type: "thinking".to_string(),
+                        session_id: session_id.to_string(),
+                        content: Some(thinking.to_string()),
+                        tool_name: None,
+                        tool_call_id: None,
+                        tool_input: None,
+                        tool_result: None,
+                        error: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        model: None,
+                    })
+                }
                 "text_delta" => {
                     let text = delta.get("text").and_then(|t| t.as_str())?;
                     Some(build_content_event(session_id, text.to_string()))
@@ -750,6 +848,22 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
                 .unwrap_or("");
 
             match block_type {
+                "thinking" => {
+                    // thinking 内容块开始
+                    Some(CliStreamEvent {
+                        event_type: "thinking_start".to_string(),
+                        session_id: session_id.to_string(),
+                        content: None,
+                        tool_name: None,
+                        tool_call_id: None,
+                        tool_input: None,
+                        tool_result: None,
+                        error: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        model: None,
+                    })
+                }
                 "tool_use" => {
                     let tool_name = content_block.get("name").and_then(|n| n.as_str())?;
                     let tool_id = json.get("index").and_then(|i| i.as_u64())?;
@@ -911,16 +1025,37 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
             let message = json.get("message")?;
             let content_array = message.get("content").and_then(|c| c.as_array())?;
 
-            if let Some(content_item) = content_array.first() {
+            // 遍历所有 content items，找到第一个有效的并返回
+            // 优先级：thinking > text > tool_use
+            for content_item in content_array {
                 let item_type = content_item
                     .get("type")
                     .and_then(|t| t.as_str())
                     .unwrap_or("");
 
                 match item_type {
+                    "thinking" => {
+                        // 处理 thinking 类型
+                        if let Some(thinking_text) = content_item.get("thinking").and_then(|t| t.as_str()) {
+                            log_debug!("[parse] 找到 thinking 内容，长度: {}", thinking_text.len());
+                            return Some(CliStreamEvent {
+                                event_type: "thinking".to_string(),
+                                session_id: session_id.to_string(),
+                                content: Some(thinking_text.to_string()),
+                                tool_name: None,
+                                tool_call_id: None,
+                                tool_input: None,
+                                tool_result: None,
+                                error: None,
+                                input_tokens: None,
+                                output_tokens: None,
+                                model: None,
+                            });
+                        }
+                    }
                     "text" => {
                         let text = content_item.get("text").and_then(|t| t.as_str())?;
-                        Some(build_content_event(session_id, text.to_string()))
+                        return Some(build_content_event(session_id, text.to_string()));
                     }
                     "tool_use" => {
                         let tool_name = content_item.get("name").and_then(|n| n.as_str())?;
@@ -929,7 +1064,7 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
                             .and_then(|i| serde_json::to_string(i).ok());
                         let tool_id = content_item.get("id").and_then(|i| i.as_str());
 
-                        Some(CliStreamEvent {
+                        return Some(CliStreamEvent {
                             event_type: "tool_use".to_string(),
                             session_id: session_id.to_string(),
                             content: None,
@@ -941,16 +1076,19 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
                             input_tokens: None,
                             output_tokens: None,
                             model: None,
-                        })
+                        });
                     }
                     _ => {
                         log_debug!("[parse] assistant 消息中未处理的内容类型: {}", item_type);
-                        None
+                        // 继续检查下一个 item
+                        continue;
                     }
                 }
-            } else {
-                None
             }
+
+            // 如果没有找到有效的内容，返回 None
+            log_debug!("[parse] assistant 消息中没有找到有效的内容");
+            None
         }
         "user" => {
             let message = json.get("message")?;

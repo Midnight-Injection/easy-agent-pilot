@@ -63,7 +63,10 @@ export class CodexCliStrategy implements AgentStrategy {
         agentType: 'cli',
         provider: 'codex',
         cliPath: agent.cliPath || 'codex',
-        modelId: agent.modelId,
+        // 只有当 modelId 非空且不是 "default" 时才传递
+        modelId: agent.modelId && agent.modelId.trim() && agent.modelId !== 'default'
+          ? agent.modelId
+          : undefined,
         messages: messages
           .filter(m => m.role !== 'compression')
           .map(m => ({
@@ -71,7 +74,7 @@ export class CodexCliStrategy implements AgentStrategy {
             content: m.content
           })),
         workingDirectory,
-        allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash'],
+        allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch'],
         mcpServers,
         cliOutputFormat: cliOutputFormat ?? (responseMode === 'json_once' ? 'json' : 'stream-json'),
         jsonSchema,
@@ -163,6 +166,13 @@ export class CodexCliStrategy implements AgentStrategy {
           content: event.content,
           ...baseEvent
         }
+      case 'thinking':
+      case 'thinking_start':
+        return {
+          type: 'thinking',
+          content: event.content,
+          ...baseEvent
+        }
       case 'tool_use':
         return {
           type: 'tool_use',
@@ -171,6 +181,9 @@ export class CodexCliStrategy implements AgentStrategy {
           toolInput: event.toolInput ? JSON.parse(event.toolInput) : undefined,
           ...baseEvent
         }
+      case 'tool_input_delta':
+        // 工具输入增量，暂时忽略，等待完整的工具输入
+        return null
       case 'tool_result':
         return {
           type: 'tool_result',

@@ -40,7 +40,7 @@ const sortedProjects = computed(() => {
 const recentProjects = computed(() => {
   const recentIds = projectStore.recentProjectIds
   return recentIds
-    .slice(0, 4)
+    .slice(0, 2) // 只显示最近使用的 2 个项目
     .map(id => projectStore.projects.find(p => p.id === id))
     .filter((p): p is Project => p !== undefined)
 })
@@ -1094,7 +1094,14 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
 .recent-section {
   width: 100%;
   max-width: 500px;
-  margin-bottom: var(--spacing-4);
+  margin-bottom: var(--spacing-8);
+}
+
+/* 所有项目区域样式 */
+.all-projects-section {
+  width: 100%;
+  max-width: 500px;
+  margin-top: var(--spacing-2);
 }
 
 .section-title {

@@ -60,6 +60,10 @@ export interface Task {
   status: TaskStatus
   priority: TaskPriority
   assignee?: AgentRole
+  /** 执行智能体 ID */
+  agentId?: string
+  /** 执行模型 ID */
+  modelId?: string
   sessionId?: string
   progressFile?: string
   dependencies?: string[]
@@ -114,6 +118,10 @@ export interface CreateTaskInput {
   description?: string
   priority?: TaskPriority
   assignee?: AgentRole
+  /** 执行智能体 ID */
+  agentId?: string
+  /** 执行模型 ID */
+  modelId?: string
   dependencies?: string[]
   order?: number
   maxRetries?: number
@@ -129,6 +137,10 @@ export interface UpdateTaskInput {
   status?: TaskStatus
   priority?: TaskPriority
   assignee?: AgentRole
+  /** 执行智能体 ID */
+  agentId?: string
+  /** 执行模型 ID */
+  modelId?: string
   sessionId?: string
   progressFile?: string
   dependencies?: string[]
@@ -299,7 +311,8 @@ export type AIOutputType = 'form_request' | 'task_split'
 export interface AIFormRequest {
   type: 'form_request'
   question: string
-  formSchema: DynamicFormSchema
+  forms?: DynamicFormSchema[]
+  formSchema?: DynamicFormSchema
 }
 
 // AI 任务拆分结果
@@ -313,6 +326,10 @@ export interface AITaskItem {
   title: string
   description: string
   priority: TaskPriority
+  /** 执行智能体 ID */
+  agentId?: string
+  /** 执行模型 ID */
+  modelId?: string
   implementationSteps: string[]
   testSteps: string[]
   acceptanceCriteria: string[]
@@ -332,6 +349,68 @@ export interface SplitMessage {
   formValues?: Record<string, any>
   cancelled?: boolean // 标记消息是否被取消（关闭弹框时AI正在处理中）
   timestamp: string
+}
+
+export type PlanSplitSessionStatus =
+  | 'running'
+  | 'waiting_input'
+  | 'completed'
+  | 'failed'
+  | 'stopped'
+
+export type PlanSplitLogType =
+  | 'content'
+  | 'thinking'
+  | 'tool_use'
+  | 'tool_result'
+  | 'error'
+  | 'system'
+
+export interface PlanSplitSessionRecord {
+  id: string
+  planId: string
+  status: PlanSplitSessionStatus
+  executionSessionId?: string | null
+  rawContent?: string | null
+  resultJson?: string | null
+  parseError?: string | null
+  errorMessage?: string | null
+  granularity: number
+  llmMessagesJson?: string | null
+  messagesJson?: string | null
+  executionRequestJson?: string | null
+  formQueueJson?: string | null
+  currentFormIndex?: number | null
+  createdAt: string
+  updatedAt: string
+  startedAt?: string | null
+  completedAt?: string | null
+  stoppedAt?: string | null
+}
+
+export interface PlanSplitLogRecord {
+  id: string
+  planId: string
+  sessionId: string
+  type: PlanSplitLogType
+  content: string
+  metadata?: string | null
+  createdAt: string
+}
+
+export interface PlanSplitStreamPayload {
+  type: 'content' | 'thinking' | 'tool_use' | 'tool_result' | 'error' | 'done' | 'session_updated'
+  planId: string
+  sessionId?: string
+  content?: string
+  toolName?: string
+  toolCallId?: string
+  toolInput?: string
+  toolResult?: string
+  error?: string
+  metadata?: string | null
+  createdAt?: string
+  session?: PlanSplitSessionRecord
 }
 
 // ==================== 任务继续拆分相关类型 ====================

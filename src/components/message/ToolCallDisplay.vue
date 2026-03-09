@@ -4,140 +4,97 @@ import type { ToolCall } from '@/stores/message'
 
 const props = defineProps<{ toolCall: ToolCall }>()
 
-// 折叠状态 - 默认收起
-const isExpanded = ref(false)
+// 折叠状态 - 默认展开工具调用，收起结果
+const isExpanded = ref(true)
 const isResultExpanded = ref(false)
 
-// 结果内容是否过长（超过 500 字符）
-const isResultLong = computed(() => {
-  return (props.toolCall.result?.length ?? 0) > 500
-})
-
-// 参数 JSON 格式化
-const formattedArguments = computed(() => {
-  return JSON.stringify(props.toolCall.arguments, null, 2)
-})
-
-// 状态信息
-const statusInfo = computed(() => {
-  switch (props.toolCall.status) {
-    case 'pending':
-      return { text: '等待执行', icon: 'pending', class: 'status--pending' }
-    case 'running':
-      return { text: '执行中', icon: 'running', class: 'status--running' }
-    case 'success':
-      return { text: '执行成功', icon: 'success', class: 'status--success' }
-    case 'error':
-      return { text: '执行失败', icon: 'error', class: 'status--error' }
-    default:
-      return { text: '未知状态', icon: 'unknown', class: 'status--unknown' }
-  }
-})
-
-// 截断的结果（用于折叠显示）
-const truncatedResult = computed(() => {
-  if (!props.toolCall.result) return ''
-  if (props.toolCall.result.length <= 500) return props.toolCall.result
-  return props.toolCall.result.slice(0, 500) + '...'
-})
-
-// 切换参数展开状态
+// 切换展开状态
 const toggleExpand = () => {
   isExpanded.value = !isExpanded.value
 }
 
-// 切换结果展开状态
 const toggleResultExpand = () => {
   isResultExpanded.value = !isResultExpanded.value
 }
+
+// 状态样式
+const statusClass = computed(() => {
+  switch (props.toolCall.status) {
+    case 'running':
+      return 'tool-call--running'
+    case 'success':
+      return 'tool-call--success'
+    case 'error':
+      return 'tool-call--error'
+    default:
+      return ''
+  }
+})
+
+// 状态图标
+const statusIcon = computed(() => {
+  switch (props.toolCall.status) {
+    case 'running':
+      return '⏳'
+    case 'success':
+      return '✓'
+    case 'error':
+      return '✗'
+    default:
+      return '○'
+  }
+})
+
+// 工具图标
+const toolIcon = computed(() => {
+  const name = props.toolCall.name.toLowerCase()
+  if (name.includes('web') || name.includes('search')) return '🌐'
+  if (name.includes('read') || name.includes('file')) return '📄'
+  if (name.includes('write') || name.includes('edit')) return '✏️'
+  if (name.includes('bash') || name.includes('shell')) return '💻'
+  if (name.includes('grep') || name.includes('search')) return '🔍'
+  return '🔧'
+})
+
+// 格式化参数
+const formattedArguments = computed(() => {
+  return JSON.stringify(props.toolCall.arguments, null, 2)
+})
+
+// 格式化结果（截取前500字符用于预览）
+const resultPreview = computed(() => {
+  if (!props.toolCall.result) return ''
+  const result = props.toolCall.result
+  if (result.length > 500) {
+    return result.substring(0, 500) + '...'
+  }
+  return result
+})
 </script>
 
 <template>
-  <div class="tool-call">
+  <div
+    class="tool-call"
+    :class="statusClass"
+  >
     <!-- 工具调用头部 -->
     <div
       class="tool-call__header"
       @click="toggleExpand"
     >
       <div class="tool-call__header-left">
-        <span class="tool-call__icon">
-          <svg
-            v-if="statusInfo.icon === 'pending'"
-            class="status-icon"
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="10"
-            />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-          <svg
-            v-else-if="statusInfo.icon === 'running'"
-            class="status-icon status-icon--spinning"
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M21 12a9 9 0 11-6.219-8.56" />
-          </svg>
-          <svg
-            v-else-if="statusInfo.icon === 'success'"
-            class="status-icon"
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-            <polyline points="22 4 12 14.01 9 11.01" />
-          </svg>
-          <svg
-            v-else-if="statusInfo.icon === 'error'"
-            class="status-icon"
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="10"
-            />
-            <line
-              x1="15"
-              y1="9"
-              x2="9"
-              y2="15"
-            />
-            <line
-              x1="9"
-              y1="9"
-              x2="15"
-              y2="15"
-            />
-          </svg>
-        </span>
+        <span class="tool-call__icon">{{ toolIcon }}</span>
         <span class="tool-call__name">{{ toolCall.name }}</span>
-        <span class="tool-call__badge">Tool</span>
+        <span
+          class="tool-call__status"
+          :class="`tool-call__status--${toolCall.status}`"
+        >
+          {{ statusIcon }}
+        </span>
       </div>
       <div class="tool-call__header-right">
-        <span :class="['tool-call__status', statusInfo.class]">
-          {{ statusInfo.text }}
+        <span class="tool-call__toggle">
+          {{ isExpanded ? '收起' : '展开' }}
         </span>
         <span
           class="tool-call__chevron"
@@ -146,56 +103,66 @@ const toggleResultExpand = () => {
       </div>
     </div>
 
-    <!-- 展开内容 -->
+    <!-- 工具调用内容 -->
     <div
       v-show="isExpanded"
       class="tool-call__content"
     >
-      <div class="tool-call__scroll">
-        <!-- 参数 -->
-        <div class="tool-call__section">
-          <div class="tool-call__section-title">
-            参数
-          </div>
-          <pre class="tool-call__args">{{ formattedArguments }}</pre>
+      <!-- 参数 -->
+      <div class="tool-call__section">
+        <div class="tool-call__section-title">
+          <span>📥</span>
+          <span>参数</span>
         </div>
+        <pre class="tool-call__code">{{ formattedArguments }}</pre>
+      </div>
 
-        <!-- 结果 -->
+      <!-- 结果 -->
+      <div
+        v-if="toolCall.result"
+        class="tool-call__section"
+      >
         <div
-          v-if="toolCall.result"
-          class="tool-call__section"
+          class="tool-call__section-header"
+          @click="toggleResultExpand"
         >
           <div class="tool-call__section-title">
-            返回结果
+            <span>📤</span>
+            <span>结果</span>
           </div>
-          <div class="tool-call__result-wrapper">
-            <pre
-              v-if="!isResultLong || isResultExpanded"
-              class="tool-call__result"
-            >{{ toolCall.result }}</pre>
-            <pre
-              v-else
-              class="tool-call__result tool-call__result--truncated"
-            >{{ truncatedResult }}</pre>
-            <button
-              v-if="isResultLong"
-              class="tool-call__expand-btn"
-              @click.stop="toggleResultExpand"
-            >
-              {{ isResultExpanded ? '收起' : '展开全部' }}
-            </button>
+          <div class="tool-call__section-toggle">
+            <span>{{ isResultExpanded ? '收起' : '展开' }}</span>
+            <span
+              class="tool-call__chevron"
+              :class="{ 'tool-call__chevron--expanded': isResultExpanded }"
+            >▼</span>
           </div>
         </div>
-
-        <!-- 错误信息 -->
         <div
-          v-if="toolCall.errorMessage"
-          class="tool-call__section tool-call__section--error"
+          v-show="isResultExpanded"
+          class="tool-call__result"
         >
-          <div class="tool-call__section-title tool-call__section-title--error">
-            错误信息
-          </div>
-          <pre class="tool-call__error">{{ toolCall.errorMessage }}</pre>
+          <pre class="tool-call__code tool-call__result-content">{{ toolCall.result }}</pre>
+        </div>
+        <div
+          v-show="!isResultExpanded"
+          class="tool-call__result-preview"
+        >
+          <pre class="tool-call__code">{{ resultPreview }}</pre>
+        </div>
+      </div>
+
+      <!-- 错误信息 -->
+      <div
+        v-if="toolCall.errorMessage"
+        class="tool-call__section tool-call__error-section"
+      >
+        <div class="tool-call__section-title">
+          <span>⚠️</span>
+          <span>错误</span>
+        </div>
+        <div class="tool-call__error">
+          {{ toolCall.errorMessage }}
         </div>
       </div>
     </div>
@@ -206,21 +173,35 @@ const toggleResultExpand = () => {
 .tool-call {
   width: 100%;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.08), rgba(249, 115, 22, 0.04));
-  border: 1px solid rgba(249, 115, 22, 0.25);
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.1), rgba(251, 146, 60, 0.05));
+  border: 1px solid rgba(251, 146, 60, 0.3);
   overflow: hidden;
-  font-size: var(--font-size-sm);
   transition: all 0.3s ease;
 }
 
 .tool-call:hover {
-  border-color: rgba(249, 115, 22, 0.4);
+  border-color: rgba(251, 146, 60, 0.5);
+}
+
+.tool-call--running {
+  border-color: rgba(59, 130, 246, 0.5);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
+}
+
+.tool-call--success {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+}
+
+.tool-call--error {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
 }
 
 .tool-call__header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
   padding: var(--spacing-2) var(--spacing-3);
   cursor: pointer;
   user-select: none;
@@ -228,7 +209,19 @@ const toggleResultExpand = () => {
 }
 
 .tool-call__header:hover {
-  background: rgba(251, 146, 60, 0.1);
+  background: rgba(251, 146, 60, 0.15);
+}
+
+.tool-call--running .tool-call__header:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.tool-call--success .tool-call__header:hover {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.tool-call--error .tool-call__header:hover {
+  background: rgba(239, 68, 68, 0.15);
 }
 
 .tool-call__header-left {
@@ -237,73 +230,44 @@ const toggleResultExpand = () => {
   gap: var(--spacing-2);
 }
 
+.tool-call__icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.tool-call__name {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.tool-call__status {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.tool-call__status--running {
+  color: var(--color-primary);
+  animation: spin 1s linear infinite;
+}
+
+.tool-call__status--success {
+  color: var(--color-success);
+}
+
+.tool-call__status--error {
+  color: var(--color-error);
+}
+
 .tool-call__header-right {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
 }
 
-.tool-call__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.status-icon {
-  color: var(--color-text-tertiary);
-}
-
-.status-icon--spinning {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-.tool-call__name {
-  font-weight: 500;
-  font-family: var(--font-family-mono);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-}
-
-.tool-call__badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  background: linear-gradient(135deg, #fb923c, #f97316);
-  color: white;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.tool-call__status {
+.tool-call__toggle {
   font-size: var(--font-size-xs);
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
-  background-color: rgba(249, 115, 22, 0.1);
-}
-
-.tool-call__status.status--pending {
   color: var(--color-text-tertiary);
-}
-
-.tool-call__status.status--running {
-  color: var(--color-primary);
-  background-color: var(--color-primary-light);
-}
-
-.tool-call__status.status--success {
-  color: var(--color-success);
-  background-color: var(--color-success-light);
-}
-
-.tool-call__status.status--error {
-  color: var(--color-error);
-  background-color: var(--color-error-light);
 }
 
 .tool-call__chevron {
@@ -317,116 +281,140 @@ const toggleResultExpand = () => {
 }
 
 .tool-call__content {
-  border-top: 1px solid rgba(249, 115, 22, 0.15);
+  border-top: 1px solid rgba(251, 146, 60, 0.15);
+  padding: var(--spacing-2) var(--spacing-3);
 }
 
-.tool-call__scroll {
-  max-height: calc(1.5em * 6 + var(--spacing-2) * 2 + var(--spacing-3) * 2); /* 约6行高度 */
-  overflow-y: auto;
-  padding: var(--spacing-3);
+.tool-call--running .tool-call__content {
+  border-top-color: rgba(59, 130, 246, 0.15);
 }
 
-/* 自定义滚动条 */
-.tool-call__scroll::-webkit-scrollbar {
-  width: 4px;
+.tool-call--success .tool-call__content {
+  border-top-color: rgba(34, 197, 94, 0.15);
 }
 
-.tool-call__scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.tool-call__scroll::-webkit-scrollbar-thumb {
-  background: rgba(249, 115, 22, 0.3);
-  border-radius: 2px;
-}
-
-.tool-call__scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(249, 115, 22, 0.5);
+.tool-call--error .tool-call__content {
+  border-top-color: rgba(239, 68, 68, 0.15);
 }
 
 .tool-call__section {
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-2);
 }
 
 .tool-call__section:last-child {
   margin-bottom: 0;
 }
 
+.tool-call__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  padding: var(--spacing-1) 0;
+  transition: background 0.2s ease;
+  border-radius: var(--radius-sm);
+  margin: calc(var(--spacing-1) * -1) calc(var(--spacing-2) * -1);
+  padding-left: var(--spacing-2);
+  padding-right: var(--spacing-2);
+}
+
+.tool-call__section-header:hover {
+  background: rgba(251, 146, 60, 0.1);
+}
+
 .tool-call__section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
   font-size: var(--font-size-xs);
   font-weight: 500;
-  color: var(--color-text-tertiary);
-  margin-bottom: var(--spacing-1);
+  color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.tool-call__section-title--error {
-  color: var(--color-error);
+.tool-call__section-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
 }
 
-.tool-call__args,
-.tool-call__result,
-.tool-call__error {
-  margin: 0;
+.tool-call__code {
+  margin: var(--spacing-1) 0 0 0;
   padding: var(--spacing-2);
-  background-color: var(--color-bg-tertiary);
-  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-md);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   line-height: 1.5;
-  overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-x: auto;
+  color: var(--color-text-primary);
 }
 
-.tool-call__result--truncated {
-  opacity: 0.8;
+:global([data-theme='dark']) .tool-call__code,
+:global(.dark) .tool-call__code {
+  background: rgba(0, 0, 0, 0.2);
 }
 
-.tool-call__result-wrapper {
-  position: relative;
-}
-
-.tool-call__expand-btn {
+.tool-call__result {
   margin-top: var(--spacing-1);
-  padding: 2px 8px;
-  font-size: var(--font-size-xs);
-  color: var(--color-primary);
-  background: transparent;
-  border: 1px solid var(--color-primary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.2s ease;
 }
 
-.tool-call__expand-btn:hover {
-  background-color: var(--color-primary);
-  color: var(--color-text-inverse);
+.tool-call__result-content {
+  max-height: 400px;
+  overflow-y: auto;
 }
 
-.tool-call__section--error {
+.tool-call__result-preview {
+  margin-top: var(--spacing-1);
+}
+
+.tool-call__error-section {
+  margin-top: var(--spacing-2);
   padding: var(--spacing-2);
-  background-color: var(--color-error-light);
-  border-radius: var(--radius-sm);
+  background: rgba(239, 68, 68, 0.1);
+  border-radius: var(--radius-md);
   border-left: 3px solid var(--color-error);
 }
 
 .tool-call__error {
+  font-size: var(--font-size-xs);
   color: var(--color-error);
-  background-color: transparent;
-  padding: 0;
+  line-height: 1.5;
 }
 
 /* 暗色模式适配 */
 :global([data-theme='dark']) .tool-call,
 :global(.dark) .tool-call {
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.06), rgba(249, 115, 22, 0.03));
-  border-color: rgba(249, 115, 22, 0.2);
+  background: linear-gradient(135deg, rgba(251, 146, 60, 0.08), rgba(251, 146, 60, 0.03));
+  border-color: rgba(251, 146, 60, 0.25);
 }
 
-:global([data-theme='dark']) .tool-call__header:hover,
-:global(.dark) .tool-call__header:hover {
-  background: rgba(251, 146, 60, 0.1);
+:global([data-theme='dark']) .tool-call--running,
+:global(.dark) .tool-call--running {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03));
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+:global([data-theme='dark']) .tool-call--success,
+:global(.dark) .tool-call--success {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(34, 197, 94, 0.03));
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+:global([data-theme='dark']) .tool-call--error,
+:global(.dark) .tool-call--error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.03));
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

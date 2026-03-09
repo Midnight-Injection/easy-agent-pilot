@@ -112,9 +112,7 @@ pub async fn kill_session_process(session_id: &str) {
                 .output();
 
             // 然后杀死主进程
-            let output = Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .output();
+            let output = Command::new("kill").args(["-9", &pid.to_string()]).output();
 
             match output {
                 Ok(output) => {
@@ -122,7 +120,10 @@ pub async fn kill_session_process(session_id: &str) {
                         println!("[INFO][abort] 成功杀死进程 (macOS): pid={}", pid);
                     } else {
                         let stderr = String::from_utf8_lossy(&output.stderr);
-                        println!("[ERROR][abort] 杀死进程失败 (macOS): pid={}, error={}", pid, stderr);
+                        println!(
+                            "[ERROR][abort] 杀死进程失败 (macOS): pid={}, error={}",
+                            pid, stderr
+                        );
                     }
                 }
                 Err(e) => {
@@ -141,9 +142,7 @@ pub async fn kill_session_process(session_id: &str) {
                 .output();
 
             // 然后杀死主进程
-            let output = Command::new("kill")
-                .args(["-9", &pid.to_string()])
-                .output();
+            let output = Command::new("kill").args(["-9", &pid.to_string()]).output();
 
             match output {
                 Ok(output) => {
@@ -151,7 +150,10 @@ pub async fn kill_session_process(session_id: &str) {
                         println!("[INFO][abort] 成功杀死进程 (Linux): pid={}", pid);
                     } else {
                         let stderr = String::from_utf8_lossy(&output.stderr);
-                        println!("[ERROR][abort] 杀死进程失败 (Linux): pid={}, error={}", pid, stderr);
+                        println!(
+                            "[ERROR][abort] 杀死进程失败 (Linux): pid={}, error={}",
+                            pid, stderr
+                        );
                     }
                 }
                 Err(e) => {

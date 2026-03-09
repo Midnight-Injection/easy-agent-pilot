@@ -214,9 +214,7 @@ pub fn get_memory_category(id: String) -> Result<MemoryCategory, String> {
 
 /// 创建记忆分类
 #[tauri::command]
-pub fn create_memory_category(
-    input: CreateMemoryCategoryInput,
-) -> Result<MemoryCategory, String> {
+pub fn create_memory_category(input: CreateMemoryCategoryInput) -> Result<MemoryCategory, String> {
     let conn = get_db_connection().map_err(|e| e.to_string())?;
     let now = now_rfc3339();
     let id = generate_id();
@@ -515,7 +513,11 @@ pub fn update_memory(id: String, input: UpdateUserMemoryInput) -> Result<UserMem
         )
         .map_err(|e| e.to_string())?;
 
-    let is_compressed_int = if input.is_compressed.unwrap_or(existing.is_compressed) { 1 } else { 0 };
+    let is_compressed_int = if input.is_compressed.unwrap_or(existing.is_compressed) {
+        1
+    } else {
+        0
+    };
 
     let updated = UserMemory {
         id: existing.id,
@@ -590,7 +592,8 @@ pub fn capture_user_message(
     let now = now_rfc3339();
     let id = generate_id();
     let source_type = "auto";
-    let source_message_ids = serde_json::to_string(&vec![message_id]).unwrap_or_else(|_| "[]".to_string());
+    let source_message_ids =
+        serde_json::to_string(&vec![message_id]).unwrap_or_else(|_| "[]".to_string());
 
     conn.execute(
         "INSERT INTO user_memories (id, session_id, category_id, title, content, compressed_content, is_compressed, source_type, source_message_ids, tags, metadata, created_at, updated_at)
@@ -635,7 +638,11 @@ pub fn get_memory_stats() -> Result<MemoryStats, String> {
         .map_err(|e| e.to_string())?;
 
     let compressed: i32 = conn
-        .query_row("SELECT COUNT(*) FROM user_memories WHERE is_compressed = 1", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM user_memories WHERE is_compressed = 1",
+            [],
+            |row| row.get(0),
+        )
         .map_err(|e| e.to_string())?;
 
     let mut stmt = conn

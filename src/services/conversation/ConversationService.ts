@@ -110,44 +110,6 @@ export class ConversationService {
         }
       }
 
-      // 获取启用的 MCP 配置
-      const enabledMcpIds = sessionExecutionStore.getEnabledMcpIds(sessionId)
-      let mcpServers: McpServerConfig[] | undefined
-
-      if (enabledMcpIds.length > 0) {
-        if (agent.type === 'cli') {
-          // CLI 类型：从 skillConfigStore 获取 MCP 配置
-          const allMcpConfigs = skillConfigStore.mcpConfigs
-          mcpServers = allMcpConfigs
-            .filter(config => enabledMcpIds.includes(config.id))
-            .map(config => ({
-              id: config.id,
-              name: config.name,
-              transportType: config.transportType,
-              command: config.command,
-              args: Array.isArray(config.args) ? config.args.join(' ') : config.args,
-              env: typeof config.env === 'object' ? JSON.stringify(config.env) : config.env,
-              url: config.url,
-              headers: typeof config.headers === 'object' ? JSON.stringify(config.headers) : config.headers
-            }))
-        } else {
-          // SDK 类型：从 agentConfigStore 获取 MCP 配置
-          const allMcpConfigs = agentConfigStore.getMcpConfigs(agentId)
-          mcpServers = allMcpConfigs
-            .filter(config => enabledMcpIds.includes(config.id))
-            .map(config => ({
-              id: config.id,
-              name: config.name,
-              transportType: config.transportType,
-              command: config.command,
-              args: typeof config.args === 'string' ? config.args : undefined,
-              env: typeof config.env === 'string' ? config.env : undefined,
-              url: config.url,
-              headers: typeof config.headers === 'string' ? config.headers : undefined
-            }))
-        }
-      }
-
       // 构建对话上下文
       const messages = messageStore.messagesBySession(sessionId)
 
@@ -156,7 +118,7 @@ export class ConversationService {
         agent,
         messages,
         workingDirectory,
-        mcpServers,
+        mcpServers: undefined, // MCP 配置暂时禁用
         executionMode: 'chat',
         responseMode: 'stream_text'
       }
@@ -208,14 +170,18 @@ export class ConversationService {
             })
           },
           onToolUse: (toolCall) => {
+            console.log('[ConversationService] onToolUse 被调用:', toolCall)
             // 添加或更新工具调用
             const existingIndex = toolCalls.findIndex(tc => tc.id === toolCall.id)
             if (existingIndex >= 0) {
               toolCalls[existingIndex] = toolCall
+              console.log('[ConversationService] 更新已存在的工具调用, index:', existingIndex)
             } else {
               toolCalls.push(toolCall)
+              console.log('[ConversationService] 添加新的工具调用, 当前数量:', toolCalls.length)
             }
             // 更新消息的工具调用
+            console.log('[ConversationService] 更新消息的工具调用, toolCalls:', toolCalls)
             messageStore.updateMessage(aiMessage.id, {
               toolCalls: [...toolCalls]
             })
@@ -326,25 +292,50 @@ export class ConversationService {
         break
 
       case 'tool_use':
-        // 处理工具调用
-        if (event.toolName && event.toolCallId) {
+        // 处理工具调用 - 添加详细日志
+        console.log('[ConversationService] 收到 tool_use 事件:', {
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          toolInput: event.toolInput
+        })
+        if (event.toolName) {
+          // 如果 toolCallId 为空，生成一个唯一的备用 ID
+          const toolCallId = event.toolCallId || `tool-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
           const toolCall: ToolCall = {
-            id: event.toolCallId,
+            id: toolCallId,
             name: event.toolName,
             arguments: event.toolInput || {},
             status: 'running'
           }
+          console.log('[ConversationService] 创建工具调用:', toolCall)
           onToolUse(toolCall)
+        } else {
+          console.warn('[ConversationService] tool_use 事件缺少 toolName，跳过处理')
         }
         break
 
       case 'tool_result':
-        // 处理工具结果
+        // 处理工具结果 - 添加详细日志
+        console.log('[ConversationService] 收到 tool_result 事件:', {
+          toolCallId: event.toolCallId,
+          toolResultType: typeof event.toolResult,
+          toolResultLength: typeof event.toolResult === 'string' ? event.toolResult.length : 'N/A'
+        })
         if (event.toolCallId) {
           const result = typeof event.toolResult === 'string'
             ? event.toolResult
             : JSON.stringify(event.toolResult, null, 2)
           onToolResult(event.toolCallId, result, false)
+        } else {
+          console.warn('[ConversationService] tool_result 事件缺少 toolCallId，尝试匹配最后一个工具调用')
+          // 如果没有 toolCallId，尝试更新最后一个 running 状态的工具调用
+          const lastRunningTool = handlers.toolCalls.find(tc => tc.status === 'running')
+          if (lastRunningTool && event.toolResult) {
+            const result = typeof event.toolResult === 'string'
+              ? event.toolResult
+              : JSON.stringify(event.toolResult, null, 2)
+            onToolResult(lastRunningTool.id, result, false)
+          }
         }
         break
 

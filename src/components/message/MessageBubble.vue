@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Message } from '@/stores/message'
 import { conversationService } from '@/services/conversation'
@@ -19,6 +19,17 @@ const isCompression = computed(() => props.message.role === 'compression')
 const isStreaming = computed(() => props.message.status === 'streaming')
 const isInterrupted = computed(() => props.message.status === 'interrupted')
 const isError = computed(() => props.message.status === 'error')
+
+// 调试：监听 toolCalls 变化
+watch(() => props.message.toolCalls, (newToolCalls) => {
+  if (newToolCalls && newToolCalls.length > 0) {
+    console.log('[MessageBubble] toolCalls 变化:', {
+      messageId: props.message.id,
+      toolCallsCount: newToolCalls.length,
+      toolCalls: newToolCalls
+    })
+  }
+}, { deep: true })
 
 // 停止流式输出
 const handleStop = () => {

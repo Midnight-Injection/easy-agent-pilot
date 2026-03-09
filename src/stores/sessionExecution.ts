@@ -15,8 +15,6 @@ export interface SessionExecutionState {
   streamTimerId: ReturnType<typeof setInterval> | null
   /** 当前流式消息 ID */
   currentStreamingMessageId: string | null
-  /** 启用的 MCP 插件 ID 列表 */
-  enabledMcpIds: string[]
 }
 
 /**
@@ -80,64 +78,7 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
       isSending: false,
       isStreaming: false,
       streamTimerId: null,
-      currentStreamingMessageId: null,
-      enabledMcpIds: []
-    }
-  }
-
-  // State - MCP 选择状态（每个会话独立）
-  const sessionMcpSelections = ref<Map<string, string[]>>(new Map())
-
-  /**
-   * 获取指定会话启用的 MCP 插件 ID 列表
-   */
-  function getEnabledMcpIds(sessionId: string): string[] {
-    // 优先从独立 Map 获取，否则从执行状态获取
-    const mcpIds = sessionMcpSelections.value.get(sessionId)
-    if (mcpIds !== undefined) {
-      return mcpIds
-    }
-    return getExecutionState(sessionId).enabledMcpIds
-  }
-
-  /**
-   * 设置指定会话启用的 MCP 插件 ID 列表
-   */
-  function setEnabledMcpIds(sessionId: string, ids: string[]): void {
-    sessionMcpSelections.value.set(sessionId, ids)
-    // 同时更新执行状态
-    const state = getExecutionState(sessionId)
-    state.enabledMcpIds = ids
-  }
-
-  /**
-   * 获取所有会话的 MCP 选择映射
-   */
-  const getEnabledMcpIdsMap = computed(() => sessionMcpSelections.value)
-
-  /**
-   * 切换 MCP 插件的启用状态
-   */
-  function toggleMcpId(sessionId: string, mcpId: string): void {
-    const currentIds = getEnabledMcpIds(sessionId)
-    const index = currentIds.indexOf(mcpId)
-    if (index === -1) {
-      setEnabledMcpIds(sessionId, [...currentIds, mcpId])
-    } else {
-      const newIds = [...currentIds]
-      newIds.splice(index, 1)
-      setEnabledMcpIds(sessionId, newIds)
-    }
-  }
-
-  /**
-   * 全选/取消全选 MCP 插件
-   */
-  function toggleAllMcpIds(sessionId: string, allMcpIds: string[], selectAll: boolean): void {
-    if (selectAll) {
-      setEnabledMcpIds(sessionId, [...allMcpIds])
-    } else {
-      setEnabledMcpIds(sessionId, [])
+      currentStreamingMessageId: null
     }
   }
 
@@ -283,8 +224,6 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
     getIsStreaming,
     hasAnyRunningSession,
     runningSessionIds,
-    getEnabledMcpIds,
-    getEnabledMcpIdsMap,
 
     // Actions
     getExecutionState,
@@ -297,9 +236,6 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
     endSending,
     stopStreaming,
     clearExecutionState,
-    clearAllExecutionStates,
-    setEnabledMcpIds,
-    toggleMcpId,
-    toggleAllMcpIds
+    clearAllExecutionStates
   }
 })

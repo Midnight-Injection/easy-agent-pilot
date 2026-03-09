@@ -2,6 +2,8 @@
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskStore } from '@/stores/task'
+import { useAgentStore } from '@/stores/agent'
+import { useAgentConfigStore } from '@/stores/agentConfig'
 import { useNotificationStore } from '@/stores/notification'
 import { getErrorMessage } from '@/utils/api'
 import { checkCircularDependency, getAvailableDependencies } from '@/composables'
@@ -19,6 +21,8 @@ const emit = defineEmits<{
 }>()
 
 const taskStore = useTaskStore()
+const agentStore = useAgentStore()
+const agentConfigStore = useAgentConfigStore()
 const notificationStore = useNotificationStore()
 const { t } = useI18n()
 
@@ -27,6 +31,8 @@ const form = ref({
   title: props.task.title,
   description: props.task.description || '',
   priority: props.task.priority,
+  agentId: props.task.agentId || undefined,
+  modelId: props.task.modelId || undefined,
   implementationSteps: [...(props.task.implementationSteps || [])],
   testSteps: [...(props.task.testSteps || [])],
   acceptanceCriteria: [...(props.task.acceptanceCriteria || [])],
@@ -39,6 +45,10 @@ const isSaving = ref(false)
 const isDepDropdownOpen = ref(false)
 const depDropdownRef = ref<HTMLElement | null>(null)
 
+// 智能体下拉框状态
+const isAgentDropdownOpen = ref(false)
+const agentDropdownRef = ref<HTMLElement | null>(null)
+
 // 优先级选项
 const priorityOptions = [
   { label: '低', value: 'low' },
@@ -46,12 +56,48 @@ const priorityOptions = [
   { label: '高', value: 'high' }
 ]
 
+// 智能体选项
+const agentOptions = computed(() => {
+  return agentStore.agents
+})
+
+// 模型选项 - 根据选择的智能体动态获取
+const modelOptions = computed(() => {
+  if (!form.value.agentId) return []
+  const configs = agentConfigStore.getModelsConfigs(form.value.agentId)
+  return configs.map(c => ({
+    value: c.modelId,
+    label: c.displayName || c.modelId
+  }))
+})
+
+// 切换智能体下拉框
+function toggleAgentDropdown() {
+  isAgentDropdownOpen.value = !isAgentDropdownOpen.value
+}
+
+// 选择智能体
+function selectAgent(agentId: string) {
+  form.value.agentId = agentId
+  // 切换智能体时，清空模型选择
+  form.value.modelId = undefined
+  isAgentDropdownOpen.value = false
+}
+
+// 获取智能体名称
+function getAgentName(agentId: string): string {
+  const agent = agentStore.agents.find(a => a.id === agentId)
+  return agent?.name || agentId
+}
+
 // 监听 task 变化，更新表单
 watch(() => props.task, (newTask) => {
   form.value = {
     title: newTask.title,
     description: newTask.description || '',
     priority: newTask.priority,
+    agentId: newTask.agentId || undefined,
+    modelId: newTask.modelId || undefined,
     implementationSteps: [...(newTask.implementationSteps || [])],
     testSteps: [...(newTask.testSteps || [])],
     acceptanceCriteria: [...(newTask.acceptanceCriteria || [])],
@@ -155,6 +201,8 @@ async function handleSave() {
       title: form.value.title,
       description: form.value.description,
       priority: form.value.priority,
+      agentId: form.value.agentId,
+      modelId: form.value.modelId,
       implementationSteps: form.value.implementationSteps.filter(s => s.trim()),
       testSteps: form.value.testSteps.filter(s => s.trim()),
       acceptanceCriteria: form.value.acceptanceCriteria.filter(s => s.trim()),
@@ -249,6 +297,82 @@ function close() {
               <path d="M6 9l6 6 6-6" />
             </svg>
           </div>
+        </div>
+
+        <!-- 智能体选择 -->
+        <div
+          ref="agentDropdownRef"
+          class="form-field"
+        >
+          <label>{{ t('task.selectAgent') }}</label>
+          <div class="agent-dropdown">
+            <button
+              type="button"
+              class="agent-trigger"
+              :class="{ open: isAgentDropdownOpen }"
+              @click.stop="toggleAgentDropdown"
+            >
+              <span
+                class="agent-display"
+                :class="{ placeholder: !form.agentId }"
+              >
+                {{ form.agentId ? getAgentName(form.agentId) : t('task.selectAgentPlaceholder') }}
+              </span>
+              <svg
+                class="agent-arrow"
+                :class="{ rotated: isAgentDropdownOpen }"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            <div
+              v-show="isAgentDropdownOpen"
+              class="agent-dropdown-menu"
+            >
+              <div
+                v-for="agent in agentOptions"
+                :key="agent.id"
+                class="agent-option"
+                :class="{ selected: form.agentId === agent.id }"
+                @click="selectAgent(agent.id)"
+              >
+                <span class="agent-option-name">{{ agent.name }}</span>
+                <span class="agent-option-type">{{ agent.type === 'cli' ? 'CLI' : 'SDK' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模型选择 -->
+        <div
+          v-if="form.agentId && modelOptions.length > 0"
+          class="form-field"
+        >
+          <label>{{ t('task.selectModel') }}</label>
+          <select
+            v-model="form.modelId"
+            class="model-select"
+          >
+            <option
+              value=""
+              disabled
+            >
+              {{ t('task.selectModel') }}
+            </option>
+            <option
+              v-for="opt in modelOptions"
+              :key="opt.value"
+              :value="opt.value"
+            >
+              {{ opt.label }}
+            </option>
+          </select>
         </div>
 
         <div class="form-field">

@@ -88,7 +88,9 @@ pub async fn restore_scheduled_plans(app_handle: &AppHandle) {
 }
 
 /// 检查并触发到期的定时计划
-async fn check_and_trigger_scheduled_plans(app_handle: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+async fn check_and_trigger_scheduled_plans(
+    app_handle: &AppHandle,
+) -> Result<(), Box<dyn std::error::Error>> {
     let db_path = get_db_path()?;
     let conn = rusqlite::Connection::open(&db_path)?;
 
@@ -119,7 +121,11 @@ async fn check_and_trigger_scheduled_plans(app_handle: &AppHandle) -> Result<(),
 }
 
 /// 注册单个计划定时器
-pub async fn register_plan_timer(app_handle: AppHandle, plan_id: &str, scheduled_at: DateTime<Utc>) {
+pub async fn register_plan_timer(
+    app_handle: AppHandle,
+    plan_id: &str,
+    scheduled_at: DateTime<Utc>,
+) {
     let now = Utc::now();
     let delay = scheduled_at - now;
 
@@ -170,7 +176,10 @@ pub async fn cancel_plan_timer(plan_id: &str) {
 }
 
 /// 触发计划执行
-async fn trigger_plan_execution(app_handle: &AppHandle, plan_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn trigger_plan_execution(
+    app_handle: &AppHandle,
+    plan_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     // 更新数据库状态
     let db_path = get_db_path()?;
     let conn = rusqlite::Connection::open(&db_path)?;
@@ -191,7 +200,10 @@ async fn trigger_plan_execution(app_handle: &AppHandle, plan_id: &str) -> Result
         rusqlite::params![&now, &plan_id],
     )?;
 
-    println!("Updated {} tasks to in_progress for plan {}", updated_tasks, plan_id);
+    println!(
+        "Updated {} tasks to in_progress for plan {}",
+        updated_tasks, plan_id
+    );
 
     // 3. 发送事件通知前端
     app_handle.emit("plan:scheduled-trigger", plan_id)?;

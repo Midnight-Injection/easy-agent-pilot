@@ -78,6 +78,8 @@ pub struct SdkExecutionRequest {
 pub struct ExecutionRequest {
     /// 会话 ID
     pub session_id: String,
+    /// 计划 ID（任务拆分模式使用）
+    pub plan_id: Option<String>,
     /// 智能体类型 (cli/sdk)
     pub agent_type: String,
     /// 提供者 (claude/codex)
@@ -134,6 +136,7 @@ pub struct ToolDefinition {
 
 /// CLI 流式事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CliStreamEvent {
     /// 事件类型
     #[serde(rename = "type")]
@@ -171,6 +174,7 @@ pub struct CliStreamEvent {
 
 /// SDK 流式事件
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SdkStreamEvent {
     /// 事件类型
     #[serde(rename = "type")]

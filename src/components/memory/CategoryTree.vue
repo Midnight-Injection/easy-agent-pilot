@@ -82,16 +82,33 @@ function getCategoryIcon(icon?: string): string {
 function getCategoryColor(color?: string): string {
   return color || '#6b7280'
 }
+
+// 默认分类ID到国际化键的映射
+const defaultCategoryI18nMap: Record<string, string> = {
+  'cat-user-info': 'memory.userInfo',
+  'cat-project': 'memory.projectMemory',
+  'cat-skills': 'memory.skillsKnowledge',
+  'cat-general': 'memory.generalMemory',
+}
+
+// 获取分类名称（支持国际化）
+function getCategoryName(category: { id: string; name: string }): string {
+  const i18nKey = defaultCategoryI18nMap[category.id]
+  if (i18nKey) {
+    return t(i18nKey)
+  }
+  return category.name
+}
 </script>
 
 <template>
   <div class="category-tree">
     <!-- 头部 -->
     <div class="category-tree__header">
-      <h3 class="category-tree__title">记忆分类</h3>
+      <h3 class="category-tree__title">{{ t('memory.categoryTitle') }}</h3>
       <button
         class="category-tree__add-btn"
-        title="新建分类"
+        :title="t('memory.newCategory')"
         @click="openCreateDialog()"
       >
         <EaIcon
@@ -113,7 +130,7 @@ function getCategoryColor(color?: string): string {
           :size="18"
           class="category-item__icon"
         />
-        <span class="category-item__name">全部记忆</span>
+        <span class="category-item__name">{{ t('memory.allMemories') }}</span>
         <span class="category-item__count">{{ getMemoryCount(null) }}</span>
       </button>
 
@@ -136,7 +153,7 @@ function getCategoryColor(color?: string): string {
             class="category-item__icon"
             :style="{ color: getCategoryColor(category.color) }"
           />
-          <span class="category-item__name">{{ category.name }}</span>
+          <span class="category-item__name">{{ getCategoryName(category) }}</span>
           <span class="category-item__count">{{ getMemoryCount(category.id) }}</span>
         </button>
 
@@ -157,7 +174,7 @@ function getCategoryColor(color?: string): string {
               class="category-item__icon"
               :style="{ color: getCategoryColor(child.color) }"
             />
-            <span class="category-item__name">{{ child.name }}</span>
+            <span class="category-item__name">{{ getCategoryName(child) }}</span>
             <span class="category-item__count">{{ getMemoryCount(child.id) }}</span>
           </button>
         </div>
@@ -171,12 +188,12 @@ function getCategoryColor(color?: string): string {
       @click.self="createDialogVisible = false"
     >
       <div class="create-dialog">
-        <h4 class="create-dialog__title">新建分类</h4>
+        <h4 class="create-dialog__title">{{ t('memory.newCategory') }}</h4>
         <input
           v-model="newCategoryName"
           type="text"
           class="create-dialog__input"
-          placeholder="输入分类名称"
+          :placeholder="t('memory.categoryNamePlaceholder')"
           @keyup.enter="handleCreateCategory"
         />
         <div class="create-dialog__actions">
@@ -184,14 +201,14 @@ function getCategoryColor(color?: string): string {
             class="btn btn--secondary"
             @click="createDialogVisible = false"
           >
-            取消
+            {{ t('common.cancel') }}
           </button>
           <button
             class="btn btn--primary"
             :disabled="!newCategoryName.trim()"
             @click="handleCreateCategory"
           >
-            创建
+            {{ t('memory.createCategory') }}
           </button>
         </div>
       </div>

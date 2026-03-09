@@ -16,7 +16,7 @@ use tokio::process::Command as TokioCommand;
 
 // 导入内置 MCP 服务器
 use super::builtin_mcp::{
-    get_builtin_tools, call_builtin_tool, BUILTIN_SERVER_ID, BUILTIN_SERVER_NAME,
+    call_builtin_tool, get_builtin_tools, BUILTIN_SERVER_ID, BUILTIN_SERVER_NAME,
 };
 
 /// MCP 服务器配置

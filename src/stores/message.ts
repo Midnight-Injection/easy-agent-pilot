@@ -289,7 +289,14 @@ export const useMessageStore = defineStore('message', () => {
     if (updates.status !== undefined) input.status = updates.status
     if (updates.tokens !== undefined) input.tokens = updates.tokens
     if (updates.errorMessage !== undefined) input.error_message = updates.errorMessage
-    if (updates.toolCalls !== undefined) input.tool_calls = JSON.stringify(updates.toolCalls)
+    if (updates.toolCalls !== undefined) {
+      input.tool_calls = JSON.stringify(updates.toolCalls)
+      console.log('[MessageStore] 更新工具调用:', {
+        messageId: id,
+        toolCallsCount: updates.toolCalls.length,
+        toolCalls: updates.toolCalls
+      })
+    }
     if (updates.thinking !== undefined) input.thinking = updates.thinking
 
     try {
@@ -299,6 +306,9 @@ export const useMessageStore = defineStore('message', () => {
       const index = messages.value.findIndex(m => m.id === id)
       if (index !== -1) {
         messages.value[index] = updatedMessage
+        console.log('[MessageStore] 消息更新成功, toolCalls:', updatedMessage.toolCalls)
+      } else {
+        console.warn('[MessageStore] 未找到消息, id:', id)
       }
     } catch (error) {
       console.error('Failed to update message:', error)

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// 工具调用数据结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -15,6 +16,7 @@ pub struct ToolCall {
 
 /// 消息数据结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: String,
     pub session_id: String,

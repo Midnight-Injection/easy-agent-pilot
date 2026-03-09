@@ -43,6 +43,11 @@ interface CliSessionDetail {
   messages: CliSessionMessage[]
 }
 
+interface DeleteCliSessionsResult {
+  deleted_count: number
+  failed_paths: string[]
+}
+
 const { t } = useI18n()
 const agentStore = useAgentStore()
 
@@ -64,11 +69,22 @@ const currentDetail = ref<CliSessionDetail | null>(null)
 
 const showDeleteModal = ref(false)
 const deleting = ref(false)
-const pendingDeleteSession = ref<ScannedCliSession | null>(null)
+const pendingDeleteSessions = ref<ScannedCliSession[]>([])
 const deleteError = ref('')
+const selectedSessionPaths = ref<string[]>([])
 
 const cliAgents = computed(() => agentStore.agents.filter(agent => agent.type === 'cli'))
 const hasCliAgents = computed(() => cliAgents.value.length > 0)
+const selectedSessionPathSet = computed(() => new Set(selectedSessionPaths.value))
+const selectedSessions = computed(() =>
+  sessions.value.filter(session => selectedSessionPathSet.value.has(session.session_path))
+)
+const selectedCount = computed(() => selectedSessions.value.length)
+const allVisibleSelected = computed(() =>
+  sessions.value.length > 0 && selectedCount.value === sessions.value.length
+)
+const isBulkDelete = computed(() => pendingDeleteSessions.value.length > 1)
+const deletePreviewSessions = computed(() => pendingDeleteSessions.value.slice(0, 5))
 
 const agentOptions = computed(() =>
   cliAgents.value.map(agent => {
@@ -142,6 +158,10 @@ const displayMessage = (session: ScannedCliSession) => {
   return session.first_message || t('settings.sessionManager.noPreview')
 }
 
+const formatMessageCount = (value: number) => {
+  return value >= 0 ? String(value) : '-'
+}
+
 const shortSessionId = (sessionId: string) => {
   return sessionId.length > 8 ? `${sessionId.slice(0, 8)}...` : sessionId
 }
@@ -157,6 +177,7 @@ const loadSessions = async () => {
   sessionsError.value = ''
   sessions.value = []
   availableProjects.value = []
+  selectedSessionPaths.value = []
 
   if (!selectedAgentId.value) {
     return
@@ -204,30 +225,91 @@ const openDetail = async (session: ScannedCliSession) => {
 }
 
 const requestDelete = (session: ScannedCliSession) => {
-  pendingDeleteSession.value = session
+  pendingDeleteSessions.value = [session]
+  deleteError.value = ''
+  showDeleteModal.value = true
+}
+
+const requestDeleteSelected = () => {
+  if (!selectedSessions.value.length) return
+  pendingDeleteSessions.value = [...selectedSessions.value]
   deleteError.value = ''
   showDeleteModal.value = true
 }
 
 const closeDeleteModal = () => {
   showDeleteModal.value = false
-  pendingDeleteSession.value = null
+  pendingDeleteSessions.value = []
   deleteError.value = ''
 }
 
+const toggleSessionSelection = (sessionPath: string, checked?: boolean) => {
+  const next = new Set(selectedSessionPaths.value)
+  const shouldSelect = checked ?? !next.has(sessionPath)
+
+  if (shouldSelect) {
+    next.add(sessionPath)
+  } else {
+    next.delete(sessionPath)
+  }
+
+  selectedSessionPaths.value = Array.from(next)
+}
+
+const handleSessionSelectionChange = (sessionPath: string, event: Event) => {
+  const target = event.target as HTMLInputElement | null
+  toggleSessionSelection(sessionPath, target?.checked ?? false)
+}
+
+const toggleSelectAllSessions = () => {
+  if (allVisibleSelected.value) {
+    selectedSessionPaths.value = []
+    return
+  }
+
+  selectedSessionPaths.value = sessions.value.map(session => session.session_path)
+}
+
+const buildDeleteErrorMessage = (failedPaths: string[]) => {
+  if (!failedPaths.length) return ''
+  return `${t('settings.sessionManager.partialDeleteFailed', { n: failedPaths.length })}\n${failedPaths.join('\n')}`
+}
+
 const confirmDelete = async () => {
-  if (!pendingDeleteSession.value) return
+  if (!pendingDeleteSessions.value.length) return
 
   deleting.value = true
   deleteError.value = ''
-  try {
-    await invoke('delete_cli_session', {
-      agentId: selectedAgentId.value,
-      sessionPath: pendingDeleteSession.value.session_path,
-      cleanupEmptyDirs: true
-    })
 
-    if (currentDetail.value?.session_path === pendingDeleteSession.value.session_path) {
+  const sessionPaths = pendingDeleteSessions.value.map(session => session.session_path)
+  const shouldCloseDetail = !!currentDetail.value && sessionPaths.includes(currentDetail.value.session_path)
+
+  try {
+    if (sessionPaths.length === 1) {
+      await invoke('delete_cli_session', {
+        agentId: selectedAgentId.value,
+        sessionPath: sessionPaths[0],
+        cleanupEmptyDirs: true
+      })
+    } else {
+      const result = await invoke<DeleteCliSessionsResult>('delete_cli_sessions', {
+        agentId: selectedAgentId.value,
+        sessionPaths,
+        cleanupEmptyDirs: true
+      })
+
+      if (result.failed_paths.length > 0) {
+        deleteError.value = buildDeleteErrorMessage(result.failed_paths)
+        await loadSessions()
+        if (shouldCloseDetail) {
+          showDetailModal.value = false
+          currentDetail.value = null
+        }
+        return
+      }
+    }
+
+    if (shouldCloseDetail) {
       showDetailModal.value = false
       currentDetail.value = null
     }
@@ -247,6 +329,11 @@ const getMessageIcon = (type: string) => {
     case 'user': return 'user'
     case 'assistant': return 'bot'
     case 'summary': return 'file-text'
+    case 'tool_use': return 'wrench'
+    case 'tool_result': return 'terminal'
+    case 'reasoning': return 'brain'
+    case 'system': return 'settings'
+    case 'progress': return 'activity'
     default: return 'message-square'
   }
 }
@@ -257,8 +344,30 @@ const getMessageColor = (type: string) => {
     case 'user': return 'var(--color-primary)'
     case 'assistant': return 'var(--color-success)'
     case 'summary': return 'var(--color-warning)'
+    case 'tool_use': return 'var(--color-primary)'
+    case 'tool_result': return 'var(--color-success)'
+    case 'reasoning': return 'var(--color-warning)'
+    case 'system': return 'var(--color-warning)'
+    case 'progress': return 'var(--color-primary)'
     default: return 'var(--color-text-secondary)'
   }
+}
+
+const getMessageDisplayContent = (message: CliSessionMessage) => {
+  const content = message.content?.trim()
+  if (content) {
+    return content
+  }
+
+  if (message.message_type === 'file-history-snapshot') {
+    return '[File Snapshot] 历史文件快照已更新'
+  }
+
+  if (message.message_type === 'progress') {
+    return '[Progress] 当前记录未包含可直接展示的文本内容'
+  }
+
+  return '[No parsed content] 请展开 Raw JSON 查看原始记录'
 }
 
 watch(cliAgents, (agents) => {
@@ -287,6 +396,12 @@ watch(selectedProjectPath, () => {
 onMounted(async () => {
   if (!agentStore.agents.length) {
     await agentStore.loadAgents()
+  }
+
+  if (cliAgents.value.length && !selectedAgentId.value) {
+    selectedAgentId.value = cliAgents.value[0].id
+  } else if (selectedAgentId.value && !isLoadingSessions.value && sessions.value.length === 0) {
+    await loadSessions()
   }
 })
 </script>
@@ -361,6 +476,29 @@ onMounted(async () => {
         <div class="header-meta">
           <span class="cli-badge">{{ cliName || '-' }}</span>
           <span class="session-count">{{ sessions.length }} {{ t('settings.sessionManager.sessionCount') }}</span>
+          <span
+            v-if="selectedCount > 0"
+            class="selected-count"
+          >
+            {{ t('settings.sessionManager.selectedCount', { n: selectedCount }) }}
+          </span>
+          <EaButton
+            v-if="sessions.length > 0"
+            type="ghost"
+            size="small"
+            @click="toggleSelectAllSessions"
+          >
+            {{ allVisibleSelected ? t('settings.sessionManager.clearSelection') : t('settings.sessionManager.selectAll') }}
+          </EaButton>
+          <EaButton
+            v-if="sessions.length > 0"
+            type="danger"
+            size="small"
+            :disabled="selectedCount === 0"
+            @click="requestDeleteSelected"
+          >
+            {{ t('settings.sessionManager.batchDelete') }}
+          </EaButton>
         </div>
       </div>
 
@@ -431,8 +569,16 @@ onMounted(async () => {
             <div
               v-for="session in groupSessions"
               :key="session.session_path"
-              class="session-card"
+              :class="['session-card', { 'session-card--selected': selectedSessionPathSet.has(session.session_path) }]"
             >
+              <div class="session-card__select">
+                <input
+                  :checked="selectedSessionPathSet.has(session.session_path)"
+                  class="session-card__checkbox"
+                  type="checkbox"
+                  @change="handleSessionSelectionChange(session.session_path, $event)"
+                >
+              </div>
               <div class="session-card__main">
                 <div class="session-card__header">
                   <span class="session-card__id">{{ shortSessionId(session.session_id) }}</span>
@@ -447,7 +593,7 @@ onMounted(async () => {
                       name="message-square"
                       :size="12"
                     />
-                    {{ session.message_count }}
+                    {{ formatMessageCount(session.message_count) }}
                   </span>
                 </div>
               </div>
@@ -569,6 +715,12 @@ onMounted(async () => {
                   :style="{ color: getMessageColor(msg.message_type) }"
                 />
                 <span>{{ msg.message_type }}</span>
+                <span
+                  v-if="msg.role"
+                  class="message-item__role"
+                >
+                  {{ msg.role }}
+                </span>
               </div>
               <span
                 v-if="msg.timestamp"
@@ -579,10 +731,10 @@ onMounted(async () => {
             </div>
 
             <div
-              v-if="msg.content"
+              v-if="getMessageDisplayContent(msg)"
               class="message-item__content"
             >
-              {{ msg.content }}
+              {{ getMessageDisplayContent(msg) }}
             </div>
 
             <details class="message-item__raw">
@@ -599,20 +751,34 @@ onMounted(async () => {
       v-model:visible="showDeleteModal"
     >
       <template #header>
-        <h3 class="modal-title">{{ t('settings.sessionManager.confirmDeleteTitle') }}</h3>
+        <h3 class="modal-title">
+          {{ isBulkDelete ? t('settings.sessionManager.confirmBatchDeleteTitle') : t('settings.sessionManager.confirmDeleteTitle') }}
+        </h3>
       </template>
 
       <p class="confirm-text">
-        {{ t('settings.sessionManager.confirmDeleteDesc') }}
+        {{ isBulkDelete ? t('settings.sessionManager.confirmBatchDeleteDesc', { n: pendingDeleteSessions.length }) : t('settings.sessionManager.confirmDeleteDesc') }}
       </p>
       <div
-        v-if="pendingDeleteSession"
-        class="confirm-session"
+        v-if="pendingDeleteSessions.length > 0"
+        class="confirm-session-list"
       >
-        <div class="confirm-session__preview">
-          {{ displayMessage(pendingDeleteSession) }}
+        <div
+          v-for="session in deletePreviewSessions"
+          :key="session.session_path"
+          class="confirm-session"
+        >
+          <div class="confirm-session__preview">
+            {{ displayMessage(session) }}
+          </div>
+          <code class="confirm-session__path">{{ session.session_path }}</code>
         </div>
-        <code class="confirm-session__path">{{ pendingDeleteSession.session_path }}</code>
+        <div
+          v-if="pendingDeleteSessions.length > deletePreviewSessions.length"
+          class="confirm-session__more"
+        >
+          {{ t('settings.sessionManager.moreSelected', { n: pendingDeleteSessions.length - deletePreviewSessions.length }) }}
+        </div>
       </div>
 
       <div
@@ -693,7 +859,9 @@ onMounted(async () => {
 .header-meta {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--spacing-3);
+  justify-content: flex-end;
 }
 
 .cli-badge {
@@ -708,6 +876,11 @@ onMounted(async () => {
 .session-count {
   font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
+}
+
+.selected-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
 }
 
 .toolbar {
@@ -766,6 +939,7 @@ onMounted(async () => {
 
 .error {
   color: var(--color-error);
+  white-space: pre-wrap;
 }
 
 /* Session Groups */
@@ -825,9 +999,28 @@ onMounted(async () => {
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+.session-card--selected {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
 .session-card:hover {
   border-color: var(--color-primary);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.session-card__select {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 2px;
+}
+
+.session-card__checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
 }
 
 .session-card__main {
@@ -1016,6 +1209,14 @@ onMounted(async () => {
   text-transform: capitalize;
 }
 
+.message-item__role {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-tertiary);
+  text-transform: none;
+}
+
 .message-item__time {
   font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
@@ -1064,10 +1265,16 @@ onMounted(async () => {
 }
 
 .confirm-session {
-  margin-top: var(--spacing-3);
   padding: var(--spacing-3);
   background-color: var(--color-bg-tertiary);
   border-radius: var(--radius-md);
+}
+
+.confirm-session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-3);
 }
 
 .confirm-session__preview {
@@ -1080,6 +1287,12 @@ onMounted(async () => {
   font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
   word-break: break-all;
+}
+
+.confirm-session__more {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  text-align: center;
 }
 
 @media (max-width: 860px) {

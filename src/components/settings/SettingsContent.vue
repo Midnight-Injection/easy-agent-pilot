@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useUIStore } from '@/stores/ui'
 import GeneralSettings from './tabs/GeneralSettings.vue'
+import CliSettings from './tabs/CliSettings.vue'
 import AgentSettings from './tabs/AgentSettings.vue'
 import SkillConfigPage from '@/components/skill-config/SkillConfigPage.vue'
 import ProviderSwitch from './tabs/ProviderSwitch.vue'
@@ -31,6 +32,7 @@ const uiStore = useUIStore()
       class="settings-content__inner"
     >
       <GeneralSettings v-if="uiStore.activeSettingsTab === 'general'" />
+      <CliSettings v-else-if="uiStore.activeSettingsTab === 'cli'" />
       <AgentSettings v-else-if="uiStore.activeSettingsTab === 'agents'" />
       <ProviderSwitch v-else-if="uiStore.activeSettingsTab === 'providerSwitch'" />
       <SessionManagementSettings v-else-if="uiStore.activeSettingsTab === 'sessions'" />

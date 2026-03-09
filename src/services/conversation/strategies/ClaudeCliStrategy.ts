@@ -51,13 +51,28 @@ export class ClaudeCliStrategy implements AgentStrategy {
       this.unlistenStream = await listen<CliStreamEvent>(
         eventName,
         (event) => {
+          console.log('[ClaudeCliStrategy] 收到事件:', JSON.stringify(event.payload))
           const payload = event.payload
           const streamEvent = this.transformEvent(payload)
+          console.log('[ClaudeCliStrategy] 转换后:', streamEvent)
           if (streamEvent) {
             onEvent(streamEvent)
           }
         }
       )
+
+      // 过滤并转换消息
+      const filteredMessages = messages
+        .filter(m => m.role !== 'compression')
+        .map(m => ({
+          role: m.role as 'system' | 'user' | 'assistant',
+          content: m.content
+        }))
+
+      // 调试日志：检查消息内容
+      console.log('[ClaudeCliStrategy] 原始消息数量:', messages.length)
+      console.log('[ClaudeCliStrategy] 过滤后消息数量:', filteredMessages.length)
+      console.log('[ClaudeCliStrategy] 消息内容:', JSON.stringify(filteredMessages, null, 2))
 
       // 构建请求
       const request: ExecutionRequest = {
@@ -69,12 +84,7 @@ export class ClaudeCliStrategy implements AgentStrategy {
         modelId: agent.modelId && agent.modelId.trim() && agent.modelId !== 'default'
           ? agent.modelId
           : undefined,
-        messages: messages
-          .filter(m => m.role !== 'compression')
-          .map(m => ({
-            role: m.role as 'system' | 'user' | 'assistant',
-            content: m.content
-          })),
+        messages: filteredMessages,
         workingDirectory,
         allowedTools: ['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch'],
         mcpServers,

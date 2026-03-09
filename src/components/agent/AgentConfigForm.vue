@@ -5,7 +5,6 @@ import { invoke } from '@tauri-apps/api/core'
 import type { AgentConfig, AgentType, AgentProvider } from '@/stores/agent'
 import { EaButton, EaIcon, EaSelect } from '@/components/common'
 import { validateUrl } from '@/utils/validation'
-import ClaudeConfigScanModal from './ClaudeConfigScanModal.vue'
 
 export interface AgentConfigFormProps {
   agent?: AgentConfig | null
@@ -28,9 +27,6 @@ const form = ref({
   baseUrl: '',
   cliPath: ''
 })
-
-// 扫描弹窗状态
-const showScanModal = ref(false)
 
 // 字段级错误状态
 const fieldErrors = ref({
@@ -123,9 +119,6 @@ const providerOptions = computed(() => {
 
 const showSdkFields = computed(() => form.value.type === 'sdk')
 const showCliFields = computed(() => form.value.type === 'cli')
-
-// 是否显示扫描按钮（仅 Claude CLI 类型）
-const showScanButton = computed(() => form.value.type === 'cli' && form.value.provider === 'claude')
 
 // 验证 URL 格式（即时验证）
 const validateBaseUrlFormat = () => {
@@ -270,22 +263,6 @@ const handleBaseUrlBlur = () => {
 const handleCliPathBlur = () => {
   validateCliPathExists()
 }
-
-// 打开扫描弹窗
-const handleScanConfig = () => {
-  showScanModal.value = true
-}
-
-// 处理导入扫描结果
-const handleImportConfig = (_items: {
-  mcpServers: string[]
-  skills: string[]
-  plugins: string[]
-}) => {
-  // 这里可以根据选中的项目进行后续处理
-  // 目前先关闭弹窗，后续可以扩展为自动配置
-  showScanModal.value = false
-}
 </script>
 
 <template>
@@ -384,26 +361,6 @@ const handleImportConfig = (_items: {
 
       <!-- CLI 模式字段 -->
       <template v-if="showCliFields">
-        <!-- 扫描按钮（仅 Claude CLI 显示） -->
-        <div
-          v-if="showScanButton && !isEditing"
-          class="form-scan-section"
-        >
-          <EaButton
-            type="secondary"
-            @click="handleScanConfig"
-          >
-            <template #icon>
-              <EaIcon
-                name="search"
-                :size="16"
-              />
-            </template>
-            {{ t('settings.agent.scan.button') }}
-          </EaButton>
-          <span class="form-scan-hint">{{ t('settings.agent.scan.hint') }}</span>
-        </div>
-
         <div class="form-group">
           <label class="form-label">
             {{ t('settings.agent.cliPath') }} <span class="form-label__required">*</span>
@@ -451,20 +408,6 @@ const handleImportConfig = (_items: {
         </EaButton>
       </div>
     </form>
-
-    <!-- 扫描配置弹窗 -->
-    <Teleport to="body">
-      <div
-        v-if="showScanModal"
-        class="scan-modal-overlay"
-        @click.self="showScanModal = false"
-      >
-        <ClaudeConfigScanModal
-          @close="showScanModal = false"
-          @import="handleImportConfig"
-        />
-      </div>
-    </Teleport>
   </div>
 </template>
 
@@ -589,32 +532,5 @@ const handleImportConfig = (_items: {
   padding-top: var(--spacing-4);
   border-top: 1px solid var(--color-border);
   margin-top: var(--spacing-2);
-}
-
-.form-scan-section {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3);
-  background-color: var(--color-background);
-  border-radius: var(--radius-md);
-}
-
-.form-scan-hint {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
-}
-
-.scan-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
-  z-index: 1000;
 }
 </style>

@@ -88,9 +88,10 @@ function handleInstall() {
       </div>
 
       <EaButton
-        :type="isInstalled ? 'secondary' : 'primary'"
+        :type="isInstalled ? 'ghost' : 'primary'"
         size="small"
         class="plugin-market-card__action"
+        :class="{ 'plugin-market-card__action--installed': isInstalled }"
         @click="handleInstall"
       >
         <EaIcon
@@ -209,14 +210,11 @@ function handleInstall() {
   min-width: 80px;
 }
 
-.plugin-market-card__action.ea-button--secondary {
-  background-color: var(--color-success-light);
+.plugin-market-card__action--installed {
   color: var(--color-success);
-  border: 1px solid var(--color-success);
 }
 
-.plugin-market-card__action.ea-button--secondary:hover:not(.ea-button--disabled) {
-  background-color: var(--color-success);
-  color: var(--color-text-inverse);
+.plugin-market-card__action--installed:hover:not(.ea-button--disabled) {
+  background-color: var(--color-success-light);
 }
 </style>

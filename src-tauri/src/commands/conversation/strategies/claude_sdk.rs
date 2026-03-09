@@ -5,9 +5,36 @@ use tauri::{AppHandle, Emitter};
 use crate::commands::conversation::abort::{clear_abort_flag, set_abort_flag, should_abort};
 use crate::commands::conversation::strategy::AgentExecutionStrategy;
 use crate::commands::conversation::types::{ExecutionRequest, SdkStreamEvent};
+use crate::commands::plan_split::{record_plan_split_event, SplitStreamRecord};
 
 /// Claude SDK 策略
 pub struct ClaudeSdkStrategy;
+
+fn emit_sdk_event(
+    app: &AppHandle,
+    event_name: &str,
+    plan_id: Option<&String>,
+    event: &SdkStreamEvent,
+) {
+    let _ = app.emit(event_name, event);
+
+    if let Some(plan_id) = plan_id {
+        let _ = record_plan_split_event(
+            app,
+            plan_id,
+            &event.session_id,
+            SplitStreamRecord {
+                event_type: event.event_type.clone(),
+                content: event.content.clone(),
+                tool_name: event.tool_name.clone(),
+                tool_call_id: event.tool_call_id.clone(),
+                tool_input: event.tool_input.clone(),
+                tool_result: event.tool_result.clone(),
+                error: event.error.clone(),
+            },
+        );
+    }
+}
 
 // 简单的日志宏
 macro_rules! log_info {
@@ -35,6 +62,7 @@ impl AgentExecutionStrategy for ClaudeSdkStrategy {
     async fn execute(&self, app: AppHandle, request: ExecutionRequest) -> Result<()> {
         let session_id = request.session_id.clone();
         let event_name = format!("sdk-stream-{}", session_id);
+        let plan_id = request.plan_id.clone();
 
         log_info!("开始执行 Claude SDK, session_id: {}", session_id);
 
@@ -93,6 +121,7 @@ impl AgentExecutionStrategy for ClaudeSdkStrategy {
         let session_id_clone = session_id.clone();
         let app_clone = app.clone();
         let event_name_clone = event_name.clone();
+        let plan_id_clone = plan_id.clone();
 
         tokio::spawn(async move {
             use futures::StreamExt;
@@ -121,7 +150,12 @@ impl AgentExecutionStrategy for ClaudeSdkStrategy {
                             output_tokens: None,
                             model: None,
                         };
-                        let _ = app_clone.emit(&event_name_clone, event);
+                        emit_sdk_event(
+                            &app_clone,
+                            &event_name_clone,
+                            plan_id_clone.as_ref(),
+                            &event,
+                        );
                         break;
                     }
                 };
@@ -134,7 +168,12 @@ impl AgentExecutionStrategy for ClaudeSdkStrategy {
                     buffer = buffer[pos + 2..].to_string();
 
                     if let Some(event) = parse_sse_event(&session_id_clone, &event_str) {
-                        let _ = app_clone.emit(&event_name_clone, event);
+                        emit_sdk_event(
+                            &app_clone,
+                            &event_name_clone,
+                            plan_id_clone.as_ref(),
+                            &event,
+                        );
                     }
                 }
             }
@@ -153,7 +192,12 @@ impl AgentExecutionStrategy for ClaudeSdkStrategy {
                 output_tokens: None,
                 model: None,
             };
-            let _ = app_clone.emit(&event_name_clone, done_event);
+            emit_sdk_event(
+                &app_clone,
+                &event_name_clone,
+                plan_id_clone.as_ref(),
+                &done_event,
+            );
 
             // 清理中断标志
             clear_abort_flag(&session_id_clone).await;

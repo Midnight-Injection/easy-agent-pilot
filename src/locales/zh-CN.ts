@@ -59,7 +59,7 @@ const zhCN = {
     title: '设置',
     nav: {
       general: '通用设置',
-      cli: 'CLI 路径',
+      cli: 'CLI 下载管理',
       agents: 'Agent 配置',
       agentConfig: '技能配置',
       integration: 'Agent 集成',
@@ -111,7 +111,7 @@ const zhCN = {
     },
     cli: {
       ...enUS.settings.cli,
-      title: 'CLI 路径设置',
+      title: 'CLI 下载管理',
       autoDetect: '自动检测',
       scanning: '正在扫描已安装的 CLI 工具...',
       foundTools: '发现 {n} 个 CLI 工具',
@@ -142,7 +142,29 @@ const zhCN = {
       confirmDeleteMessage: '确定要删除 CLI 配置 "{name}" 吗？',
       verificationFailed: '验证失败',
       cliNameOther: '其他',
-      scanPathsHelp: '扫描路径说明'
+      scanPathsHelp: '扫描路径说明',
+      // CLI 安装器
+      installer: {
+        title: 'CLI 安装器',
+        installed: '已安装',
+        notInstalled: '未安装',
+        recommended: '推荐',
+        install: '安装',
+        installing: '安装中...',
+        installSuccess: '安装成功',
+        installFailed: '安装失败',
+        detecting: '检测环境中...',
+        noMethodAvailable: '没有可用的安装方式，请先安装 npm 或 Homebrew',
+        checkUpdate: '检查更新',
+        upgrade: '升级',
+        upgrading: '升级中...',
+        newVersion: '新版本',
+        versionUpToDate: '已是最新版本',
+        checkUpdateFailed: '检查更新失败',
+        logs: '安装日志',
+        clearLogs: '清空',
+        cancel: '取消'
+      }
     },
     agent: {
       ...enUS.settings.agent,
@@ -596,9 +618,20 @@ const zhCN = {
     title: '记忆管理',
     subtitle: '管理和整理 AI 记忆',
     categories: '分类',
+    categoryTitle: '记忆分类',
     allMemories: '全部记忆',
+    userInfo: '用户信息',
+    projectMemory: '项目记忆',
+    skillsKnowledge: '技能知识',
+    generalMemory: '通用记忆',
     noMemories: '暂无记忆',
     noMemoriesHint: '会话中的消息会自动采集为记忆',
+    emptyTitle: '暂无记忆',
+    emptyHint: '会话中的消息会自动采集为记忆',
+    noSession: '无会话',
+    selected: '已选择 {count} 项',
+    categoryNamePlaceholder: '输入分类名称',
+    createCategory: '创建',
     searchPlaceholder: '搜索记忆...',
     sourceAuto: '自动采集',
     sourceManual: '手动创建',
@@ -721,7 +754,10 @@ const zhCN = {
     dependencies: '依赖任务',
     selectDependencies: '选择依赖任务',
     circularDependencyError: '会导致循环依赖，无法选择',
-    noTasksAvailable: '没有可选的任务'
+    noTasksAvailable: '没有可选的任务',
+    selectAgent: '智能体（可选）',
+    selectAgentPlaceholder: '使用默认智能体',
+    selectModel: '模型（可选）'
   }
 }
 
