@@ -25,6 +25,14 @@ export interface ToolCallSummary {
   status: 'success' | 'error' | 'mixed'
 }
 
+export interface MessageAttachment {
+  id: string
+  name: string
+  path: string
+  mimeType: string
+  size: number
+}
+
 // 压缩消息元数据
 export interface CompressionMetadata {
   compressedAt: string
@@ -39,6 +47,7 @@ export interface Message {
   sessionId: string
   role: MessageRole
   content: string
+  attachments?: MessageAttachment[]
   status: MessageStatus
   tokens?: number
   errorMessage?: string
@@ -66,6 +75,7 @@ interface RustMessage {
   session_id?: string
   role: string
   content: string
+  attachments?: MessageAttachment[] | null
   status: string
   tokens: number | null
   errorMessage?: string | null
@@ -89,6 +99,7 @@ interface CreateMessageInput {
   session_id: string
   role: string
   content: string
+  attachments?: string
   status?: string
   tokens?: number
   error_message?: string
@@ -99,6 +110,7 @@ interface CreateMessageInput {
 
 interface UpdateMessageInput {
   content?: string
+  attachments?: string
   status?: string
   tokens?: number
   error_message?: string
@@ -151,6 +163,7 @@ function transformMessage(rustMsg: RustMessage): Message {
     sessionId: sessionId || '',
     role: rustMsg.role as MessageRole,
     content: rustMsg.content,
+    attachments: rustMsg.attachments?.length ? rustMsg.attachments : undefined,
     status: rustMsg.status as MessageStatus,
     tokens: rustMsg.tokens ?? undefined,
     errorMessage: errorMessage ?? undefined,
@@ -289,6 +302,7 @@ export const useMessageStore = defineStore('message', () => {
       session_id: message.sessionId,
       role: message.role,
       content: message.content,
+      attachments: message.attachments ? JSON.stringify(message.attachments) : undefined,
       status: message.status,
       tokens: message.tokens,
       error_message: message.errorMessage,
@@ -319,6 +333,7 @@ export const useMessageStore = defineStore('message', () => {
     const notificationStore = useNotificationStore()
     const input: UpdateMessageInput = {}
     if (updates.content !== undefined) input.content = updates.content
+    if (updates.attachments !== undefined) input.attachments = JSON.stringify(updates.attachments)
     if (updates.status !== undefined) input.status = updates.status
     if (updates.tokens !== undefined) input.tokens = updates.tokens
     if (updates.errorMessage !== undefined) input.error_message = updates.errorMessage

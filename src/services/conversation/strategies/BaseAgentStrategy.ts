@@ -40,9 +40,11 @@ export abstract class BaseAgentStrategy implements AgentStrategy {
   protected abstract buildRequest(context: ConversationContext): ExecutionRequest
 
   protected validateContext(
-    _context: ConversationContext,
-    _onEvent: (event: StreamEvent) => void
+    context: ConversationContext,
+    onEvent: (event: StreamEvent) => void
   ): boolean {
+    void context
+    void onEvent
     return true
   }
 
@@ -119,7 +121,8 @@ export abstract class BaseAgentStrategy implements AgentStrategy {
       .filter(message => message.role !== 'compression')
       .map(message => ({
         role: message.role as 'system' | 'user' | 'assistant',
-        content: message.content
+        content: message.content,
+        attachments: message.attachments
       }))
   }
 

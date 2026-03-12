@@ -1,4 +1,4 @@
-import { useMessageStore, type Message, type ToolCall } from '@/stores/message'
+import { useMessageStore, type Message, type MessageAttachment, type ToolCall } from '@/stores/message'
 import { useSessionStore } from '@/stores/session'
 import { useSessionExecutionStore } from '@/stores/sessionExecution'
 import { useProjectStore } from '@/stores/project'
@@ -36,7 +36,8 @@ export class ConversationService {
     sessionId: string,
     content: string,
     agentId: string,
-    projectId?: string
+    projectId?: string,
+    attachments: MessageAttachment[] = []
   ): Promise<void> {
     const messageStore = useMessageStore()
     const sessionStore = useSessionStore()
@@ -64,18 +65,21 @@ export class ConversationService {
         sessionId,
         role: 'user',
         content,
+        attachments,
         status: 'completed'
       })
 
       // 更新会话最后消息
-      sessionStore.updateLastMessage(sessionId, content.slice(0, 50))
+      const messagePreview = this.buildMessagePreview(content, attachments)
+      sessionStore.updateLastMessage(sessionId, messagePreview)
 
       // 如果会话名称是默认名称（未命名会话），则用第一条消息的前几个字更新
       const session = sessionStore.sessions.find(s => s.id === sessionId)
       if (session && (session.name === '未命名会话' || session.name.startsWith('新会话'))) {
         // 提取前20个字符作为会话名称，去掉换行符
-        const newTitle = content.replace(/\n/g, ' ').slice(0, 20).trim()
-        const finalTitle = newTitle.length < content.length ? newTitle + '...' : newTitle
+        const titleSource = this.buildMessagePreview(content, attachments)
+        const newTitle = titleSource.replace(/\n/g, ' ').slice(0, 20).trim()
+        const finalTitle = newTitle.length < titleSource.length ? newTitle + '...' : newTitle
         if (finalTitle) {
           await sessionStore.updateSession(sessionId, { name: finalTitle })
         }
@@ -140,6 +144,23 @@ export class ConversationService {
       sessionExecutionStore.endSending(sessionId)
       throw error
     }
+  }
+
+  private buildMessagePreview(content: string, attachments: MessageAttachment[]): string {
+    const trimmed = content.trim()
+    if (trimmed) {
+      return trimmed.slice(0, 50)
+    }
+
+    if (attachments.length === 1) {
+      return `[图片] ${attachments[0].name}`
+    }
+
+    if (attachments.length > 1) {
+      return `[${attachments.length} 张图片]`
+    }
+
+    return ''
   }
 
   /**

@@ -16,7 +16,7 @@ use crate::commands::conversation::abort::{
     clear_abort_flag, register_session_pid, set_abort_flag, should_abort, unregister_session_pid,
 };
 use crate::commands::conversation::strategy::AgentExecutionStrategy;
-use crate::commands::conversation::types::{CliStreamEvent, ExecutionRequest};
+use crate::commands::conversation::types::{CliStreamEvent, ExecutionRequest, MessageInput};
 
 /// Claude CLI 策略
 pub struct ClaudeCliStrategy;
@@ -55,6 +55,33 @@ impl StdoutReadOutcome {
     }
 }
 
+fn render_cli_message(message: &MessageInput) -> String {
+    let mut sections = Vec::new();
+
+    if !message.content.trim().is_empty() {
+        sections.push(message.content.clone());
+    }
+
+    if let Some(attachments) = &message.attachments {
+        if !attachments.is_empty() {
+            let attachment_list = attachments
+                .iter()
+                .map(|attachment| format!("- {} ({})", attachment.name, attachment.path))
+                .collect::<Vec<_>>()
+                .join("\n");
+            sections.push(format!("Attached images:\n{}", attachment_list));
+        }
+    }
+
+    let body = if sections.is_empty() {
+        "[Empty message]".to_string()
+    } else {
+        sections.join("\n\n")
+    };
+
+    format!("{}:\n{}", message.role, body)
+}
+
 #[async_trait]
 impl AgentExecutionStrategy for ClaudeCliStrategy {
     fn supports(&self, agent_type: &str, provider: &str) -> bool {
@@ -79,7 +106,12 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
         // 调试日志：检查收到的消息
         log_info!("收到的消息数量: {}", request.messages.len());
         for (i, msg) in request.messages.iter().enumerate() {
-            log_info!("消息[{}]: role={}, content_len={}", i, msg.role, msg.content.len());
+            log_info!(
+                "消息[{}]: role={}, content_len={}",
+                i,
+                msg.role,
+                msg.content.len()
+            );
         }
         let allowed_tools = request.allowed_tools.clone();
         let cli_output_format = request
@@ -152,7 +184,7 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
         // 构建输入消息
         let input_text = messages
             .iter()
-            .map(|m| format!("{}: {}", m.role, m.content))
+            .map(render_cli_message)
             .collect::<Vec<_>>()
             .join("\n\n");
 
@@ -211,7 +243,10 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
 
                     match serde_json::from_str::<serde_json::Value>(&line) {
                         Ok(json_value) => {
-                            let event_type = json_value.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+                            let event_type = json_value
+                                .get("type")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("unknown");
                             log_info!("[stdout] JSON type: {}", event_type);
                             let event = parse_claude_json_output(&session_id_clone, &json_value);
                             if let Some(event) = event {
@@ -686,7 +721,9 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
                 match item_type {
                     "thinking" => {
                         // 处理 thinking 类型
-                        if let Some(thinking_text) = content_item.get("thinking").and_then(|t| t.as_str()) {
+                        if let Some(thinking_text) =
+                            content_item.get("thinking").and_then(|t| t.as_str())
+                        {
                             log_debug!("[parse] 找到 thinking 内容，长度: {}", thinking_text.len());
                             return Some(CliStreamEvent {
                                 event_type: "thinking".to_string(),

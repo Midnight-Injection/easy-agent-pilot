@@ -614,6 +614,7 @@ fn refresh_session_after_turn(app: &AppHandle, plan_id: &str, session_id: &str) 
             llm_messages.push(MessageInput {
                 role: "assistant".to_string(),
                 content: extract_assistant_summary(&output),
+                attachments: None,
             });
             session.llm_messages_json = Some(serialize_json(&llm_messages)?);
             session.messages_json = Some(serialize_json(&messages)?);
@@ -878,6 +879,7 @@ pub fn submit_plan_split_form(
     llm_messages.push(MessageInput {
         role: "user".to_string(),
         content: build_form_response_prompt(&input.form_id, &input.values),
+        attachments: None,
     });
     append_ui_message(&mut messages, "user", input.display_content);
 

@@ -18,7 +18,9 @@ use crate::commands::conversation::abort::{
     clear_abort_flag, register_session_pid, set_abort_flag, should_abort, unregister_session_pid,
 };
 use crate::commands::conversation::strategy::AgentExecutionStrategy;
-use crate::commands::conversation::types::{CliStreamEvent, ExecutionRequest, McpServerConfig};
+use crate::commands::conversation::types::{
+    CliStreamEvent, ExecutionRequest, McpServerConfig, MessageInput,
+};
 
 /// Codex CLI 策略
 pub struct CodexCliStrategy;
@@ -118,6 +120,33 @@ impl StdoutReadOutcome {
             emitted_error: false,
         }
     }
+}
+
+fn render_cli_message(message: &MessageInput) -> String {
+    let mut sections = Vec::new();
+
+    if !message.content.trim().is_empty() {
+        sections.push(message.content.clone());
+    }
+
+    if let Some(attachments) = &message.attachments {
+        if !attachments.is_empty() {
+            let attachment_list = attachments
+                .iter()
+                .map(|attachment| format!("- {} ({})", attachment.name, attachment.path))
+                .collect::<Vec<_>>()
+                .join("\n");
+            sections.push(format!("Attached images:\n{}", attachment_list));
+        }
+    }
+
+    let body = if sections.is_empty() {
+        "[Empty message]".to_string()
+    } else {
+        sections.join("\n\n")
+    };
+
+    format!("{}:\n{}", message.role, body)
 }
 
 struct TempSchemaFile {
@@ -262,14 +291,11 @@ impl AgentExecutionStrategy for CodexCliStrategy {
         let input_text = if use_exec_mode {
             messages
                 .iter()
-                .map(|m| format!("{}: {}", m.role, m.content))
+                .map(render_cli_message)
                 .collect::<Vec<_>>()
                 .join("\n\n")
         } else {
-            messages
-                .last()
-                .map(|m| m.content.clone())
-                .unwrap_or_default()
+            messages.last().map(render_cli_message).unwrap_or_default()
         };
 
         args.push(input_text.clone());

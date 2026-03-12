@@ -1,15 +1,54 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use base64::Engine;
 use tauri::{AppHandle, Emitter};
 
 use crate::commands::conversation::abort::{clear_abort_flag, set_abort_flag, should_abort};
 use crate::commands::conversation::strategy::AgentExecutionStrategy;
-use crate::commands::conversation::types::{ExecutionRequest, SdkStreamEvent};
+use crate::commands::conversation::types::{ExecutionRequest, MessageInput, SdkStreamEvent};
 use crate::commands::plan_split::{record_plan_split_event, SplitStreamRecord};
 
 /// Codex SDK 策略
 /// 基于 OpenAI 兼容 API 格式实现
 pub struct CodexSdkStrategy;
+
+fn attachment_to_openai_content(
+    attachment: &crate::commands::message::MessageAttachment,
+) -> Result<serde_json::Value> {
+    let bytes = std::fs::read(&attachment.path)?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    let data_url = format!("data:{};base64,{}", attachment.mime_type, encoded);
+
+    Ok(serde_json::json!({
+        "type": "image_url",
+        "image_url": {
+            "url": data_url
+        }
+    }))
+}
+
+fn build_openai_message_content(message: &MessageInput) -> Result<serde_json::Value> {
+    let mut content = Vec::new();
+
+    if !message.content.trim().is_empty() {
+        content.push(serde_json::json!({
+            "type": "text",
+            "text": message.content
+        }));
+    }
+
+    if let Some(attachments) = &message.attachments {
+        for attachment in attachments {
+            content.push(attachment_to_openai_content(attachment)?);
+        }
+    }
+
+    if content.is_empty() {
+        Ok(serde_json::json!(message.content))
+    } else {
+        Ok(serde_json::json!(content))
+    }
+}
 
 fn emit_sdk_event(
     app: &AppHandle,
@@ -89,7 +128,7 @@ impl AgentExecutionStrategy for CodexSdkStrategy {
             if m.role != "system" {
                 messages.push(serde_json::json!({
                     "role": m.role,
-                    "content": m.content
+                    "content": build_openai_message_content(m)?
                 }));
             }
         }

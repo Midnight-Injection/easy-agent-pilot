@@ -48,6 +48,7 @@ pub struct MessageExport {
     pub session_id: String,
     pub role: String,
     pub content: String,
+    pub attachments: Option<String>,
     pub status: String,
     pub tokens: Option<i32>,
     pub created_at: String,
@@ -228,7 +229,7 @@ fn export_sessions(conn: &Connection) -> Result<Vec<SessionExport>, String> {
 
 fn export_messages(conn: &Connection) -> Result<Vec<MessageExport>, String> {
     let mut stmt = conn
-        .prepare("SELECT id, session_id, role, content, status, tokens, created_at FROM messages ORDER BY created_at ASC")
+        .prepare("SELECT id, session_id, role, content, attachments, status, tokens, created_at FROM messages ORDER BY created_at ASC")
         .map_err(|e| e.to_string())?;
 
     let messages = stmt
@@ -238,9 +239,10 @@ fn export_messages(conn: &Connection) -> Result<Vec<MessageExport>, String> {
                 session_id: row.get(1)?,
                 role: row.get(2)?,
                 content: row.get(3)?,
-                status: row.get(4)?,
-                tokens: row.get(5)?,
-                created_at: row.get(6)?,
+                attachments: row.get(4)?,
+                status: row.get(5)?,
+                tokens: row.get(6)?,
+                created_at: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -650,13 +652,14 @@ pub fn import_data_from_file(file_path: String) -> Result<ImportResult, String> 
     for message in &data.messages {
         let tokens = message.tokens.map(|t| t.to_string()).unwrap_or_default();
         let res = tx.execute(
-            "INSERT OR REPLACE INTO messages (id, session_id, role, content, status, tokens, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT OR REPLACE INTO messages (id, session_id, role, content, attachments, status, tokens, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             [
                 &message.id,
                 &message.session_id,
                 &message.role,
                 &message.content,
+                &message.attachments.clone().unwrap_or_default(),
                 &message.status,
                 &tokens,
                 &message.created_at,

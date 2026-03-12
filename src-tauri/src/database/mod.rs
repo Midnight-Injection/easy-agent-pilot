@@ -33,6 +33,7 @@ const INIT_SQL: &str = r#"
         session_id TEXT NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
+        attachments TEXT,
         status TEXT NOT NULL DEFAULT 'completed',
         tokens INTEGER,
         created_at TEXT NOT NULL,
@@ -610,6 +611,7 @@ pub fn init_database() -> Result<()> {
 
     // messages 琛ㄦ坊鍔?error_message 瀛楁锛堢敤浜庡瓨鍌ㄥ彂閫佸け璐ョ殑鍘熷洜锛?
     let message_migrations = [
+        "ALTER TABLE messages ADD COLUMN attachments TEXT",
         "ALTER TABLE messages ADD COLUMN error_message TEXT",
         "ALTER TABLE messages ADD COLUMN tool_calls TEXT", // JSON string for tool calls
         "ALTER TABLE messages ADD COLUMN thinking TEXT",   // 鎬濊€冨唴瀹癸紙鎵╁睍鎬濈淮妯″瀷锛?

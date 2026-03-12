@@ -2,6 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
+use super::message::remove_session_uploads;
 use super::support::{now_rfc3339, open_db_connection, open_db_connection_with_foreign_keys};
 
 /// 会话数据结构
@@ -283,6 +284,7 @@ pub fn delete_session(id: String) -> Result<(), String> {
 
     conn.execute("DELETE FROM sessions WHERE id = ?1", [&id])
         .map_err(|e| e.to_string())?;
+    remove_session_uploads(&id)?;
 
     Ok(())
 }

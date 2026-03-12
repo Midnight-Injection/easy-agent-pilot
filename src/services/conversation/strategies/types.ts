@@ -1,5 +1,5 @@
 import type { AgentConfig } from '@/stores/agent'
-import type { Message } from '@/stores/message'
+import type { Message, MessageAttachment } from '@/stores/message'
 
 /**
  * MCP 服务器配置
@@ -143,6 +143,7 @@ export interface CliExecutionRequest {
   messages: Array<{
     role: 'user' | 'assistant' | 'system'
     content: string
+    attachments?: MessageAttachment[]
   }>
   /** 工作目录 */
   workingDirectory?: string
@@ -168,6 +169,7 @@ export interface SdkExecutionRequest {
   messages: Array<{
     role: 'user' | 'assistant' | 'system'
     content: string
+    attachments?: MessageAttachment[]
   }>
   /** 系统提示 */
   systemPrompt?: string
@@ -194,6 +196,7 @@ export interface ExecutionRequest {
   messages: Array<{
     role: 'user' | 'assistant' | 'system'
     content: string
+    attachments?: MessageAttachment[]
   }>
   workingDirectory?: string
   allowedTools?: string[]
@@ -211,6 +214,7 @@ export interface ExecutionRequest {
 export interface MessageInput {
   role: 'user' | 'assistant' | 'system'
   content: string
+  attachments?: MessageAttachment[]
 }
 
 /**

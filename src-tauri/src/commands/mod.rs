@@ -54,7 +54,7 @@ pub fn init_persistence_dirs() -> Result<()> {
     fs::create_dir_all(&base_dir)?;
 
     // 创建子目录
-    let sub_dirs = ["data", "logs", "cache"];
+    let sub_dirs = ["data", "logs", "cache", "data/session-uploads"];
     for dir in sub_dirs {
         fs::create_dir_all(base_dir.join(dir))?;
     }

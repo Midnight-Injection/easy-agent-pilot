@@ -1,14 +1,54 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use base64::Engine;
 use tauri::{AppHandle, Emitter};
 
 use crate::commands::conversation::abort::{clear_abort_flag, set_abort_flag, should_abort};
 use crate::commands::conversation::strategy::AgentExecutionStrategy;
-use crate::commands::conversation::types::{ExecutionRequest, SdkStreamEvent};
+use crate::commands::conversation::types::{ExecutionRequest, MessageInput, SdkStreamEvent};
 use crate::commands::plan_split::{record_plan_split_event, SplitStreamRecord};
 
 /// Claude SDK 策略
 pub struct ClaudeSdkStrategy;
+
+fn attachment_to_anthropic_content(
+    attachment: &crate::commands::message::MessageAttachment,
+) -> Result<serde_json::Value> {
+    let bytes = std::fs::read(&attachment.path)?;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+
+    Ok(serde_json::json!({
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": attachment.mime_type,
+            "data": encoded
+        }
+    }))
+}
+
+fn build_anthropic_message_content(message: &MessageInput) -> Result<serde_json::Value> {
+    let mut content = Vec::new();
+
+    if let Some(attachments) = &message.attachments {
+        for attachment in attachments {
+            content.push(attachment_to_anthropic_content(attachment)?);
+        }
+    }
+
+    if !message.content.trim().is_empty() {
+        content.push(serde_json::json!({
+            "type": "text",
+            "text": message.content
+        }));
+    }
+
+    if content.is_empty() {
+        Ok(serde_json::json!(message.content))
+    } else {
+        Ok(serde_json::json!(content))
+    }
+}
 
 fn emit_sdk_event(
     app: &AppHandle,
@@ -67,17 +107,17 @@ impl AgentExecutionStrategy for ClaudeSdkStrategy {
         let url = format!("{}/v1/messages", base_url);
 
         // 构建消息数组
-        let messages: Vec<serde_json::Value> = request
+        let mut messages: Vec<serde_json::Value> = Vec::new();
+        for message in request
             .messages
             .iter()
-            .filter(|m| m.role != "system")
-            .map(|m| {
-                serde_json::json!({
-                    "role": m.role,
-                    "content": m.content
-                })
-            })
-            .collect();
+            .filter(|message| message.role != "system")
+        {
+            messages.push(serde_json::json!({
+                "role": message.role,
+                "content": build_anthropic_message_content(message)?
+            }));
+        }
 
         let mut body = serde_json::json!({
             "model": request.model_id,

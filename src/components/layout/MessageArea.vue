@@ -22,14 +22,17 @@ const {
   currentAgentId,
   currentAgentName,
   fileMentionPosition,
+  fileInputRef,
   getModelLabel,
   handleCancelCompress,
   handleConfirmCompress,
   handleFileSelect,
+  handleImageFileChange,
   handleInput,
   handleKeyDown,
   handleMessageFormSubmit,
   handleOpenCompress,
+  handlePaste,
   handleSend,
   inputPlaceholder,
   inputText,
@@ -37,12 +40,17 @@ const {
   isCompressing,
   isModelDropdownOpen,
   isSending,
+  isUploadingImages,
   mentionSearchText,
   mentionStart,
   modelDropdownRef,
+  openImagePicker,
   parsedInputText,
+  pendingImages,
   presetModelOptions,
   renderLayerRef,
+  removeImage,
+  restorePendingImages,
   selectedModelId,
   selectAgent,
   selectModel,
@@ -65,6 +73,7 @@ const handleRetry = async (message: Message) => {
   // 如果是用户消息的重试，将内容填回输入框
   if (message.role === 'user') {
     inputText.value = message.content
+    restorePendingImages(message.attachments ?? [])
     await nextTick()
     textareaRef.value?.focus()
     return
@@ -83,6 +92,7 @@ const handleRetry = async (message: Message) => {
         await messageStore.deleteMessage(message.id)
         // 将用户消息内容填入输入框并重新发送
         inputText.value = messages[i].content
+        restorePendingImages(messages[i].attachments ?? [])
         // 删除用户消息
         await messageStore.deleteMessage(messages[i].id)
         // 重新发送
@@ -192,20 +202,71 @@ const handleRetry = async (message: Message) => {
               </div>
             </Transition>
           </div>
-
         </div>
 
         <!-- 输入框容器 -->
+        <input
+          ref="fileInputRef"
+          type="file"
+          class="message-input__file-input"
+          accept="image/*"
+          multiple
+          @change="handleImageFileChange"
+        >
+
+        <div
+          v-if="pendingImages.length > 0"
+          class="message-input__attachments"
+        >
+          <div
+            v-for="image in pendingImages"
+            :key="image.id"
+            class="message-input__attachment"
+          >
+            <img
+              :src="image.previewUrl"
+              :alt="image.name"
+              class="message-input__attachment-image"
+            >
+            <button
+              class="message-input__attachment-remove"
+              :title="t('message.removeImage')"
+              @click="removeImage(image.id)"
+            >
+              <EaIcon
+                name="x"
+                :size="12"
+              />
+            </button>
+          </div>
+        </div>
+
         <div class="message-input__editor">
           <!-- 渲染层 - 显示带样式的文件标签 -->
-          <div ref="renderLayerRef" class="message-input__render">
+          <div
+            ref="renderLayerRef"
+            class="message-input__render"
+          >
             <template v-if="parsedInputText.length > 0">
-              <template v-for="(segment, index) in parsedInputText" :key="index">
-                <span v-if="segment.type === 'text'" class="message-input__text">{{ segment.content }}</span>
-                <span v-else class="message-input__file-tag" :title="segment.fullPath">@{{ segment.fullPath }}</span>
+              <template
+                v-for="(segment, index) in parsedInputText"
+                :key="index"
+              >
+                <span
+                  v-if="segment.type === 'text'"
+                  class="message-input__text"
+                >{{ segment.content }}</span>
+                <span
+                  v-else
+                  class="message-input__file-tag"
+                  :title="segment.fullPath"
+                >@{{ segment.fullPath }}</span>
               </template>
             </template>
-            <span v-else-if="!inputText" class="message-input__placeholder">{{ inputPlaceholder }}</span>
+            <span
+              v-else-if="!inputText"
+              class="message-input__placeholder"
+            >{{ inputPlaceholder }}</span>
           </div>
           <!-- 输入层 - 透明的 textarea -->
           <textarea
@@ -216,69 +277,92 @@ const handleRetry = async (message: Message) => {
             :disabled="!sessionStore.currentSessionId || isSending"
             @input="handleInput"
             @keydown="handleKeyDown"
+            @paste="handlePaste"
             @scroll="syncScroll"
           />
         </div>
 
         <!-- 底部工具栏：模型选择器 -->
         <div class="message-input__toolbar message-input__toolbar--bottom">
-          <!-- 压缩按钮 -->
-          <button
-            v-if="shouldShowCompressButton"
-            class="input-chip__btn input-chip__btn--compress"
-            :disabled="isCompressing || isSending"
-            @click="handleOpenCompress"
-          >
-            <EaIcon
-              name="archive"
-              :size="12"
-              :class="{ 'input-chip__icon--loading': isCompressing }"
-            />
-            <span>{{ isCompressing ? t('compression.processing') : t('token.compress') }}</span>
-          </button>
-
-          <div
-            v-if="currentAgent"
-            ref="modelDropdownRef"
-            class="input-chip"
-            :class="{ 'input-chip--open': isModelDropdownOpen }"
-          >
+          <div class="message-input__toolbar-section">
             <button
               class="input-chip__btn"
-              @click="toggleModelDropdown"
+              :disabled="isSending || isUploadingImages"
+              @click="openImagePicker"
             >
               <EaIcon
-                name="cpu"
+                name="image-plus"
                 :size="12"
               />
-              <span>{{ getModelLabel(selectedModelId) }}</span>
-              <EaIcon
-                :name="isModelDropdownOpen ? 'chevron-up' : 'chevron-down'"
-                :size="10"
-              />
+              <span>{{ t('message.selectImages') }}</span>
             </button>
-            <Transition name="dropdown">
-              <div
-                v-if="isModelDropdownOpen"
-                class="input-chip__menu input-chip__menu--right"
+            <span
+              v-if="isUploadingImages"
+              class="message-input__uploading"
+            >
+              {{ t('message.uploadingImages') }}
+            </span>
+          </div>
+
+          <div class="message-input__toolbar-section message-input__toolbar-section--right">
+            <!-- 压缩按钮 -->
+            <button
+              v-if="shouldShowCompressButton"
+              class="input-chip__btn input-chip__btn--compress"
+              :disabled="isCompressing || isSending"
+              @click="handleOpenCompress"
+            >
+              <EaIcon
+                name="archive"
+                :size="12"
+                :class="{ 'input-chip__icon--loading': isCompressing }"
+              />
+              <span>{{ isCompressing ? t('compression.processing') : t('token.compress') }}</span>
+            </button>
+
+            <div
+              v-if="currentAgent"
+              ref="modelDropdownRef"
+              class="input-chip"
+              :class="{ 'input-chip--open': isModelDropdownOpen }"
+            >
+              <button
+                class="input-chip__btn"
+                @click="toggleModelDropdown"
               >
+                <EaIcon
+                  name="cpu"
+                  :size="12"
+                />
+                <span>{{ getModelLabel(selectedModelId) }}</span>
+                <EaIcon
+                  :name="isModelDropdownOpen ? 'chevron-up' : 'chevron-down'"
+                  :size="10"
+                />
+              </button>
+              <Transition name="dropdown">
                 <div
-                  v-for="model in presetModelOptions"
-                  :key="model.value"
-                  class="input-chip__option"
-                  :class="{ 'input-chip__option--selected': model.value === selectedModelId }"
-                  @click="selectModel(model.value)"
+                  v-if="isModelDropdownOpen"
+                  class="input-chip__menu input-chip__menu--right"
                 >
-                  {{ model.label }}
+                  <div
+                    v-for="model in presetModelOptions"
+                    :key="model.value"
+                    class="input-chip__option"
+                    :class="{ 'input-chip__option--selected': model.value === selectedModelId }"
+                    @click="selectModel(model.value)"
+                  >
+                    {{ model.label }}
+                  </div>
+                  <div
+                    v-if="presetModelOptions.length === 0"
+                    class="input-chip__empty"
+                  >
+                    {{ t('settings.agent.selectModel') }}
+                  </div>
                 </div>
-                <div
-                  v-if="presetModelOptions.length === 0"
-                  class="input-chip__empty"
-                >
-                  {{ t('settings.agent.selectModel') }}
-                </div>
-              </div>
-            </Transition>
+              </Transition>
+            </div>
           </div>
         </div>
       </div>
@@ -415,7 +499,20 @@ const handleRetry = async (message: Message) => {
 }
 
 .message-input__toolbar--bottom {
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.message-input__toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
+}
+
+.message-input__toolbar-section--right {
   justify-content: flex-end;
+  flex: 1;
 }
 
 /* 输入框编辑器容器 */
@@ -424,6 +521,60 @@ const handleRetry = async (message: Message) => {
   flex: 1;
   min-height: calc(1.5em * 4); /* 4 行 */
   max-height: calc(1.5em * 6); /* 6 行 */
+}
+
+.message-input__file-input {
+  display: none;
+}
+
+.message-input__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  padding-bottom: var(--spacing-2);
+}
+
+.message-input__attachment {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.message-input__attachment-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.message-input__attachment-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: rgba(15, 23, 42, 0.72);
+  color: white;
+  cursor: pointer;
+}
+
+.message-input__attachment-remove:hover {
+  background: rgba(15, 23, 42, 0.88);
+}
+
+.message-input__uploading {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
 }
 
 /* 渲染层 - 显示带样式的文件标签 */

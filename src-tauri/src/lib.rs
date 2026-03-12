@@ -156,6 +156,8 @@ pub fn run() {
             commands::message::update_message,
             commands::message::delete_message,
             commands::message::clear_session_messages,
+            commands::message::upload_session_images,
+            commands::message::delete_uploaded_image,
             commands::agent::list_agents,
             commands::agent::create_agent,
             commands::agent::update_agent,

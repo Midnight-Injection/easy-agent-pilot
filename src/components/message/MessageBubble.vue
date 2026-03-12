@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import type { Message } from '@/stores/message'
 import { conversationService } from '@/services/conversation'
 import StructuredContentRenderer from './StructuredContentRenderer.vue'
@@ -20,6 +21,12 @@ const isAssistant = computed(() => props.message.role === 'assistant')
 const isCompression = computed(() => props.message.role === 'compression')
 const isStreaming = computed(() => props.message.status === 'streaming')
 const isError = computed(() => props.message.status === 'error')
+const messageAttachmentPreviews = computed(() =>
+  (props.message.attachments ?? []).map(attachment => ({
+    ...attachment,
+    previewUrl: convertFileSrc(attachment.path)
+  }))
+)
 
 // 停止流式输出
 const handleStop = () => {
@@ -92,6 +99,10 @@ const processedUserMessage = computed(() => {
 
   return parts
 })
+
+const hasUserText = computed(() =>
+  processedUserMessage.value.some(part => part.type === 'file-mention' || part.content.trim().length > 0)
+)
 
 // 用户消息状态文本和图标
 const statusInfo = computed(() => {
@@ -178,7 +189,7 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
           @form-submit="handleFormSubmit"
         />
         <div
-          v-else
+          v-else-if="hasUserText"
           class="message-bubble__text"
         >
           <template
@@ -194,6 +205,19 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
             </span>
             <span v-else>{{ part.content }}</span>
           </template>
+        </div>
+        <div
+          v-if="isUser && messageAttachmentPreviews.length > 0"
+          class="message-bubble__attachments"
+        >
+          <img
+            v-for="attachment in messageAttachmentPreviews"
+            :key="attachment.id"
+            :src="attachment.previewUrl"
+            :alt="attachment.name"
+            :title="attachment.name"
+            class="message-bubble__attachment-image"
+          >
         </div>
         <span
           v-if="isStreaming"
@@ -384,6 +408,23 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
 .message-bubble__text {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.message-bubble__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  margin-bottom: var(--spacing-2);
+}
+
+.message-bubble__attachment-image {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(255, 255, 255, 0.65);
+  box-shadow: var(--shadow-sm);
 }
 
 /* 文件引用样式 */

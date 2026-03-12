@@ -1,11 +1,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { convertFileSrc, invoke } from '@tauri-apps/api/core'
 import { useAgentConfigStore } from '@/stores/agentConfig'
 import { useAgentStore } from '@/stores/agent'
-import { useMessageStore } from '@/stores/message'
+import { useMessageStore, type MessageAttachment } from '@/stores/message'
 import { useNotificationStore } from '@/stores/notification'
 import { useProjectStore } from '@/stores/project'
-import { useSessionExecutionStore } from '@/stores/sessionExecution'
+import { useSessionExecutionStore, type PendingImageAttachment } from '@/stores/sessionExecution'
 import { useSessionStore } from '@/stores/session'
 import { useSettingsStore } from '@/stores/settings'
 import { useTokenStore, type CompressionStrategy, type TokenLevel } from '@/stores/token'
@@ -17,6 +18,16 @@ interface TextSegment {
   type: 'text' | 'file'
   content: string
   fullPath?: string
+}
+
+interface UploadImageInput {
+  fileName?: string
+  mimeType: string
+  bytes: number[]
+}
+
+interface UploadSessionImagesResponse {
+  attachments: MessageAttachment[]
 }
 
 export function useMessageComposer() {
@@ -39,6 +50,7 @@ export function useMessageComposer() {
   const modelDropdownRef = ref<HTMLElement | null>(null)
   const selectedModelId = ref<string>('')
   const textareaRef = ref<HTMLTextAreaElement | null>(null)
+  const fileInputRef = ref<HTMLInputElement | null>(null)
   const renderLayerRef = ref<HTMLDivElement | null>(null)
   const showFileMention = ref(false)
   const fileMentionPosition = ref({ x: 0, y: 0, width: 0, height: 0 })
@@ -105,6 +117,14 @@ export function useMessageComposer() {
 
   const isSending = computed(() =>
     currentSessionId.value ? sessionExecutionStore.getIsSending(currentSessionId.value) : false
+  )
+
+  const pendingImages = computed(() =>
+    currentSessionId.value ? sessionExecutionStore.getPendingImages(currentSessionId.value) : []
+  )
+
+  const isUploadingImages = computed(() =>
+    currentSessionId.value ? sessionExecutionStore.getIsUploadingImages(currentSessionId.value) : false
   )
 
   const parsedInputText = computed<TextSegment[]>(() => {
@@ -425,9 +445,112 @@ export function useMessageComposer() {
     inputText.value = value
   }
 
-  const sendWithCurrentAgent = async (userInput: string): Promise<boolean> => {
+  const toPendingImage = (attachment: MessageAttachment): PendingImageAttachment => ({
+    ...attachment,
+    previewUrl: convertFileSrc(attachment.path)
+  })
+
+  const uploadImages = async (files: File[]) => {
+    const sessionId = currentSessionId.value
+    if (!sessionId || files.length === 0) {
+      return
+    }
+
+    const imageFiles = files.filter(file => file.type.startsWith('image/'))
+    if (imageFiles.length === 0) {
+      notificationStore.warning(t('message.invalidImageFile'))
+      return
+    }
+
+    try {
+      sessionExecutionStore.setIsUploadingImages(sessionId, true)
+
+      const payload: UploadImageInput[] = await Promise.all(imageFiles.map(async (file) => ({
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        bytes: Array.from(new Uint8Array(await file.arrayBuffer()))
+      })))
+
+      const result = await invoke<UploadSessionImagesResponse>('upload_session_images', {
+        sessionId,
+        files: payload
+      })
+
+      sessionExecutionStore.appendPendingImages(
+        sessionId,
+        result.attachments.map(toPendingImage)
+      )
+    } catch (error) {
+      console.error('Failed to upload images:', error)
+      notificationStore.smartError('上传图片', error instanceof Error ? error : new Error(String(error)))
+    } finally {
+      sessionExecutionStore.setIsUploadingImages(sessionId, false)
+    }
+  }
+
+  const openImagePicker = () => {
+    fileInputRef.value?.click()
+  }
+
+  const handleImageFileChange = async (event: Event) => {
+    const target = event.target as HTMLInputElement
+    const files = target.files ? Array.from(target.files) : []
+    target.value = ''
+    await uploadImages(files)
+  }
+
+  const handlePaste = async (event: ClipboardEvent) => {
+    const items = Array.from(event.clipboardData?.items ?? [])
+    const imageFiles = items
+      .filter(item => item.type.startsWith('image/'))
+      .map(item => item.getAsFile())
+      .filter((file): file is File => file !== null)
+
+    if (imageFiles.length === 0) {
+      return
+    }
+
+    event.preventDefault()
+    await uploadImages(imageFiles)
+  }
+
+  const removeImage = async (imageId: string) => {
+    const sessionId = currentSessionId.value
+    const image = pendingImages.value.find(item => item.id === imageId)
+    if (!sessionId || !image) {
+      return
+    }
+
+    try {
+      await invoke('delete_uploaded_image', {
+        sessionId,
+        path: image.path
+      })
+      sessionExecutionStore.removePendingImage(sessionId, imageId)
+    } catch (error) {
+      console.error('Failed to delete uploaded image:', error)
+      notificationStore.smartError('删除图片', error instanceof Error ? error : new Error(String(error)))
+    }
+  }
+
+  const restorePendingImages = (attachments: MessageAttachment[] = []) => {
+    const sessionId = currentSessionId.value
+    if (!sessionId) {
+      return
+    }
+
+    sessionExecutionStore.setPendingImages(
+      sessionId,
+      attachments.map(toPendingImage)
+    )
+  }
+
+  const sendWithCurrentAgent = async (
+    userInput: string,
+    attachments: MessageAttachment[]
+  ): Promise<boolean> => {
     const sessionId = sessionStore.currentSessionId
-    if (!userInput.trim() || !sessionId || isSending.value) return false
+    if ((!userInput.trim() && attachments.length === 0) || !sessionId || isSending.value) return false
 
     if (!currentAgent.value) {
       notificationStore.smartError('发送消息', new Error('请先选择一个智能体'))
@@ -442,7 +565,13 @@ export function useMessageComposer() {
 
     try {
       const projectId = sessionStore.currentSession?.projectId
-      await conversationService.sendMessage(sessionId, userInput, currentAgent.value.id, projectId)
+      await conversationService.sendMessage(
+        sessionId,
+        userInput,
+        currentAgent.value.id,
+        projectId,
+        attachments
+      )
       return true
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -588,32 +717,40 @@ export function useMessageComposer() {
 
   const handleSend = async () => {
     const sessionId = sessionStore.currentSessionId
-    if (!inputText.value.trim() || !sessionId || isSending.value) return
+    if (!sessionId || isSending.value || isUploadingImages.value) return
 
     const rawInput = inputText.value
     const userInput = rawInput.trim()
+    const attachments = pendingImages.value.map((image) => {
+      const { previewUrl, ...attachment } = image
+      void previewUrl
+      return attachment
+    })
 
-    if (userInput.startsWith('/error ')) {
+    if (!userInput && attachments.length === 0) return
+
+    if (attachments.length === 0 && userInput.startsWith('/error ')) {
       inputText.value = ''
       simulateError(userInput.slice(7).trim())
       return
     }
 
-    if (userInput === '/help') {
+    if (attachments.length === 0 && userInput === '/help') {
       inputText.value = ''
       await showHelpMessage()
       return
     }
 
-    if (userInput === '/demo') {
+    if (attachments.length === 0 && userInput === '/demo') {
       inputText.value = ''
       await runDemoStream(sessionId)
       return
     }
 
-    const success = await sendWithCurrentAgent(userInput)
+    const success = await sendWithCurrentAgent(userInput, attachments)
     if (success) {
       inputText.value = ''
+      sessionExecutionStore.clearPendingImages(sessionId)
     } else {
       inputText.value = rawInput
     }
@@ -630,7 +767,7 @@ export function useMessageComposer() {
       values
     }, null, 2)
 
-    await sendWithCurrentAgent(payload)
+    await sendWithCurrentAgent(payload, [])
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
@@ -661,14 +798,17 @@ export function useMessageComposer() {
     currentProject,
     currentSessionId,
     fileMentionPosition,
+    fileInputRef,
     getModelLabel,
     handleCancelCompress,
     handleConfirmCompress,
     handleFileSelect,
+    handleImageFileChange,
     handleInput,
     handleKeyDown,
     handleMessageFormSubmit,
     handleOpenCompress,
+    handlePaste,
     handleSend,
     inputPlaceholder,
     inputText,
@@ -676,12 +816,17 @@ export function useMessageComposer() {
     isCompressing,
     isModelDropdownOpen,
     isSending,
+    isUploadingImages,
     mentionSearchText,
     mentionStart,
     modelDropdownRef,
+    openImagePicker,
     parsedInputText,
+    pendingImages,
     presetModelOptions,
     renderLayerRef,
+    removeImage,
+    restorePendingImages,
     selectedModelId,
     selectAgent,
     selectModel,

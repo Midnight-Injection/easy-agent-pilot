@@ -1,5 +1,10 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import type { MessageAttachment } from './message'
+
+export interface PendingImageAttachment extends MessageAttachment {
+  previewUrl: string
+}
 
 /**
  * 单个会话的执行状态
@@ -7,6 +12,10 @@ import { ref, computed } from 'vue'
 export interface SessionExecutionState {
   /** 输入框内容 */
   inputText: string
+  /** 待发送图片 */
+  pendingImages: PendingImageAttachment[]
+  /** 是否正在上传图片 */
+  isUploadingImages: boolean
   /** 是否正在发送消息 */
   isSending: boolean
   /** 是否正在流式输出 */
@@ -60,6 +69,18 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
     }
   })
 
+  const getPendingImages = computed(() => {
+    return (sessionId: string) => {
+      return getExecutionState(sessionId).pendingImages
+    }
+  })
+
+  const getIsUploadingImages = computed(() => {
+    return (sessionId: string) => {
+      return getExecutionState(sessionId).isUploadingImages
+    }
+  })
+
   /**
    * 获取当前流式输出状态（计算属性）
    */
@@ -75,6 +96,8 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
   function createDefaultState(): SessionExecutionState {
     return {
       inputText: '',
+      pendingImages: [],
+      isUploadingImages: false,
       isSending: false,
       isStreaming: false,
       streamTimerId: null,
@@ -88,6 +111,31 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
   function setInputText(sessionId: string, text: string) {
     const state = getExecutionState(sessionId)
     state.inputText = text
+  }
+
+  function setPendingImages(sessionId: string, images: PendingImageAttachment[]) {
+    const state = getExecutionState(sessionId)
+    state.pendingImages = images
+  }
+
+  function appendPendingImages(sessionId: string, images: PendingImageAttachment[]) {
+    const state = getExecutionState(sessionId)
+    state.pendingImages = [...state.pendingImages, ...images]
+  }
+
+  function removePendingImage(sessionId: string, imageId: string) {
+    const state = getExecutionState(sessionId)
+    state.pendingImages = state.pendingImages.filter(image => image.id !== imageId)
+  }
+
+  function clearPendingImages(sessionId: string) {
+    const state = getExecutionState(sessionId)
+    state.pendingImages = []
+  }
+
+  function setIsUploadingImages(sessionId: string, uploading: boolean) {
+    const state = getExecutionState(sessionId)
+    state.isUploadingImages = uploading
   }
 
   /**
@@ -137,6 +185,7 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
   function endSending(sessionId: string) {
     const state = getExecutionState(sessionId)
     state.isSending = false
+    state.isUploadingImages = false
     state.isStreaming = false
     state.streamTimerId = null
     state.currentStreamingMessageId = null
@@ -220,6 +269,8 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
 
     // Getters
     getInputText,
+    getPendingImages,
+    getIsUploadingImages,
     getIsSending,
     getIsStreaming,
     hasAnyRunningSession,
@@ -228,6 +279,11 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
     // Actions
     getExecutionState,
     setInputText,
+    setPendingImages,
+    appendPendingImages,
+    removePendingImage,
+    clearPendingImages,
+    setIsUploadingImages,
     setIsSending,
     setIsStreaming,
     setStreamTimerId,

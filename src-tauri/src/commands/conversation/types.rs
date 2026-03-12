@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::commands::message::MessageAttachment;
+
 /// MCP 服务器配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -172,9 +174,12 @@ impl ExecutionRequest {
 
 /// 消息输入
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageInput {
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub attachments: Option<Vec<MessageAttachment>>,
 }
 
 /// 工具定义
