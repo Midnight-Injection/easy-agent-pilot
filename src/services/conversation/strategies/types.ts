@@ -1,5 +1,6 @@
 import type { AgentConfig } from '@/stores/agent'
 import type { Message, MessageAttachment } from '@/stores/message'
+import type { FileEditTrace } from '@/types/fileTrace'
 
 /**
  * MCP 服务器配置
@@ -75,7 +76,7 @@ export interface ConversationContext {
 /**
  * 流式事件类型
  */
-export type StreamEventType = 'content' | 'tool_use' | 'tool_result' | 'error' | 'done' | 'thinking'
+export type StreamEventType = 'content' | 'tool_use' | 'tool_result' | 'error' | 'done' | 'thinking' | 'file_edit' | 'usage'
 
 /**
  * 流式事件
@@ -101,6 +102,8 @@ export interface StreamEvent {
   outputTokens?: number
   /** 模型名称 */
   model?: string
+  /** 文件编辑轨迹 */
+  fileEdit?: FileEditTrace
 }
 
 /**
@@ -222,7 +225,7 @@ export interface MessageInput {
  */
 export interface BackendStreamEvent {
   /** 事件类型 */
-  type: 'content' | 'tool_use' | 'tool_input_delta' | 'tool_result' | 'error' | 'done' | 'thinking' | 'thinking_start'
+  type: 'content' | 'tool_use' | 'tool_input_delta' | 'tool_result' | 'error' | 'done' | 'thinking' | 'thinking_start' | 'file_edit' | 'usage' | 'message_start'
   /** 会话 ID */
   sessionId: string
   /** 内容 */
@@ -243,6 +246,8 @@ export interface BackendStreamEvent {
   outputTokens?: number
   /** 模型名称 */
   model?: string
+  /** 文件编辑轨迹 */
+  fileEdit?: FileEditTrace
 }
 
 export type CliStreamEvent = BackendStreamEvent

@@ -2,8 +2,17 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
 import { useThemeStore } from '@/stores/theme'
-import { ensureMonacoSetup } from '../monaco/setup'
+import { applyMonacoTheme, ensureMonacoSetup } from '../monaco/setup'
 import type { CompletionEntry, CompletionKind, MonacoLanguageId } from '../types'
+
+interface EditorHighlightRange {
+  startLine: number
+  endLine: number
+  startColumn?: number
+  endColumn?: number
+  className?: string
+  isWholeLine?: boolean
+}
 
 interface MonacoCodeEditorProps {
   modelValue: string
@@ -13,11 +22,15 @@ interface MonacoCodeEditorProps {
   wordWrap: boolean
   completions?: CompletionEntry[]
   readOnly?: boolean
+  highlightedRanges?: EditorHighlightRange[]
+  focusRange?: EditorHighlightRange | null
 }
 
 const props = withDefaults(defineProps<MonacoCodeEditorProps>(), {
   completions: () => [],
-  readOnly: false
+  readOnly: false,
+  highlightedRanges: () => [],
+  focusRange: null
 })
 
 const emit = defineEmits<{
@@ -31,7 +44,9 @@ const containerRef = ref<HTMLDivElement | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let model: monaco.editor.ITextModel | null = null
 let completionProviderDisposable: monaco.IDisposable | null = null
+let decorationCollection: monaco.editor.IEditorDecorationsCollection | null = null
 let isSyncingFromOutside = false
+let renderTimer: number | null = null
 
 const completionKindMap: Record<CompletionKind, monaco.languages.CompletionItemKind> = {
   keyword: monaco.languages.CompletionItemKind.Keyword,
@@ -56,8 +71,8 @@ const completionTriggerCharactersMap: Partial<Record<MonacoLanguageId, string[]>
   yaml: [':', '-']
 }
 
-const resolveTheme = (): 'vs' | 'vs-dark' => {
-  return themeStore.isDark ? 'vs-dark' : 'vs'
+const resolveTheme = (): 'easy-agent-light' | 'easy-agent-dark' => {
+  return themeStore.isDark ? 'easy-agent-dark' : 'easy-agent-light'
 }
 
 const registerCompletionProvider = (): void => {
@@ -105,8 +120,83 @@ const updateEditorOptions = (): void => {
   })
 }
 
+const updateDecorations = (): void => {
+  if (!editor || !model) {
+    return
+  }
+
+  if (!decorationCollection) {
+    decorationCollection = editor.createDecorationsCollection()
+  }
+
+  decorationCollection.set(props.highlightedRanges.map((range) => ({
+    range: new monaco.Range(
+      range.startLine,
+      range.startColumn ?? 1,
+      range.endLine,
+      range.endColumn ?? Number.MAX_SAFE_INTEGER
+    ),
+    options: {
+      isWholeLine: range.isWholeLine ?? true,
+      className: range.className ?? 'ea-monaco-highlight',
+      minimap: {
+        color: 'rgba(59, 130, 246, 0.45)',
+        position: monaco.editor.MinimapPosition.Inline
+      },
+      overviewRuler: {
+        color: 'rgba(59, 130, 246, 0.6)',
+        position: monaco.editor.OverviewRulerLane.Center
+      }
+    }
+  })))
+}
+
+const revealFocusRange = (): void => {
+  if (!editor || !props.focusRange) {
+    return
+  }
+
+  const range = new monaco.Range(
+    props.focusRange.startLine,
+    props.focusRange.startColumn ?? 1,
+    props.focusRange.endLine,
+    props.focusRange.endColumn ?? 1
+  )
+  editor.revealRangeInCenter(range, monaco.editor.ScrollType.Smooth)
+  editor.setPosition({
+    lineNumber: props.focusRange.startLine,
+    column: props.focusRange.startColumn ?? 1
+  })
+}
+
+const flushEditorRender = (): void => {
+  editor?.layout()
+  editor?.render(true)
+}
+
+const scheduleEditorRender = (): void => {
+  requestAnimationFrame(() => {
+    flushEditorRender()
+  })
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      flushEditorRender()
+    })
+  })
+
+  if (renderTimer !== null) {
+    window.clearTimeout(renderTimer)
+  }
+
+  renderTimer = window.setTimeout(() => {
+    flushEditorRender()
+    renderTimer = null
+  }, 80)
+}
+
 onMounted(() => {
   ensureMonacoSetup()
+  applyMonacoTheme(themeStore.isDark)
 
   if (!containerRef.value) {
     return
@@ -135,6 +225,8 @@ onMounted(() => {
     automaticLayout: true
   })
 
+  decorationCollection = editor.createDecorationsCollection()
+
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
     emit('save-shortcut')
   })
@@ -148,6 +240,9 @@ onMounted(() => {
   })
 
   registerCompletionProvider()
+  updateDecorations()
+  revealFocusRange()
+  scheduleEditorRender()
 })
 
 watch(() => props.modelValue, nextValue => {
@@ -156,11 +251,9 @@ watch(() => props.modelValue, nextValue => {
   }
 
   isSyncingFromOutside = true
-  model.pushEditOperations([], [{
-    range: model.getFullModelRange(),
-    text: nextValue
-  }], () => null)
+  model.setValue(nextValue)
   isSyncingFromOutside = false
+  scheduleEditorRender()
 })
 
 watch(() => props.language, nextLanguage => {
@@ -170,6 +263,7 @@ watch(() => props.language, nextLanguage => {
 
   monaco.editor.setModelLanguage(model, nextLanguage)
   registerCompletionProvider()
+  scheduleEditorRender()
 })
 
 watch(() => props.completions, () => {
@@ -180,11 +274,31 @@ watch(() => [props.fontSize, props.tabSize, props.wordWrap, props.readOnly], () 
   updateEditorOptions()
 })
 
-watch(() => themeStore.isDark, () => {
-  monaco.editor.setTheme(resolveTheme())
-})
+watch(() => props.highlightedRanges, () => {
+  updateDecorations()
+  scheduleEditorRender()
+}, { deep: true })
+
+watch(() => props.focusRange, () => {
+  revealFocusRange()
+  scheduleEditorRender()
+}, { deep: true })
+
+watch(
+  () => [themeStore.isDark, themeStore.currentThemeColorId] as const,
+  ([isDark]) => {
+    applyMonacoTheme(isDark)
+  }
+)
 
 onUnmounted(() => {
+  if (renderTimer !== null) {
+    window.clearTimeout(renderTimer)
+    renderTimer = null
+  }
+
+  decorationCollection?.clear()
+  decorationCollection = null
   completionProviderDisposable?.dispose()
   completionProviderDisposable = null
 
@@ -208,5 +322,16 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+:global(.monaco-editor .ea-monaco-highlight) {
+  background: linear-gradient(90deg, rgba(37, 99, 235, 0.16), rgba(37, 99, 235, 0.05));
+  border-left: 3px solid rgba(37, 99, 235, 0.72);
+}
+
+:global([data-theme='dark'] .monaco-editor .ea-monaco-highlight),
+:global(.dark .monaco-editor .ea-monaco-highlight) {
+  background: linear-gradient(90deg, rgba(147, 197, 253, 0.18), rgba(147, 197, 253, 0.06));
+  border-left-color: rgba(147, 197, 253, 0.82);
 }
 </style>

@@ -11,6 +11,8 @@ import type { ConversationContext, StreamEvent } from './strategies/types'
 import { compressionService } from '@/services/compression/CompressionService'
 import { buildConversationMessages } from './buildConversationMessages'
 import { buildProjectMemorySystemPrompt } from '@/services/memory'
+import type { FileEditTrace } from '@/types/fileTrace'
+import { FileTraceCollector } from './fileTraceCollector'
 
 /**
  * 对话服务
@@ -45,6 +47,7 @@ export class ConversationService {
     const messageStore = useMessageStore()
     const sessionStore = useSessionStore()
     const sessionExecutionStore = useSessionExecutionStore()
+    const tokenStore = useTokenStore()
     const projectStore = useProjectStore()
     const agentStore = useAgentStore()
     const memoryStore = useMemoryStore()
@@ -62,6 +65,7 @@ export class ConversationService {
 
     // 开始发送状态
     sessionExecutionStore.startSending(sessionId)
+    tokenStore.clearRealtimeTokens(sessionId)
 
     try {
       // 添加用户消息
@@ -217,7 +221,19 @@ export class ConversationService {
     let accumulatedContent = ''
     let accumulatedThinking = ''
     const toolCalls: ToolCall[] = []
+    const editTraces: FileEditTrace[] = []
+    const fileTraceCollector = new FileTraceCollector({
+      sessionId,
+      messageId: aiMessage.id,
+      projectPath: context.workingDirectory
+    })
+    const pendingTraceTasks = new Set<Promise<void>>()
     let hasError = false
+
+    const registerTraceTask = (task: Promise<void>) => {
+      pendingTraceTasks.add(task)
+      task.finally(() => pendingTraceTasks.delete(task))
+    }
 
     try {
       await agentExecutor.execute(context, (event: StreamEvent) => {
@@ -255,6 +271,9 @@ export class ConversationService {
             messageStore.updateMessage(aiMessage.id, {
               toolCalls: [...toolCalls]
             })
+            registerTraceTask((async () => {
+              await fileTraceCollector.captureToolUse(toolCall)
+            })())
           },
           onToolResult: (toolCallId, result, isError) => {
             // 更新工具调用的结果
@@ -269,6 +288,20 @@ export class ConversationService {
               messageStore.updateMessage(aiMessage.id, {
                 toolCalls: [...toolCalls]
               })
+            }
+
+            if (!isError) {
+              registerTraceTask((async () => {
+                const trace = await fileTraceCollector.resolveToolResult(toolCallId, result)
+                if (!trace) {
+                  return
+                }
+
+                editTraces.push(trace)
+                await messageStore.updateMessage(aiMessage.id, {
+                  editTraces: [...editTraces]
+                })
+              })())
             }
           },
           onError: (error) => {
@@ -297,6 +330,8 @@ export class ConversationService {
           }
         })
       })
+
+      await Promise.allSettled(Array.from(pendingTraceTasks))
 
       // 兜底：部分后端/CLI 场景可能不会显式发出 done 事件，避免状态长期卡在“生成中”
       if (sessionExecutionStore.getIsSending(sessionId)) {
@@ -344,7 +379,7 @@ export class ConversationService {
 
     // 处理 token 事件 - 优先使用 CLI 返回的真实 token 数据
     if (event.inputTokens !== undefined || event.outputTokens !== undefined) {
-      tokenStore.updateRealtimeTokens(handlers.sessionId, event.inputTokens ?? 0, event.outputTokens ?? 0)
+      tokenStore.updateRealtimeTokens(handlers.sessionId, event.inputTokens, event.outputTokens, event.model)
     }
 
     switch (event.type) {

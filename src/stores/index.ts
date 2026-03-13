@@ -19,6 +19,7 @@ export {
   type Message,
   type PaginationState
 } from './message'
+export type { FileEditTrace, FileEditRange, FileEditPreview, FileEditChangeType } from '@/types/fileTrace'
 export * from './settings'
 export * from './theme'
 export * from './layout'
@@ -27,3 +28,5 @@ export * from './windowState'
 export * from './token'
 export * from './windowManager'
 export * from './appState'
+export * from './aiEditTrace'
+export * from './tracePreview'

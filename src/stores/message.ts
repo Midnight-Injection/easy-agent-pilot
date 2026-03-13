@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useNotificationStore } from './notification'
 import { getErrorMessage } from '@/utils/api'
 import type { CompressionStrategy } from './token'
+import type { FileEditTrace } from '@/types/fileTrace'
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'compression'
 export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'interrupted'
@@ -54,6 +55,7 @@ export interface Message {
   toolCalls?: ToolCall[]
   // 思考内容（扩展思维模型的思考过程）
   thinking?: string
+  editTraces?: FileEditTrace[]
   createdAt: string
   // 压缩消息的元数据
   compressionMetadata?: CompressionMetadata
@@ -83,6 +85,8 @@ interface RustMessage {
   toolCalls?: RustToolCall[] | null
   tool_calls?: RustToolCall[] | null
   thinking?: string | null
+  editTraces?: string | null
+  edit_traces?: string | null
   compressionMetadata?: string | null
   compression_metadata?: string | null
   createdAt?: string
@@ -95,6 +99,21 @@ interface PaginatedRustMessages {
   has_more: boolean
 }
 
+function resolveRawMessageCreatedAt(message?: RustMessage): string | null {
+  if (!message) return null
+  return message.created_at ?? message.createdAt ?? null
+}
+
+function dedupeMessagesById(items: Message[]): Message[] {
+  const map = new Map<string, Message>()
+
+  for (const message of items) {
+    map.set(message.id, message)
+  }
+
+  return Array.from(map.values())
+}
+
 interface CreateMessageInput {
   session_id: string
   role: string
@@ -105,6 +124,7 @@ interface CreateMessageInput {
   error_message?: string
   tool_calls?: string // JSON string
   thinking?: string
+  edit_traces?: string
   compression_metadata?: string
 }
 
@@ -116,6 +136,7 @@ interface UpdateMessageInput {
   error_message?: string
   tool_calls?: string // JSON string
   thinking?: string
+  edit_traces?: string
   compression_metadata?: string
 }
 
@@ -125,6 +146,13 @@ export interface PaginationState {
   hasMore: boolean
   isLoadingMore: boolean
   oldestMessageCreatedAt: string | null
+}
+
+function serializeToolCalls(toolCalls: ToolCall[]): string {
+  return JSON.stringify(toolCalls.map(toolCall => ({
+    ...toolCall,
+    arguments: JSON.stringify(toolCall.arguments ?? {})
+  })))
 }
 
 function transformMessage(rustMsg: RustMessage): Message {
@@ -149,6 +177,15 @@ function transformMessage(rustMsg: RustMessage): Message {
   const createdAt = rustMsg.createdAt ?? rustMsg.created_at
   const errorMessage = rustMsg.errorMessage ?? rustMsg.error_message
   const rawCompressionMetadata = rustMsg.compressionMetadata ?? rustMsg.compression_metadata
+  const rawEditTraces = rustMsg.editTraces ?? rustMsg.edit_traces
+  const editTraces = (() => {
+    if (!rawEditTraces) return undefined
+    try {
+      return JSON.parse(rawEditTraces) as FileEditTrace[]
+    } catch {
+      return undefined
+    }
+  })()
   const compressionMetadata = (() => {
     if (!rawCompressionMetadata) return undefined
     try {
@@ -169,6 +206,7 @@ function transformMessage(rustMsg: RustMessage): Message {
     errorMessage: errorMessage ?? undefined,
     toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
     thinking: rustMsg.thinking ?? undefined,
+    editTraces: editTraces && editTraces.length > 0 ? editTraces : undefined,
     compressionMetadata,
     createdAt: createdAt || new Date().toISOString()
   }
@@ -218,15 +256,15 @@ export const useMessageStore = defineStore('message', () => {
         limit: PAGE_SIZE
       })
 
-      messages.value = result.messages.map(transformMessage)
+      messages.value = dedupeMessagesById(result.messages.map(transformMessage))
 
       // 更新分页状态
-      const oldestMessage = result.messages[result.messages.length - 1]
+      const oldestMessage = result.messages[0]
       pagination.value.set(sessionId, {
         total: result.total,
         hasMore: result.has_more,
         isLoadingMore: false,
-        oldestMessageCreatedAt: oldestMessage?.created_at || null
+        oldestMessageCreatedAt: resolveRawMessageCreatedAt(oldestMessage)
       })
     } catch (error) {
       console.error('Failed to load messages:', error)
@@ -269,17 +307,27 @@ export const useMessageStore = defineStore('message', () => {
         before: currentPagination.oldestMessageCreatedAt
       })
 
-      // 将新加载的消息添加到列表开头（因为它们是更早的消息）
+      // 将新加载的消息添加到当前会话列表开头，同时保留其他会话消息
       const newMessages = result.messages.map(transformMessage)
-      messages.value = [...newMessages, ...messages.value.filter(m => m.sessionId === sessionId)]
+      const otherSessionMessages = messages.value.filter(m => m.sessionId !== sessionId)
+      const currentSessionMessages = messages.value.filter(m => m.sessionId === sessionId)
+      messages.value = dedupeMessagesById([
+        ...otherSessionMessages,
+        ...newMessages,
+        ...currentSessionMessages
+      ])
 
       // 更新分页状态
-      const oldestMessage = result.messages[result.messages.length - 1]
+      const oldestMessage = result.messages[0]
+      const resolvedOldestMessageCreatedAt = resolveRawMessageCreatedAt(oldestMessage)
+      const hasMore = result.messages.length > 0
+        && resolvedOldestMessageCreatedAt !== currentPagination.oldestMessageCreatedAt
+        && result.has_more
       pagination.value.set(sessionId, {
         total: result.total,
-        hasMore: result.has_more,
+        hasMore,
         isLoadingMore: false,
-        oldestMessageCreatedAt: oldestMessage?.created_at || currentPagination.oldestMessageCreatedAt
+        oldestMessageCreatedAt: resolvedOldestMessageCreatedAt || currentPagination.oldestMessageCreatedAt
       })
     } catch (error) {
       console.error('Failed to load more messages:', error)
@@ -306,8 +354,9 @@ export const useMessageStore = defineStore('message', () => {
       status: message.status,
       tokens: message.tokens,
       error_message: message.errorMessage,
-      tool_calls: message.toolCalls ? JSON.stringify(message.toolCalls) : undefined,
+      tool_calls: message.toolCalls ? serializeToolCalls(message.toolCalls) : undefined,
       thinking: message.thinking,
+      edit_traces: message.editTraces ? JSON.stringify(message.editTraces) : undefined,
       compression_metadata: message.compressionMetadata
         ? JSON.stringify(message.compressionMetadata)
         : undefined
@@ -338,7 +387,7 @@ export const useMessageStore = defineStore('message', () => {
     if (updates.tokens !== undefined) input.tokens = updates.tokens
     if (updates.errorMessage !== undefined) input.error_message = updates.errorMessage
     if (updates.toolCalls !== undefined) {
-      input.tool_calls = JSON.stringify(updates.toolCalls)
+      input.tool_calls = serializeToolCalls(updates.toolCalls)
       console.log('[MessageStore] 更新工具调用:', {
         messageId: id,
         toolCallsCount: updates.toolCalls.length,
@@ -346,6 +395,9 @@ export const useMessageStore = defineStore('message', () => {
       })
     }
     if (updates.thinking !== undefined) input.thinking = updates.thinking
+    if (updates.editTraces !== undefined) {
+      input.edit_traces = JSON.stringify(updates.editTraces)
+    }
     if (updates.compressionMetadata !== undefined) {
       input.compression_metadata = JSON.stringify(updates.compressionMetadata)
     }

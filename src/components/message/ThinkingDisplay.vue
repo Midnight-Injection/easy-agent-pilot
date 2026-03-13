@@ -53,14 +53,18 @@ const toggleExpand = () => {
 .thinking-display {
   width: 100%;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, rgba(196, 181, 253, 0.15), rgba(221, 214, 254, 0.1));
-  border: 1px solid rgba(167, 139, 250, 0.25);
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(34, 197, 94, 0.05)),
+    color-mix(in srgb, var(--color-surface) 92%, white 8%);
+  border: 1px solid rgba(14, 165, 233, 0.2);
   overflow: hidden;
-  transition: all 0.3s ease;
+  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.08);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
 }
 
 .thinking-display:hover {
-  border-color: rgba(167, 139, 250, 0.4);
+  border-color: rgba(8, 145, 178, 0.3);
+  box-shadow: 0 12px 30px rgba(8, 145, 178, 0.1);
 }
 
 .thinking-display__header {
@@ -74,7 +78,7 @@ const toggleExpand = () => {
 }
 
 .thinking-display__header:hover {
-  background: rgba(196, 181, 253, 0.2);
+  background: rgba(14, 165, 233, 0.08);
 }
 
 .thinking-display__header-left {
@@ -97,7 +101,7 @@ const toggleExpand = () => {
 .thinking-display__badge {
   font-size: 10px;
   padding: 1px 6px;
-  background: linear-gradient(135deg, #c4b5fd, #a78bfa);
+  background: linear-gradient(135deg, #0891b2, #0f766e);
   color: white;
   border-radius: var(--radius-sm);
   font-weight: 500;
@@ -127,7 +131,7 @@ const toggleExpand = () => {
 }
 
 .thinking-display__content {
-  border-top: 1px solid rgba(167, 139, 250, 0.15);
+  border-top: 1px solid rgba(14, 165, 233, 0.14);
 }
 
 .thinking-display__scroll {
@@ -146,12 +150,12 @@ const toggleExpand = () => {
 }
 
 .thinking-display__scroll::-webkit-scrollbar-thumb {
-  background: rgba(167, 139, 250, 0.3);
+  background: rgba(8, 145, 178, 0.24);
   border-radius: 2px;
 }
 
 .thinking-display__scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(167, 139, 250, 0.5);
+  background: rgba(8, 145, 178, 0.36);
 }
 
 .thinking-display__text {
@@ -167,12 +171,30 @@ const toggleExpand = () => {
 /* 暗色模式适配 */
 :global([data-theme='dark']) .thinking-display,
 :global(.dark) .thinking-display {
-  background: linear-gradient(135deg, rgba(196, 181, 253, 0.1), rgba(221, 214, 254, 0.05));
-  border-color: rgba(167, 139, 250, 0.2);
+  background:
+    linear-gradient(135deg, rgba(8, 145, 178, 0.18), rgba(6, 95, 70, 0.08)),
+    rgba(15, 23, 42, 0.78);
+  border-color: rgba(34, 211, 238, 0.18);
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.26);
 }
 
 :global([data-theme='dark']) .thinking-display__header:hover,
 :global(.dark) .thinking-display__header:hover {
-  background: rgba(196, 181, 253, 0.15);
+  background: rgba(8, 145, 178, 0.16);
+}
+
+:global([data-theme='dark']) .thinking-display__content,
+:global(.dark) .thinking-display__content {
+  border-top-color: rgba(34, 211, 238, 0.14);
+}
+
+:global([data-theme='dark']) .thinking-display__badge,
+:global(.dark) .thinking-display__badge {
+  background: linear-gradient(135deg, #06b6d4, #0f766e);
+}
+
+:global([data-theme='dark']) .thinking-display__text,
+:global(.dark) .thinking-display__text {
+  color: #cbd5e1;
 }
 </style>

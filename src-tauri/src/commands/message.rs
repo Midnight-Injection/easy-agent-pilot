@@ -46,6 +46,7 @@ pub struct Message {
     pub error_message: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub thinking: Option<String>,
+    pub edit_traces: Option<String>,
     pub compression_metadata: Option<String>,
     pub created_at: String,
 }
@@ -62,6 +63,7 @@ pub struct CreateMessageInput {
     pub error_message: Option<String>,
     pub tool_calls: Option<String>, // JSON string
     pub thinking: Option<String>,
+    pub edit_traces: Option<String>,
     pub compression_metadata: Option<String>,
 }
 
@@ -75,6 +77,7 @@ pub struct UpdateMessageInput {
     pub error_message: Option<String>,
     pub tool_calls: Option<String>, // JSON string
     pub thinking: Option<String>,
+    pub edit_traces: Option<String>,
     pub compression_metadata: Option<String>,
 }
 
@@ -141,7 +144,35 @@ fn extension_from_mime_type(mime_type: &str) -> &'static str {
 }
 
 fn parse_tool_calls(tool_calls_json: Option<String>) -> Option<Vec<ToolCall>> {
-    tool_calls_json.and_then(|json| serde_json::from_str(&json).ok())
+    let raw_json = tool_calls_json?;
+    let value = serde_json::from_str::<serde_json::Value>(&raw_json).ok()?;
+    let items = value.as_array()?;
+    let mut tool_calls = Vec::with_capacity(items.len());
+
+    for item in items {
+        let object = item.as_object()?;
+        let arguments = match object.get("arguments") {
+            Some(serde_json::Value::String(text)) => text.clone(),
+            Some(value) => serde_json::to_string(value).ok()?,
+            None => "{}".to_string(),
+        };
+
+        tool_calls.push(ToolCall {
+            id: object.get("id")?.as_str()?.to_string(),
+            name: object.get("name")?.as_str()?.to_string(),
+            arguments,
+            status: object.get("status")?.as_str()?.to_string(),
+            result: object
+                .get("result")
+                .and_then(|value| value.as_str().map(ToString::to_string)),
+            error_message: object
+                .get("errorMessage")
+                .or_else(|| object.get("error_message"))
+                .and_then(|value| value.as_str().map(ToString::to_string)),
+        });
+    }
+
+    Some(tool_calls)
 }
 
 fn parse_attachments(attachments_json: Option<String>) -> Option<Vec<MessageAttachment>> {
@@ -168,8 +199,9 @@ fn map_message_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         error_message: row.get(7)?,
         tool_calls: parse_tool_calls(tool_calls_json),
         thinking: row.get(9)?,
-        compression_metadata: row.get(10)?,
-        created_at: row.get(11)?,
+        edit_traces: row.get(10)?,
+        compression_metadata: row.get(11)?,
+        created_at: row.get(12)?,
     })
 }
 
@@ -234,7 +266,7 @@ pub fn list_messages(
         (
             format!(
                 r#"
-                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, compression_metadata, created_at
+                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at
                 FROM messages
                 WHERE session_id = ?1 AND created_at < ?2
                 ORDER BY created_at DESC
@@ -251,7 +283,7 @@ pub fn list_messages(
         (
             format!(
                 r#"
-                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, compression_metadata, created_at
+                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at
                 FROM messages
                 WHERE session_id = ?1
                 ORDER BY created_at DESC
@@ -297,7 +329,7 @@ pub fn create_message(input: CreateMessageInput) -> Result<Message, String> {
     let tool_calls = parse_tool_calls(input.tool_calls.clone());
 
     conn.execute(
-        "INSERT INTO messages (id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, compression_metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO messages (id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         rusqlite::params![
             &id,
             &input.session_id,
@@ -309,6 +341,7 @@ pub fn create_message(input: CreateMessageInput) -> Result<Message, String> {
             &input.error_message,
             &input.tool_calls,
             &input.thinking,
+            &input.edit_traces,
             &input.compression_metadata,
             &now
         ],
@@ -333,6 +366,7 @@ pub fn create_message(input: CreateMessageInput) -> Result<Message, String> {
         error_message: input.error_message,
         tool_calls,
         thinking: input.thinking,
+        edit_traces: input.edit_traces,
         compression_metadata: input.compression_metadata,
         created_at: now,
     })
@@ -373,6 +407,10 @@ pub fn update_message(id: String, input: UpdateMessageInput) -> Result<Message, 
     }
     if input.thinking.is_some() {
         updates.push(format!("thinking = ?{}", param_index));
+        param_index += 1;
+    }
+    if input.edit_traces.is_some() {
+        updates.push(format!("edit_traces = ?{}", param_index));
         param_index += 1;
     }
     if input.compression_metadata.is_some() {
@@ -430,6 +468,11 @@ pub fn update_message(id: String, input: UpdateMessageInput) -> Result<Message, 
             .map_err(|e| e.to_string())?;
         param_count += 1;
     }
+    if let Some(ref edit_traces) = input.edit_traces {
+        stmt.raw_bind_parameter(param_count, edit_traces)
+            .map_err(|e| e.to_string())?;
+        param_count += 1;
+    }
     if let Some(ref compression_metadata) = input.compression_metadata {
         stmt.raw_bind_parameter(param_count, compression_metadata)
             .map_err(|e| e.to_string())?;
@@ -451,7 +494,7 @@ pub fn update_message(id: String, input: UpdateMessageInput) -> Result<Message, 
 fn get_message_by_id(conn: &Connection, id: &str) -> Result<Message, String> {
     let message = conn
         .query_row(
-            "SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, compression_metadata, created_at FROM messages WHERE id = ?1",
+            "SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at FROM messages WHERE id = ?1",
             [id],
             map_message_row,
         )

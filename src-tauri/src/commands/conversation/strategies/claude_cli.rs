@@ -485,6 +485,43 @@ fn parse_claude_json_blob_output(session_id: &str, output: &str) -> Option<CliSt
     None
 }
 
+fn extract_usage_counts(usage: Option<&serde_json::Value>) -> (Option<u32>, Option<u32>) {
+    let raw_input_tokens = usage
+        .and_then(|u| {
+            u.get("input_tokens")
+                .or_else(|| u.get("inputTokens"))
+                .or_else(|| u.get("cache_read_input_tokens"))
+                .or_else(|| u.get("cacheReadInputTokens"))
+        })
+        .and_then(|t| t.as_u64())
+        .map(|t| t as u32);
+    let raw_output_tokens = usage
+        .and_then(|u| u.get("output_tokens").or_else(|| u.get("outputTokens")))
+        .and_then(|t| t.as_u64())
+        .map(|t| t as u32);
+
+    let has_non_zero_usage =
+        raw_input_tokens.unwrap_or(0) > 0 || raw_output_tokens.unwrap_or(0) > 0;
+    if !has_non_zero_usage {
+        return (None, None);
+    }
+
+    let input_tokens = raw_input_tokens.or(Some(0));
+    let output_tokens = raw_output_tokens.or(Some(0));
+
+    (input_tokens, output_tokens)
+}
+
+fn extract_result_model_name(json: &serde_json::Value) -> Option<String> {
+    if let Some(model) = json.get("model").and_then(|value| value.as_str()) {
+        return Some(model.to_string());
+    }
+
+    json.get("modelUsage")
+        .and_then(|value| value.as_object())
+        .and_then(|models| models.keys().next().cloned())
+}
+
 /// 解析 `--output-format stream-json` 的每行 JSON 输出
 fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Option<CliStreamEvent> {
     let event_type = json
@@ -578,15 +615,7 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
             let message = json.get("message")?;
 
             // 提取 token 使用量
-            let usage = message.get("usage");
-            let input_tokens = usage
-                .and_then(|u| u.get("input_tokens"))
-                .and_then(|t| t.as_u64())
-                .map(|t| t as u32);
-            let output_tokens = usage
-                .and_then(|u| u.get("output_tokens"))
-                .and_then(|t| t.as_u64())
-                .map(|t| t as u32);
+            let (input_tokens, output_tokens) = extract_usage_counts(message.get("usage"));
 
             // 提取模型信息
             let model = message
@@ -613,16 +642,7 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
             }
         }
         "message_delta" => {
-            let usage = json.get("usage");
-
-            let input_tokens = usage
-                .and_then(|u| u.get("input_tokens"))
-                .and_then(|t| t.as_u64())
-                .map(|t| t as u32);
-            let output_tokens = usage
-                .and_then(|u| u.get("output_tokens"))
-                .and_then(|t| t.as_u64())
-                .map(|t| t as u32);
+            let (input_tokens, output_tokens) = extract_usage_counts(json.get("usage"));
 
             if input_tokens.is_some() || output_tokens.is_some() {
                 Some(CliStreamEvent {
@@ -655,6 +675,49 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
             output_tokens: None,
             model: None,
         }),
+        "result" => {
+            let (input_tokens, output_tokens) = extract_usage_counts(json.get("usage"));
+            let model = extract_result_model_name(json);
+
+            if input_tokens.is_some() || output_tokens.is_some() || model.is_some() {
+                Some(CliStreamEvent {
+                    event_type: "usage".to_string(),
+                    session_id: session_id.to_string(),
+                    content: None,
+                    tool_name: None,
+                    tool_call_id: None,
+                    tool_input: None,
+                    tool_result: None,
+                    error: None,
+                    input_tokens,
+                    output_tokens,
+                    model,
+                })
+            } else {
+                None
+            }
+        }
+        "turn.completed" => {
+            let (input_tokens, output_tokens) = extract_usage_counts(json.get("usage"));
+
+            if input_tokens.is_some() || output_tokens.is_some() {
+                Some(CliStreamEvent {
+                    event_type: "usage".to_string(),
+                    session_id: session_id.to_string(),
+                    content: None,
+                    tool_name: None,
+                    tool_call_id: None,
+                    tool_input: None,
+                    tool_result: None,
+                    error: None,
+                    input_tokens,
+                    output_tokens,
+                    model: None,
+                })
+            } else {
+                None
+            }
+        }
         "tool_use" => {
             let tool_name = json.get("name").and_then(|n| n.as_str())?;
             let tool_input = json
@@ -709,6 +772,11 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
         "assistant" => {
             let message = json.get("message")?;
             let content_array = message.get("content").and_then(|c| c.as_array())?;
+            let (input_tokens, output_tokens) = extract_usage_counts(message.get("usage"));
+            let model = message
+                .get("model")
+                .and_then(|m| m.as_str())
+                .map(|m| m.to_string());
 
             // 遍历所有 content items，找到第一个有效的并返回
             // 优先级：thinking > text > tool_use
@@ -734,15 +802,27 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
                                 tool_input: None,
                                 tool_result: None,
                                 error: None,
-                                input_tokens: None,
-                                output_tokens: None,
-                                model: None,
+                                input_tokens,
+                                output_tokens,
+                                model: model.clone(),
                             });
                         }
                     }
                     "text" => {
                         let text = content_item.get("text").and_then(|t| t.as_str())?;
-                        return Some(build_content_event(session_id, text.to_string()));
+                        return Some(CliStreamEvent {
+                            event_type: "content".to_string(),
+                            session_id: session_id.to_string(),
+                            content: Some(text.to_string()),
+                            tool_name: None,
+                            tool_call_id: None,
+                            tool_input: None,
+                            tool_result: None,
+                            error: None,
+                            input_tokens,
+                            output_tokens,
+                            model: model.clone(),
+                        });
                     }
                     "tool_use" => {
                         let tool_name = content_item.get("name").and_then(|n| n.as_str())?;
@@ -760,9 +840,9 @@ fn parse_claude_json_output(session_id: &str, json: &serde_json::Value) -> Optio
                             tool_input,
                             tool_result: None,
                             error: None,
-                            input_tokens: None,
-                            output_tokens: None,
-                            model: None,
+                            input_tokens,
+                            output_tokens,
+                            model: model.clone(),
                         });
                     }
                     _ => {

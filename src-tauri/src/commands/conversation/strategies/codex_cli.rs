@@ -637,7 +637,21 @@ fn parse_codex_json_output(session_id: &str, json: &serde_json::Value) -> Option
             None
         }
         "turn.completed" => {
-            extract_turn_output(json).map(|content| build_content_event(session_id, content))
+            let usage = json.get("usage");
+            let input_tokens = usage
+                .and_then(|u| u.get("input_tokens"))
+                .and_then(|t| t.as_u64())
+                .map(|t| t as u32);
+            let output_tokens = usage
+                .and_then(|u| u.get("output_tokens"))
+                .and_then(|t| t.as_u64())
+                .map(|t| t as u32);
+
+            if input_tokens.is_some() || output_tokens.is_some() {
+                Some(build_usage_event(session_id, input_tokens, output_tokens))
+            } else {
+                extract_turn_output(json).map(|content| build_content_event(session_id, content))
+            }
         }
         "turn.failed" => {
             let error_text = extract_text_value(json.get("error"))

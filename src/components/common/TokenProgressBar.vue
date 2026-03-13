@@ -38,6 +38,14 @@ const tokenUsage = computed(() => {
   return tokenStore.getTokenUsage(sessionStore.currentSessionId)
 })
 
+const realtimeUsage = computed(() => {
+  if (!sessionStore.currentSessionId) {
+    return null
+  }
+
+  return tokenStore.realtimeTokens.get(sessionStore.currentSessionId) ?? null
+})
+
 // 是否显示压缩按钮 - 始终显示，允许用户随时手动压缩
 const shouldShowCompressButton = computed(() => {
   return props.showCompressButton
@@ -50,15 +58,6 @@ const progressStyle = computed(() => ({
 
 // 进度条级别类
 const levelClass = computed(() => `token-progress--${tokenUsage.value.level}`)
-
-// tooltip 文本
-const tooltipText = computed(() => {
-  const { used, limit } = tokenUsage.value
-  return t('token.usageTooltip', {
-    used: formatTokenCount(used),
-    limit: formatTokenCount(limit)
-  })
-})
 
 // 处理压缩按钮点击
 function handleCompress() {
@@ -113,7 +112,22 @@ function handleCompress() {
         v-if="showTooltip"
         class="token-progress__tooltip"
       >
-        {{ tooltipText }}
+        <div class="token-progress__tooltip-title">
+          {{
+            t('token.usageTooltip', {
+              used: formatTokenCount(tokenUsage.used),
+              limit: formatTokenCount(tokenUsage.limit)
+            })
+          }}
+        </div>
+        <div
+          v-if="realtimeUsage"
+          class="token-progress__tooltip-breakdown"
+        >
+          <span>输入 {{ formatTokenCount(realtimeUsage.inputTokens) }}</span>
+          <span>输出 {{ formatTokenCount(realtimeUsage.outputTokens) }}</span>
+          <span v-if="realtimeUsage.model">{{ realtimeUsage.model }}</span>
+        </div>
       </div>
     </Transition>
   </div>
@@ -305,6 +319,17 @@ function handleCompress() {
   white-space: nowrap;
   z-index: var(--z-tooltip);
   box-shadow: var(--shadow-md);
+}
+
+.token-progress__tooltip-title {
+  font-weight: var(--font-weight-medium);
+}
+
+.token-progress__tooltip-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 /* Fade transition */

@@ -164,10 +164,22 @@ export abstract class BaseAgentStrategy implements AgentStrategy {
           toolResult: event.toolResult,
           ...baseEvent
         }
+      case 'message_start':
+      case 'usage':
+        return {
+          type: 'usage',
+          ...baseEvent
+        }
       case 'error':
         return {
           type: 'error',
           error: event.error,
+          ...baseEvent
+        }
+      case 'file_edit':
+        return {
+          type: 'file_edit',
+          fileEdit: event.fileEdit,
           ...baseEvent
         }
       case 'done':
@@ -176,6 +188,12 @@ export abstract class BaseAgentStrategy implements AgentStrategy {
           ...baseEvent
         }
       default:
+        if (event.inputTokens !== undefined || event.outputTokens !== undefined || event.model) {
+          return {
+            type: 'usage',
+            ...baseEvent
+          }
+        }
         return null
     }
   }

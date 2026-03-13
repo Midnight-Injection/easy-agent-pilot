@@ -14,6 +14,7 @@ const sessionStore = useSessionStore()
 const emit = defineEmits<{
   retry: [message: Message]
   formSubmit: [formId: string, values: Record<string, unknown>]
+  openEditTrace: [messageId: string, traceId: string]
 }>()
 
 const listRef = ref<HTMLElement | null>(null)
@@ -174,6 +175,10 @@ const handleRetry = (message: Message) => {
 const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
   emit('formSubmit', formId, values)
 }
+
+const handleOpenEditTrace = (messageId: string, traceId: string) => {
+  emit('openEditTrace', messageId, traceId)
+}
 </script>
 
 <template>
@@ -209,6 +214,7 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
         :session-id="sessionStore.currentSessionId || undefined"
         @retry="handleRetry"
         @form-submit="handleFormSubmit"
+        @open-edit-trace="handleOpenEditTrace"
       />
     </TransitionGroup>
 

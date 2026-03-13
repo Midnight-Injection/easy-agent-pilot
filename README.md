@@ -2,15 +2,6 @@
 
 Easy Agent Pilot 是一个基于 Tauri 2 + Vue 3 + Rust + SQLite 的本地 AI Agent 工作台，用来把项目导入、会话协作、计划拆分、任务执行、MCP 扩展和本地数据管理放到一个桌面应用里统一完成。
 
-本 README 的截图和流程说明，均来自一次真实的端到端验证：
-
-- 清空本地数据库后，以纯净状态启动应用
-- 导入示例项目 `/Users/haijun/Work/frontend/demo`
-- 从首页开始完整走通“导入项目 -> 会话 -> 计划拆分 -> 任务看板 -> 设置中心”
-- 使用 Tauri MCP 实际操作应用并截图
-
-> 本次验证使用的数据目录为 `~/.easy-agent`，数据库为 `~/.easy-agent/data/easy-agent.db`。
-
 ## 核心能力
 
 - 项目工作区：导入本地目录，围绕项目建立独立上下文
@@ -21,8 +12,6 @@ Easy Agent Pilot 是一个基于 Tauri 2 + Vue 3 + Rust + SQLite 的本地 AI Ag
 - 本地优先：所有数据落在本地 SQLite，可导出、导入、清理和备份
 
 ## 启动后的空白状态
-
-首次启动或清空数据库后，应用会进入一个没有项目、没有会话、没有任务的纯净状态，便于从零开始创建演示或真实工作流。
 
 ![空白首页](images/home-empty.png)
 

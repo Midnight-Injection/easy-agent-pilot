@@ -9,6 +9,7 @@ import { resolveSessionAgent } from '@/utils/sessionAgent'
 
 // 默认上下文窗口大小 (128K)
 const DEFAULT_CONTEXT_WINDOW = 128000
+const SESSION_TOKEN_CACHE_KEY = 'ea-session-token-cache-v1'
 
 // Token 使用级别
 export type TokenLevel = 'safe' | 'warning' | 'danger' | 'critical'
@@ -25,6 +26,12 @@ export interface TokenUsage {
 export interface RealtimeTokenData {
   inputTokens: number
   outputTokens: number
+  model?: string
+}
+
+function hasMeaningfulRealtimeUsage(data: Pick<RealtimeTokenData, 'inputTokens' | 'outputTokens'> | null | undefined): boolean {
+  if (!data) return false
+  return data.inputTokens > 0 || data.outputTokens > 0
 }
 
 // 匋缩策略
@@ -41,6 +48,26 @@ interface SessionTokenCache {
   sessionId: string
   totalTokens: number
   lastUpdated: number
+}
+
+function loadPersistedSessionTokenCaches(): Map<string, SessionTokenCache> {
+  if (typeof window === 'undefined') {
+    return new Map()
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SESSION_TOKEN_CACHE_KEY)
+    if (!raw) {
+      return new Map()
+    }
+
+    const parsed = JSON.parse(raw) as SessionTokenCache[]
+    return new Map(parsed
+      .filter(entry => entry?.sessionId)
+      .map(entry => [entry.sessionId, entry]))
+  } catch {
+    return new Map()
+  }
 }
 
 // 根据使用百分比获取级别
@@ -64,9 +91,24 @@ export function formatTokenCount(count: number): string {
 
 export const useTokenStore = defineStore('token', () => {
   // State
-  const sessionTokenCaches = ref<Map<string, SessionTokenCache>>(new Map())
+  const sessionTokenCaches = ref<Map<string, SessionTokenCache>>(loadPersistedSessionTokenCaches())
   // 实时 token 存储（来自 CLI 返回）
   const realtimeTokens = ref<Map<string, RealtimeTokenData>>(new Map())
+
+  function persistSessionTokenCaches() {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    try {
+      window.localStorage.setItem(
+        SESSION_TOKEN_CACHE_KEY,
+        JSON.stringify(Array.from(sessionTokenCaches.value.values()))
+      )
+    } catch {
+      // ignore persistence failures; runtime cache still works
+    }
+  }
 
   // Getters
 
@@ -99,25 +141,28 @@ export const useTokenStore = defineStore('token', () => {
         }
       }
 
-      // 计算已使用的 token
-      // 优先使用实时 token 数据
-      const realtimeData = realtimeTokens.value.get(sessionId)
-      let usedTokens = 0
-
-      if (realtimeData) {
-        usedTokens = realtimeData.inputTokens + realtimeData.outputTokens
-      } else {
-        // 如果没有实时数据，使用消息估算
-        const messages = messageStore.messagesBySession(sessionId)
-        for (const message of messages) {
-          if (message.tokens) {
-            usedTokens += message.tokens
-          } else {
-            // 如果消息没有 token 信息，使用简单估算（每4个字符约等于1个token）
-            usedTokens += Math.ceil(message.content.length / 4)
-          }
+      let estimatedTokens = 0
+      const messages = messageStore.messagesBySession(sessionId)
+      for (const message of messages) {
+        if (message.tokens) {
+          estimatedTokens += message.tokens
+        } else {
+          estimatedTokens += Math.ceil(message.content.length / 4)
         }
       }
+
+      // 计算已使用的 token
+      // 优先使用实时 token 数据，没有时回退到消息估算。
+      const realtimeData = realtimeTokens.value.get(sessionId)
+      const realtimeTotal = hasMeaningfulRealtimeUsage(realtimeData)
+        ? (realtimeData?.inputTokens ?? 0) + (realtimeData?.outputTokens ?? 0)
+        : 0
+      const persistedTotal = sessionTokenCaches.value.get(sessionId)?.totalTokens ?? 0
+      const usedTokens = realtimeTotal > 0
+        ? realtimeTotal
+        : persistedTotal > 0
+          ? persistedTotal
+          : estimatedTokens
 
       const percentage = Math.min(100, (usedTokens / contextWindow) * 100)
       const level = getLevel(percentage)
@@ -149,13 +194,32 @@ export const useTokenStore = defineStore('token', () => {
   /**
    * 更新实时 token 数据（来自 CLI 返回）
    */
-  function updateRealtimeTokens(sessionId: string, inputTokens: number | undefined, outputTokens: number | undefined) {
-    if (inputTokens === undefined && outputTokens === undefined) return
+  function updateRealtimeTokens(
+    sessionId: string,
+    inputTokens: number | undefined,
+    outputTokens: number | undefined,
+    model?: string
+  ) {
+    if (inputTokens === undefined && outputTokens === undefined && !model) return
     const existing = realtimeTokens.value.get(sessionId) || { inputTokens: 0, outputTokens: 0 }
+    const incomingHasUsage = (inputTokens ?? 0) > 0 || (outputTokens ?? 0) > 0
+    const nextInputTokens = incomingHasUsage ? (inputTokens ?? 0) : existing.inputTokens
+    const nextOutputTokens = incomingHasUsage ? (outputTokens ?? 0) : existing.outputTokens
+
     realtimeTokens.value.set(sessionId, {
-      inputTokens: inputTokens ?? existing.inputTokens,
-      outputTokens: outputTokens ?? existing.outputTokens
+      inputTokens: nextInputTokens,
+      outputTokens: nextOutputTokens,
+      model: model ?? existing.model
     })
+
+    if (incomingHasUsage) {
+      sessionTokenCaches.value.set(sessionId, {
+        sessionId,
+        totalTokens: nextInputTokens + nextOutputTokens,
+        lastUpdated: Date.now()
+      })
+      persistSessionTokenCaches()
+    }
   }
 
   /**
@@ -186,6 +250,7 @@ export const useTokenStore = defineStore('token', () => {
       totalTokens,
       lastUpdated: Date.now()
     })
+    persistSessionTokenCaches()
   }
 
   /**
@@ -195,6 +260,7 @@ export const useTokenStore = defineStore('token', () => {
     sessionTokenCaches.value.delete(sessionId)
     // 同时清除实时 token
     clearRealtimeTokens(sessionId)
+    persistSessionTokenCaches()
   }
 
   /**
@@ -203,6 +269,7 @@ export const useTokenStore = defineStore('token', () => {
   function clearAllTokenCaches() {
     sessionTokenCaches.value.clear()
     realtimeTokens.value.clear()
+    persistSessionTokenCaches()
   }
 
   return {

@@ -8,6 +8,8 @@ import type { MemoryLibrary } from '@/types/memory'
 import { useSettingsStore } from '@/stores/settings'
 import { useNotificationStore } from '@/stores/notification'
 import { useProjectStore } from '@/stores/project'
+import { useAiEditTraceStore } from '@/stores/aiEditTrace'
+import { useTracePreviewStore } from '@/stores/tracePreview'
 import { buildConversationMessages } from '@/services/conversation/buildConversationMessages'
 import { buildProjectMemorySystemPrompt } from '@/services/memory'
 
@@ -60,6 +62,8 @@ export class CompressionService {
     const sessionStore = useSessionStore()
     const sessionExecutionStore = useSessionExecutionStore()
     const tokenStore = useTokenStore()
+    const aiEditTraceStore = useAiEditTraceStore()
+    const tracePreviewStore = useTracePreviewStore()
 
     // 获取当前会话的所有消息
     const messages = messageStore.messagesBySession(sessionId)
@@ -107,6 +111,8 @@ export class CompressionService {
 
       // 清空当前会话消息
       await messageStore.clearSessionMessages(sessionId)
+      aiEditTraceStore.resetSession(sessionId)
+      tracePreviewStore.clear()
 
       // 创建压缩摘要消息
       const compressionMetadata: CompressionMetadata = {

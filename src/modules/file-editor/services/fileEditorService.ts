@@ -15,3 +15,9 @@ export async function writeProjectFile(payload: FileContentPayload): Promise<voi
     content: payload.content
   })
 }
+
+export async function deleteProjectFile(filePath: string): Promise<void> {
+  await invoke('delete_file', {
+    path: filePath
+  })
+}

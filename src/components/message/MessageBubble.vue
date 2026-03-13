@@ -3,7 +3,9 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import type { Message } from '@/stores/message'
+import { useMessageStore } from '@/stores/message'
 import { conversationService } from '@/services/conversation'
+import { EaIcon } from '@/components/common'
 import StructuredContentRenderer from './StructuredContentRenderer.vue'
 import ToolCallDisplay from './ToolCallDisplay.vue'
 import ThinkingDisplay from './ThinkingDisplay.vue'
@@ -14,6 +16,7 @@ const props = defineProps<{ message: Message; sessionId?: string }>()
 const emit = defineEmits<{
   retry: [message: Message]
   formSubmit: [formId: string, values: Record<string, unknown>]
+  openEditTrace: [messageId: string, traceId: string]
 }>()
 
 const isUser = computed(() => props.message.role === 'user')
@@ -21,6 +24,7 @@ const isAssistant = computed(() => props.message.role === 'assistant')
 const isCompression = computed(() => props.message.role === 'compression')
 const isStreaming = computed(() => props.message.status === 'streaming')
 const isError = computed(() => props.message.status === 'error')
+const messageStore = useMessageStore()
 const messageAttachmentPreviews = computed(() =>
   (props.message.attachments ?? []).map(attachment => ({
     ...attachment,
@@ -138,6 +142,39 @@ const assistantStatusInfo = computed(() => {
   }
 })
 
+const assistantVisibleEditTraces = computed(() => {
+  if (!isAssistant.value || !props.message.editTraces?.length) {
+    return []
+  }
+
+  const sessionMessages = messageStore.messagesBySession(props.message.sessionId)
+  const latestTraceByFile = new Map<string, { traceId: string; messageId: string; timestamp: string }>()
+
+  for (const message of sessionMessages) {
+    if (message.role !== 'assistant' || !message.editTraces?.length) {
+      continue
+    }
+
+    for (const trace of message.editTraces) {
+      const existing = latestTraceByFile.get(trace.filePath)
+      if (!existing || existing.timestamp <= trace.timestamp) {
+        latestTraceByFile.set(trace.filePath, {
+          traceId: trace.id,
+          messageId: message.id,
+          timestamp: trace.timestamp
+        })
+      }
+    }
+  }
+
+  const latestVisibleTraces = props.message.editTraces.filter(trace => {
+    const latest = latestTraceByFile.get(trace.filePath)
+    return latest?.traceId === trace.id && latest.messageId === props.message.id
+  })
+
+  return latestVisibleTraces.sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+})
+
 // 失败原因
 const errorMessage = computed(() => props.message.errorMessage || t('message.failed'))
 
@@ -148,6 +185,49 @@ const handleRetry = () => {
 
 const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
   emit('formSubmit', formId, values)
+}
+
+const handleOpenEditTrace = (traceId: string) => {
+  if (!traceId) {
+    return
+  }
+
+  emit('openEditTrace', props.message.id, traceId)
+}
+
+const formatTraceChangeType = (changeType: 'create' | 'modify' | 'delete') => {
+  switch (changeType) {
+    case 'create':
+      return '新建'
+    case 'delete':
+      return '删除'
+    default:
+      return '修改'
+  }
+}
+
+const getTraceDisplayName = (relativePath: string) => {
+  const segments = relativePath.split(/[\\/]/)
+  return segments[segments.length - 1] || relativePath
+}
+
+const getTraceParentPath = (relativePath: string) => {
+  const segments = relativePath.split(/[\\/]/)
+  if (segments.length <= 1) {
+    return '项目根目录'
+  }
+  return segments.slice(0, -1).join('/')
+}
+
+const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
+  switch (changeType) {
+    case 'create':
+      return 'plus'
+    case 'delete':
+      return 'trash-2'
+    default:
+      return 'square-pen'
+  }
 }
 </script>
 
@@ -239,6 +319,66 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
         />
       </TransitionGroup>
 
+      <div
+        v-if="assistantVisibleEditTraces.length > 0"
+        class="message-bubble__trace-rail"
+      >
+        <div class="message-bubble__trace-rail-head">
+          <div class="message-bubble__trace-rail-title">
+            <EaIcon
+              name="files"
+              :size="14"
+            />
+            <span>文件变更</span>
+          </div>
+          <span class="message-bubble__trace-rail-count">{{ assistantVisibleEditTraces.length }}</span>
+        </div>
+
+        <div class="message-bubble__trace-strip-wrap">
+          <div class="message-bubble__trace-strip">
+            <button
+              v-for="trace in assistantVisibleEditTraces"
+              :key="trace.id"
+              class="message-bubble__trace-tile"
+              :class="`message-bubble__trace-tile--${trace.changeType}`"
+              @click="handleOpenEditTrace(trace.id)"
+            >
+              <div class="message-bubble__trace-tile-top">
+                <span class="message-bubble__trace-tile-icon">
+                  <EaIcon
+                    name="file-code"
+                    :size="16"
+                  />
+                </span>
+                <span
+                  class="message-bubble__trace-tile-tag"
+                  :class="`message-bubble__trace-tile-tag--${trace.changeType}`"
+                >
+                  <EaIcon
+                    :name="getTraceChangeIcon(trace.changeType)"
+                    :size="10"
+                  />
+                  <span>{{ formatTraceChangeType(trace.changeType) }}</span>
+                </span>
+              </div>
+              <div class="message-bubble__trace-tile-name">
+                {{ getTraceDisplayName(trace.relativePath) }}
+              </div>
+              <div class="message-bubble__trace-tile-path">
+                {{ getTraceParentPath(trace.relativePath) }}
+              </div>
+              <div class="message-bubble__trace-tile-meta">
+                <span>L{{ trace.range.startLine }}-{{ trace.range.endLine }}</span>
+                <EaIcon
+                  name="arrow-up-right"
+                  :size="12"
+                />
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 时间戳和状态信息 -->
       <div class="message-bubble__meta">
         <span class="message-bubble__time">{{ formattedTime }}</span>
@@ -325,10 +465,14 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
 
 <style scoped>
 .message-bubble {
+  --assistant-body-width: 680px;
+  --assistant-body-max-width: min(calc(100vw - 240px), 680px);
+  --user-body-width: 560px;
+  --user-body-max-width: min(calc(100vw - 140px), 560px);
   display: flex;
   flex-direction: row;
-  width: fit-content;
-  max-width: 80%;
+  width: auto;
+  max-width: 100%;
   gap: var(--spacing-3);
 }
 
@@ -339,6 +483,7 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
 
 .message-bubble--assistant {
   align-items: flex-start;
+  margin-right: auto;
 }
 
 /* AI 头像样式 */
@@ -365,10 +510,22 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
   gap: var(--spacing-2);
   min-width: 0;
   width: 100%;
-  max-width: 100%;
+  box-sizing: border-box;
 }
 
-/* 思考过程显示 - 顶部区域，淡紫色渐变背景 */
+.message-bubble--assistant .message-bubble__body {
+  width: var(--assistant-body-width);
+  max-width: var(--assistant-body-max-width);
+  flex: 0 0 auto;
+}
+
+.message-bubble--user .message-bubble__body {
+  width: var(--user-body-width);
+  max-width: var(--user-body-max-width);
+  flex: 0 0 auto;
+}
+
+/* 思考过程显示 */
 .message-bubble__thinking {
   width: 100%;
   animation: fadeSlideDown 0.3s ease-out;
@@ -381,6 +538,7 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
   font-size: var(--font-size-sm);
   line-height: 1.6;
   width: 100%;
+  box-sizing: border-box;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -496,6 +654,271 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
+}
+
+.message-bubble__trace-rail {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message-bubble__trace-rail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.message-bubble__trace-rail-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.message-bubble__trace-rail-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.message-bubble__trace-strip {
+  width: 100%;
+  display: flex;
+  gap: var(--spacing-2);
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+  scroll-snap-type: x proximity;
+}
+
+.message-bubble__trace-strip-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.message-bubble__trace-strip-wrap::before,
+.message-bubble__trace-strip-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 6px;
+  width: 18px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.message-bubble__trace-strip-wrap::before {
+  left: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+}
+
+.message-bubble__trace-strip-wrap::after {
+  right: 0;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+}
+
+.message-bubble__trace-strip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.message-bubble__trace-strip::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-bubble__trace-strip::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+}
+
+.message-bubble__trace-tile {
+  position: relative;
+  flex: 0 0 120px;
+  display: flex;
+  flex-direction: column;
+  width: 120px;
+  min-height: 120px;
+  padding: 10px 10px 12px;
+  gap: 8px;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.92)),
+    var(--color-bg-secondary);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 18px;
+  text-align: left;
+  cursor: pointer;
+  scroll-snap-align: start;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  transition: transform var(--transition-fast) var(--easing-default), border-color var(--transition-fast) var(--easing-default), box-shadow var(--transition-fast) var(--easing-default), background var(--transition-fast) var(--easing-default);
+}
+
+.message-bubble__trace-tile::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+  opacity: 0.9;
+}
+
+.message-bubble__trace-tile--create::after {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.16), rgba(5, 150, 105, 0.7));
+}
+
+.message-bubble__trace-tile--modify::after {
+  background: linear-gradient(90deg, rgba(96, 165, 250, 0.16), rgba(37, 99, 235, 0.72));
+}
+
+.message-bubble__trace-tile--delete::after {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.14), rgba(220, 38, 38, 0.7));
+}
+
+.message-bubble__trace-tile:hover {
+  transform: translateY(-2px);
+  border-color: rgba(59, 130, 246, 0.28);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+}
+
+.message-bubble__trace-tile-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-bubble__trace-tile-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+}
+
+.message-bubble__trace-tile-name {
+  display: -webkit-box;
+  min-height: 32px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.message-bubble__trace-tile-path {
+  display: -webkit-box;
+  min-height: 28px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--color-text-tertiary);
+  word-break: break-word;
+}
+
+.message-bubble__trace-tile-meta {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--color-text-tertiary);
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.message-bubble__trace-tile-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.message-bubble__trace-tile-tag--create {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.message-bubble__trace-tile-tag--modify {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.14);
+}
+
+.message-bubble__trace-tile-tag--delete {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.14);
+}
+
+:global([data-theme='dark']) .message-bubble__trace-rail-count,
+:global(.dark) .message-bubble__trace-rail-count {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+}
+
+:global([data-theme='dark']) .message-bubble__trace-tile,
+:global(.dark) .message-bubble__trace-tile {
+  background:
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.12), transparent 42%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.92));
+  border-color: rgba(71, 85, 105, 0.64);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.24);
+}
+
+:global([data-theme='dark']) .message-bubble__trace-strip-wrap::before,
+:global(.dark) .message-bubble__trace-strip-wrap::before {
+  background: linear-gradient(90deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0));
+}
+
+:global([data-theme='dark']) .message-bubble__trace-strip-wrap::after,
+:global(.dark) .message-bubble__trace-strip-wrap::after {
+  background: linear-gradient(270deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0));
+}
+
+:global([data-theme='dark']) .message-bubble__trace-tile:hover,
+:global(.dark) .message-bubble__trace-tile:hover {
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.34);
+}
+
+:global([data-theme='dark']) .message-bubble__trace-tile-icon,
+:global(.dark) .message-bubble__trace-tile-icon {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+}
+
+:global([data-theme='dark']) .message-bubble__trace-tile-meta,
+:global(.dark) .message-bubble__trace-tile-meta {
+  border-top-color: rgba(71, 85, 105, 0.48);
 }
 
 /* 元信息（时间戳和状态） */
@@ -678,5 +1101,26 @@ const handleFormSubmit = (formId: string, values: Record<string, unknown>) => {
 /* 单个工具调用项动画 */
 .tool-call-move {
   transition: transform 0.3s ease-out;
+}
+
+@media (max-width: 768px) {
+  .message-bubble {
+    --assistant-body-width: min(100vw - 88px, 620px);
+    --assistant-body-max-width: min(100vw - 88px, 620px);
+    --user-body-width: min(86vw, 520px);
+    --user-body-max-width: min(86vw, 520px);
+    gap: var(--spacing-2);
+  }
+
+  .message-bubble__trace-tile {
+    flex-basis: 108px;
+    width: 108px;
+    min-height: 108px;
+  }
+
+  .message-bubble__avatar {
+    width: 28px;
+    height: 28px;
+  }
 }
 </style>
