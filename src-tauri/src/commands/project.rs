@@ -943,6 +943,7 @@ fn rank_project_mentions(
         .collect()
 }
 
+#[allow(dead_code)]
 fn build_global_search_result(path: &PathBuf, node_type: FileNodeType) -> FileMentionSearchResult {
     let display_path = shorten_home_path(path);
     let extension = path
