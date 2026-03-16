@@ -230,8 +230,12 @@ const isAiMode = () => props.form.splitMode === 'ai'
               class="execution-mode-select"
               @change="updateField('executionMode', ($event.target as HTMLSelectElement).value as PlanCreateFormState['executionMode'])"
             >
-              <option value="immediate">立即执行</option>
-              <option value="scheduled">定时执行</option>
+              <option value="immediate">
+                立即执行
+              </option>
+              <option value="scheduled">
+                定时执行
+              </option>
             </select>
             <div
               v-if="props.form.executionMode === 'scheduled'"

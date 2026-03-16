@@ -71,7 +71,10 @@ function getCommandDisplay() {
         />
         <span>{{ config.name }}</span>
       </div>
-      <div v-if="!isBuiltin" class="mcp-config-item__actions">
+      <div
+        v-if="!isBuiltin"
+        class="mcp-config-item__actions"
+      >
         <EaButton
           size="small"
           variant="ghost"
@@ -111,7 +114,10 @@ function getCommandDisplay() {
         <EaIcon :name="getTransportIcon(config.transportType)" />
         {{ getTransportLabel(config.transportType) }}
       </span>
-      <span v-if="!isBuiltin" class="mcp-config-item__tag">
+      <span
+        v-if="!isBuiltin"
+        class="mcp-config-item__tag"
+      >
         <EaIcon name="lucide:map-pin" />
         {{ getScopeLabel(config.scope) }}
       </span>

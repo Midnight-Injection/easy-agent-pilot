@@ -222,7 +222,10 @@ onMounted(async () => {
                 class="mcp-install-modal__env-remove"
                 @click="removeEnv(key)"
               >
-                <EaIcon name="x" :size="14" />
+                <EaIcon
+                  name="x"
+                  :size="14"
+                />
               </button>
             </div>
           </div>
@@ -242,7 +245,10 @@ onMounted(async () => {
               :disabled="!envKey || !envValue"
               @click="addEnv"
             >
-              <EaIcon name="plus" :size="16" />
+              <EaIcon
+                name="plus"
+                :size="16"
+              />
             </EaButton>
           </div>
         </div>
@@ -251,7 +257,10 @@ onMounted(async () => {
           v-if="installError"
           class="mcp-install-modal__error"
         >
-          <EaIcon name="alert-circle" :size="16" />
+          <EaIcon
+            name="alert-circle"
+            :size="16"
+          />
           <span>{{ installError }}</span>
         </div>
       </template>

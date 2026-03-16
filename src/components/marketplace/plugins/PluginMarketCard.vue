@@ -31,7 +31,10 @@ function handleInstall() {
   <div class="plugin-market-card">
     <div class="plugin-market-card__header">
       <div class="plugin-market-card__icon">
-        <EaIcon name="puzzle" :size="24" />
+        <EaIcon
+          name="puzzle"
+          :size="24"
+        />
       </div>
       <div class="plugin-market-card__info">
         <h3 class="plugin-market-card__name">
@@ -75,14 +78,20 @@ function handleInstall() {
           v-if="item.downloads"
           class="plugin-market-card__stat"
         >
-          <EaIcon name="download" :size="14" />
+          <EaIcon
+            name="download"
+            :size="14"
+          />
           {{ item.downloads.toLocaleString() }}
         </span>
         <span
           v-if="item.rating"
           class="plugin-market-card__stat"
         >
-          <EaIcon name="star" :size="14" />
+          <EaIcon
+            name="star"
+            :size="14"
+          />
           {{ item.rating.toFixed(1) }}
         </span>
       </div>

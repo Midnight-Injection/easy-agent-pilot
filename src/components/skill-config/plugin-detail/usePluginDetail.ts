@@ -33,6 +33,8 @@ export function usePluginDetail(plugin: Ref<UnifiedPluginConfig>) {
         return pluginDetails.value.internal_commands
       case 'agents':
         return pluginDetails.value.internal_agents
+      default:
+        return []
     }
   })
 

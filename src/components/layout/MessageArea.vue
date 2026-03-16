@@ -481,7 +481,10 @@ onUnmounted(() => {
                   v-if="queuedMessages.length > 0"
                   class="bottom-status-bar__queue-pill"
                 >
-                  <EaIcon name="clock-3" :size="12" />
+                  <EaIcon
+                    name="clock-3"
+                    :size="12"
+                  />
                   <span>{{ t('message.queueCount', { count: queuedMessages.length }) }}</span>
                 </div>
               </div>
@@ -591,7 +594,10 @@ onUnmounted(() => {
               >
                 <div class="message-input__queue-header">
                   <div class="message-input__queue-title">
-                    <EaIcon name="clock-3" :size="13" />
+                    <EaIcon
+                      name="clock-3"
+                      :size="13"
+                    />
                     <span>{{ t('message.pendingQueueTitle') }}</span>
                   </div>
                   <span class="message-input__queue-count">{{ queuedMessages.length }}</span>
@@ -638,14 +644,20 @@ onUnmounted(() => {
                         :title="t('common.retry')"
                         @click="retryQueuedMessage(draft.id)"
                       >
-                        <EaIcon name="refresh-cw" :size="12" />
+                        <EaIcon
+                          name="refresh-cw"
+                          :size="12"
+                        />
                       </button>
                       <button
                         class="message-input__queue-action"
                         :title="t('common.delete')"
                         @click="removeQueuedMessage(draft.id)"
                       >
-                        <EaIcon name="x" :size="12" />
+                        <EaIcon
+                          name="x"
+                          :size="12"
+                        />
                       </button>
                     </div>
                   </div>

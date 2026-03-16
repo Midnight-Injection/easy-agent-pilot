@@ -88,7 +88,9 @@ onMounted(() => {
           v-model="selectedCategory"
           class="plugin-market-list__select"
         >
-          <option :value="null">{{ t('marketplace.allTypes') }}</option>
+          <option :value="null">
+            {{ t('marketplace.allTypes') }}
+          </option>
           <option
             v-for="cat in categories"
             :key="cat"
@@ -103,7 +105,10 @@ onMounted(() => {
           size="small"
           @click="refreshMarket"
         >
-          <EaIcon name="refresh-cw" :size="16" />
+          <EaIcon
+            name="refresh-cw"
+            :size="16"
+          />
         </EaButton>
       </div>
     </div>
@@ -119,7 +124,10 @@ onMounted(() => {
       v-else-if="marketplaceStore.pluginsMarketError"
       class="plugin-market-list__error"
     >
-      <EaIcon name="alert-circle" :size="24" />
+      <EaIcon
+        name="alert-circle"
+        :size="24"
+      />
       <p>{{ marketplaceStore.pluginsMarketError }}</p>
       <EaButton
         type="secondary"
@@ -134,7 +142,10 @@ onMounted(() => {
       v-else-if="filteredItems.length === 0"
       class="plugin-market-list__empty"
     >
-      <EaIcon name="puzzle" :size="48" />
+      <EaIcon
+        name="puzzle"
+        :size="48"
+      />
       <p>{{ t('marketplace.noResults') }}</p>
     </div>
 

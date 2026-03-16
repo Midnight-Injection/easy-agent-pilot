@@ -31,7 +31,10 @@ const visibleTabs = computed(() =>
       :class="['marketplace-tabs__tab', { 'marketplace-tabs__tab--active': marketplaceStore.activeMarketTab === tab.id }]"
       @click="marketplaceStore.setActiveMarketTab(tab.id)"
     >
-      <EaIcon :name="tab.icon" :size="16" />
+      <EaIcon
+        :name="tab.icon"
+        :size="16"
+      />
       <span>{{ t(tab.labelKey) }}</span>
     </button>
   </div>

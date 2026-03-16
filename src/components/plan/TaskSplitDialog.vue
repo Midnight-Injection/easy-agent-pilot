@@ -154,7 +154,7 @@ const historicalSubmittedForms = computed(() => {
   )
 
   for (const log of sortedLogs) {
-    let schemas: DynamicFormSchema[] = []
+    let schemas: DynamicFormSchema[]
 
     if (log.type === 'content') {
       try {

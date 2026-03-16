@@ -74,65 +74,65 @@ function handleStartEditSession(session: Session, event: Event) {
     @keydown.enter="emit('toggleProject', project)"
     @keydown.space.prevent="emit('toggleProject', project)"
   >
-      <div class="project-item__arrow">
-        <EaIcon
-          :name="isFileTreeLoading ? 'loader' : 'chevron-right'"
-          :size="14"
-          :class="{
-            'project-item__arrow--expanded': isExpanded,
-            'animate-spin': isFileTreeLoading
-          }"
-        />
-      </div>
+    <div class="project-item__arrow">
+      <EaIcon
+        :name="isFileTreeLoading ? 'loader' : 'chevron-right'"
+        :size="14"
+        :class="{
+          'project-item__arrow--expanded': isExpanded,
+          'animate-spin': isFileTreeLoading
+        }"
+      />
+    </div>
 
-      <div class="project-item__icon">
-        <EaIcon
-          name="folder"
-          :size="18"
-        />
-      </div>
+    <div class="project-item__icon">
+      <EaIcon
+        name="folder"
+        :size="18"
+      />
+    </div>
 
-      <div class="project-item__info">
-        <div class="project-item__header">
-          <span class="project-item__name">{{ project.name }}</span>
-        </div>
-        <div class="project-item__meta">
-          <span class="project-item__time">{{ importedTimeLabel }} {{ t('unified.imported') }}</span>
-          <span
-            class="project-item__session-count"
-            :class="{ 'project-item__session-count--has': project.sessionCount && project.sessionCount > 0 }"
-          >
-            <EaIcon
-              name="message-square"
-              :size="10"
-            />
-            {{ t('unified.sessionCount', { count: project.sessionCount || 0 }) }}
-          </span>
-        </div>
+    <div class="project-item__info">
+      <div class="project-item__header">
+        <span class="project-item__name">{{ project.name }}</span>
       </div>
-
-      <div class="project-item__actions">
-        <button
-          class="project-item__action-btn"
-          :title="t('common.edit')"
-          @click.stop="emit('editProject', project)"
+      <div class="project-item__meta">
+        <span class="project-item__time">{{ importedTimeLabel }} {{ t('unified.imported') }}</span>
+        <span
+          class="project-item__session-count"
+          :class="{ 'project-item__session-count--has': project.sessionCount && project.sessionCount > 0 }"
         >
           <EaIcon
-            name="edit-2"
-            :size="12"
+            name="message-square"
+            :size="10"
           />
-        </button>
-        <button
-          class="project-item__action-btn project-item__action-btn--danger"
-          :title="t('common.delete')"
-          @click.stop="emit('deleteProject', project)"
-        >
-          <EaIcon
-            name="x"
-            :size="12"
-          />
-        </button>
+          {{ t('unified.sessionCount', { count: project.sessionCount || 0 }) }}
+        </span>
       </div>
+    </div>
+
+    <div class="project-item__actions">
+      <button
+        class="project-item__action-btn"
+        :title="t('common.edit')"
+        @click.stop="emit('editProject', project)"
+      >
+        <EaIcon
+          name="edit-2"
+          :size="12"
+        />
+      </button>
+      <button
+        class="project-item__action-btn project-item__action-btn--danger"
+        :title="t('common.delete')"
+        @click.stop="emit('deleteProject', project)"
+      >
+        <EaIcon
+          name="x"
+          :size="12"
+        />
+      </button>
+    </div>
   </div>
 
   <div

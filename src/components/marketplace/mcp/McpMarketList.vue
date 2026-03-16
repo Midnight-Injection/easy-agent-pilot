@@ -239,7 +239,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="listRef" class="mcp-market-list">
+  <div
+    ref="listRef"
+    class="mcp-market-list"
+  >
     <div class="mcp-market-list__toolbar">
       <div class="mcp-market-list__search">
         <EaInput
@@ -285,7 +288,10 @@ onBeforeUnmount(() => {
           size="small"
           @click="refreshMarket"
         >
-          <EaIcon name="refresh-cw" :size="16" />
+          <EaIcon
+            name="refresh-cw"
+            :size="16"
+          />
         </EaButton>
       </div>
     </div>
@@ -299,7 +305,10 @@ onBeforeUnmount(() => {
       v-else-if="marketplaceStore.mcpMarketError"
       class="mcp-market-list__error"
     >
-      <EaIcon name="alert-circle" :size="24" />
+      <EaIcon
+        name="alert-circle"
+        :size="24"
+      />
       <p>{{ marketplaceStore.mcpMarketError }}</p>
       <EaButton
         type="secondary"
@@ -313,7 +322,10 @@ onBeforeUnmount(() => {
       v-else-if="marketplaceStore.mcpMarketItems.length === 0"
       class="mcp-market-list__empty"
     >
-      <EaIcon name="package" :size="48" />
+      <EaIcon
+        name="package"
+        :size="48"
+      />
       <p>{{ t('marketplace.noResults') }}</p>
     </div>
 

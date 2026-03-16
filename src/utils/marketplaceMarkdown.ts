@@ -5,8 +5,8 @@ function isJsonLikeLine(line: string): boolean {
   if (!value) return false
 
   return (
-    /^[\[{]/.test(value) ||
-    /^[\]}],?$/.test(value) ||
+    /^[{[]{/.test(value) ||
+    /^[}\]],?$/.test(value) ||
     /^".*":/.test(value) ||
     /^'.*':/.test(value) ||
     /^(true|false|null)[,]?$/.test(value)

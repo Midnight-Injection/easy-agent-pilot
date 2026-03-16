@@ -382,7 +382,9 @@ watch(referencePreviewItems, (items) => {
               >
                 <div class="skill-reference-card__header">
                   <div>
-                    <p class="skill-reference-card__file">{{ t('settings.sdkConfig.skills.builder.generatedFile') }}: {{ getReferenceFileName(reference.id) }}</p>
+                    <p class="skill-reference-card__file">
+                      {{ t('settings.sdkConfig.skills.builder.generatedFile') }}: {{ getReferenceFileName(reference.id) }}
+                    </p>
                   </div>
                   <button
                     class="skill-reference-card__remove"

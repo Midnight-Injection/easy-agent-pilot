@@ -143,7 +143,10 @@ onMounted(() => {
           v-if="installError"
           class="skill-install-modal__error"
         >
-          <EaIcon name="alert-circle" :size="16" />
+          <EaIcon
+            name="alert-circle"
+            :size="16"
+          />
           <span>{{ installError }}</span>
         </div>
       </template>

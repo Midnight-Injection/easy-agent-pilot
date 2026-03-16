@@ -35,7 +35,10 @@ watch(() => marketplaceStore.activeMarketSource, async () => {
     <div class="marketplace-page__header">
       <div>
         <h2 class="marketplace-page__title">
-          <EaIcon name="store" :size="24" />
+          <EaIcon
+            name="store"
+            :size="24"
+          />
           {{ t('marketplace.title') }}
         </h2>
         <p class="marketplace-page__subtitle">

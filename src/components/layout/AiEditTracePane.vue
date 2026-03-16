@@ -266,7 +266,9 @@ const formatChangeType = (changeType: FileEditTrace['changeType']) => {
     <header class="trace-pane__toolbar">
       <div class="trace-pane__toolbar-copy">
         <span class="trace-pane__eyebrow">AI Edit Trace</span>
-        <h3 class="trace-pane__title">文件追踪</h3>
+        <h3 class="trace-pane__title">
+          文件追踪
+        </h3>
       </div>
       <div class="trace-pane__toolbar-actions">
         <EaButton
@@ -327,8 +329,12 @@ const formatChangeType = (changeType: FileEditTrace['changeType']) => {
       >
         <div class="trace-pane__drawer-header">
           <div>
-            <div class="trace-pane__drawer-eyebrow">Edited Files</div>
-            <div class="trace-pane__drawer-title">本轮改动 {{ groupedFiles.length }}</div>
+            <div class="trace-pane__drawer-eyebrow">
+              Edited Files
+            </div>
+            <div class="trace-pane__drawer-title">
+              本轮改动 {{ groupedFiles.length }}
+            </div>
           </div>
           <button
             class="trace-pane__drawer-close"

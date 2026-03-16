@@ -66,14 +66,27 @@ onMounted(loadDetail)
       <div class="marketplace-detail__header">
         <div>
           <div class="marketplace-detail__eyebrow">
-            <EaIcon name="plug" :size="14" />
+            <EaIcon
+              name="plug"
+              :size="14"
+            />
             <span>{{ t('marketplace.viewDetails') }}</span>
           </div>
-          <h3 class="marketplace-detail__title">{{ mcpItem.name }}</h3>
-          <p class="marketplace-detail__subtitle">{{ mcpItem.description }}</p>
+          <h3 class="marketplace-detail__title">
+            {{ mcpItem.name }}
+          </h3>
+          <p class="marketplace-detail__subtitle">
+            {{ mcpItem.description }}
+          </p>
         </div>
-        <button class="marketplace-detail__close" @click="closeModal">
-          <EaIcon name="x" :size="16" />
+        <button
+          class="marketplace-detail__close"
+          @click="closeModal"
+        >
+          <EaIcon
+            name="x"
+            :size="16"
+          />
         </button>
       </div>
     </template>
@@ -83,44 +96,77 @@ onMounted(loadDetail)
       :message="t('marketplace.loading')"
     />
 
-    <div v-else-if="marketplaceStore.mcpDetailError" class="marketplace-detail__state">
-      <EaIcon name="alert-circle" :size="18" />
+    <div
+      v-else-if="marketplaceStore.mcpDetailError"
+      class="marketplace-detail__state"
+    >
+      <EaIcon
+        name="alert-circle"
+        :size="18"
+      />
       <span>{{ marketplaceStore.mcpDetailError }}</span>
-      <EaButton type="secondary" size="small" @click="loadDetail">
+      <EaButton
+        type="secondary"
+        size="small"
+        @click="loadDetail"
+      >
         {{ t('common.retry') }}
       </EaButton>
     </div>
 
-    <div v-else class="marketplace-detail">
+    <div
+      v-else
+      class="marketplace-detail"
+    >
       <div class="marketplace-detail__meta">
         <div class="marketplace-detail__meta-item">
           <span class="marketplace-detail__label">{{ t('marketplace.sourceLabel') }}</span>
           <strong>{{ sourceLabel }}</strong>
         </div>
-        <div class="marketplace-detail__meta-item" v-if="detail?.author || mcpItem.author">
+        <div
+          v-if="detail?.author || mcpItem.author"
+          class="marketplace-detail__meta-item"
+        >
           <span class="marketplace-detail__label">{{ t('marketplace.authorLabel') }}</span>
           <strong>{{ detail?.author || mcpItem.author }}</strong>
         </div>
-        <div class="marketplace-detail__meta-item" v-if="detail?.transport_type || mcpItem.transport_type">
+        <div
+          v-if="detail?.transport_type || mcpItem.transport_type"
+          class="marketplace-detail__meta-item"
+        >
           <span class="marketplace-detail__label">{{ t('marketplace.transportLabel') }}</span>
           <strong>{{ detail?.transport_type || mcpItem.transport_type }}</strong>
         </div>
       </div>
 
-      <div v-if="displayTags.length > 0" class="marketplace-detail__tags">
-        <EaTag v-for="tag in displayTags" :key="tag" variant="info" size="sm">
+      <div
+        v-if="displayTags.length > 0"
+        class="marketplace-detail__tags"
+      >
+        <EaTag
+          v-for="tag in displayTags"
+          :key="tag"
+          variant="info"
+          size="sm"
+        >
           {{ tag }}
         </EaTag>
       </div>
 
-      <div v-if="detail?.repository_url || mcpItem.repository_url" class="marketplace-detail__links">
+      <div
+        v-if="detail?.repository_url || mcpItem.repository_url"
+        class="marketplace-detail__links"
+      >
         <a
           :href="detail?.repository_url || mcpItem.repository_url || '#'"
           target="_blank"
           rel="noreferrer"
           class="marketplace-detail__link"
         >
-          <EaIcon name="external-link" :size="14" />
+          <EaIcon
+            name="external-link"
+            :size="14"
+          />
           {{ t('marketplace.openRepository') }}
         </a>
       </div>
@@ -135,10 +181,16 @@ onMounted(loadDetail)
 
     <template #footer>
       <div class="marketplace-detail__footer">
-        <EaButton type="ghost" @click="closeModal">
+        <EaButton
+          type="ghost"
+          @click="closeModal"
+        >
           {{ t('common.close') }}
         </EaButton>
-        <EaButton type="primary" @click="openInstall">
+        <EaButton
+          type="primary"
+          @click="openInstall"
+        >
           {{ t('marketplace.install') }}
         </EaButton>
       </div>

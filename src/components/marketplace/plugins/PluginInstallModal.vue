@@ -193,8 +193,8 @@ onMounted(async () => {
               <input
                 type="checkbox"
                 :checked="selectedComponents.includes(component.name)"
-                @change="toggleComponent(component.name)"
                 class="plugin-install-modal__checkbox"
+                @change="toggleComponent(component.name)"
               >
               <div class="plugin-install-modal__component-info">
                 <span class="plugin-install-modal__component-name">{{ component.name }}</span>
@@ -209,7 +209,10 @@ onMounted(async () => {
           v-if="installError"
           class="plugin-install-modal__error"
         >
-          <EaIcon name="alert-circle" :size="16" />
+          <EaIcon
+            name="alert-circle"
+            :size="16"
+          />
           <span>{{ installError }}</span>
         </div>
       </template>

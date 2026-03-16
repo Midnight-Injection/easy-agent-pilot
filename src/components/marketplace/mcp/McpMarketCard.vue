@@ -43,7 +43,10 @@ function handleCardKeydown(event: KeyboardEvent) {
   >
     <div class="mcp-market-card__header">
       <div class="mcp-market-card__icon">
-        <EaIcon name="plug" :size="24" />
+        <EaIcon
+          name="plug"
+          :size="24"
+        />
       </div>
       <div class="mcp-market-card__info">
         <h3 class="mcp-market-card__name">
@@ -86,14 +89,20 @@ function handleCardKeydown(event: KeyboardEvent) {
           v-if="item.stars"
           class="mcp-market-card__stat"
         >
-          <EaIcon name="star" :size="14" />
+          <EaIcon
+            name="star"
+            :size="14"
+          />
           {{ item.stars.toLocaleString() }}
         </span>
         <span
           v-if="item.category"
           class="mcp-market-card__stat"
         >
-          <EaIcon name="tag" :size="14" />
+          <EaIcon
+            name="tag"
+            :size="14"
+          />
           {{ item.category }}
         </span>
       </div>

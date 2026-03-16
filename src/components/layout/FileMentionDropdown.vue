@@ -304,15 +304,24 @@ onUnmounted(() => {
             :class="{ 'file-mention__scope--active': scope.value === activeScope }"
             @click="setScope(scope.value)"
           >
-            <EaIcon :name="scope.icon" :size="12" />
+            <EaIcon
+              :name="scope.icon"
+              :size="12"
+            />
             <span>{{ scope.label }}</span>
           </button>
         </div>
         <div class="file-mention__meta">
-          <EaIcon :name="activeScope === 'global' ? 'sparkles' : 'search'" :size="12" />
+          <EaIcon
+            :name="activeScope === 'global' ? 'sparkles' : 'search'"
+            :size="12"
+          />
           <span v-if="trimmedSearchText">{{ t('fileMention.searchingFor', { query: trimmedSearchText }) }}</span>
           <span v-else>{{ t('fileMention.scopeHint', { scope: activeScope === 'project' ? t('fileMention.scopeProject') : t('fileMention.scopeGlobal') }) }}</span>
-          <span v-if="results.length > 0" class="file-mention__count">
+          <span
+            v-if="results.length > 0"
+            class="file-mention__count"
+          >
             {{ t('fileMention.resultCount', { count: results.length }) }}
           </span>
         </div>
@@ -322,7 +331,10 @@ onUnmounted(() => {
         v-if="!isLoading && results.length === 0"
         class="file-mention__empty"
       >
-        <EaIcon :name="requiresGlobalQuery ? 'search' : 'file-x'" :size="24" />
+        <EaIcon
+          :name="requiresGlobalQuery ? 'search' : 'file-x'"
+          :size="24"
+        />
         <span>{{ emptyStateMessage }}</span>
       </div>
 
@@ -339,10 +351,16 @@ onUnmounted(() => {
           @mouseenter="selectedIndex = index"
         >
           <div class="file-mention__item-icon">
-            <EaIcon :name="getFileIconName(file)" :size="14" />
+            <EaIcon
+              :name="getFileIconName(file)"
+              :size="14"
+            />
           </div>
           <div class="file-mention__item-body">
-            <span class="file-mention__item-name" v-html="highlightMatch(file.name)" />
+            <span
+              class="file-mention__item-name"
+              v-html="highlightMatch(file.name)"
+            />
             <span
               class="file-mention__item-path"
               :class="{ 'file-mention__item-path--muted': file.displayPath === file.name }"
@@ -354,8 +372,15 @@ onUnmounted(() => {
           </span>
         </div>
 
-        <div v-if="isLoading" class="file-mention__loading">
-          <EaIcon name="loader-circle" :size="16" spin />
+        <div
+          v-if="isLoading"
+          class="file-mention__loading"
+        >
+          <EaIcon
+            name="loader-circle"
+            :size="16"
+            spin
+          />
           <span>{{ t('fileMention.loading') }}</span>
         </div>
       </div>

@@ -67,14 +67,27 @@ onMounted(loadDetail)
       <div class="marketplace-detail__header">
         <div>
           <div class="marketplace-detail__eyebrow">
-            <EaIcon name="sparkles" :size="14" />
+            <EaIcon
+              name="sparkles"
+              :size="14"
+            />
             <span>{{ t('marketplace.viewDetails') }}</span>
           </div>
-          <h3 class="marketplace-detail__title">{{ skillItem.name }}</h3>
-          <p class="marketplace-detail__subtitle">{{ skillItem.description }}</p>
+          <h3 class="marketplace-detail__title">
+            {{ skillItem.name }}
+          </h3>
+          <p class="marketplace-detail__subtitle">
+            {{ skillItem.description }}
+          </p>
         </div>
-        <button class="marketplace-detail__close" @click="closeModal">
-          <EaIcon name="x" :size="16" />
+        <button
+          class="marketplace-detail__close"
+          @click="closeModal"
+        >
+          <EaIcon
+            name="x"
+            :size="16"
+          />
         </button>
       </div>
     </template>
@@ -84,44 +97,77 @@ onMounted(loadDetail)
       :message="t('marketplace.loading')"
     />
 
-    <div v-else-if="marketplaceStore.skillDetailError" class="marketplace-detail__state">
-      <EaIcon name="alert-circle" :size="18" />
+    <div
+      v-else-if="marketplaceStore.skillDetailError"
+      class="marketplace-detail__state"
+    >
+      <EaIcon
+        name="alert-circle"
+        :size="18"
+      />
       <span>{{ marketplaceStore.skillDetailError }}</span>
-      <EaButton type="secondary" size="small" @click="loadDetail">
+      <EaButton
+        type="secondary"
+        size="small"
+        @click="loadDetail"
+      >
         {{ t('common.retry') }}
       </EaButton>
     </div>
 
-    <div v-else class="marketplace-detail">
+    <div
+      v-else
+      class="marketplace-detail"
+    >
       <div class="marketplace-detail__meta">
         <div class="marketplace-detail__meta-item">
           <span class="marketplace-detail__label">{{ t('marketplace.sourceLabel') }}</span>
           <strong>{{ sourceLabel }}</strong>
         </div>
-        <div class="marketplace-detail__meta-item" v-if="detail?.author || skillItem.author">
+        <div
+          v-if="detail?.author || skillItem.author"
+          class="marketplace-detail__meta-item"
+        >
           <span class="marketplace-detail__label">{{ t('marketplace.authorLabel') }}</span>
           <strong>{{ detail?.author || skillItem.author }}</strong>
         </div>
-        <div class="marketplace-detail__meta-item" v-if="detail?.category || skillItem.category">
+        <div
+          v-if="detail?.category || skillItem.category"
+          class="marketplace-detail__meta-item"
+        >
           <span class="marketplace-detail__label">{{ t('marketplace.categoryLabel') }}</span>
           <strong>{{ detail?.category || skillItem.category }}</strong>
         </div>
       </div>
 
-      <div v-if="displayTags.length > 0" class="marketplace-detail__tags">
-        <EaTag v-for="tag in displayTags" :key="tag" variant="warning" size="sm">
+      <div
+        v-if="displayTags.length > 0"
+        class="marketplace-detail__tags"
+      >
+        <EaTag
+          v-for="tag in displayTags"
+          :key="tag"
+          variant="warning"
+          size="sm"
+        >
           {{ tag }}
         </EaTag>
       </div>
 
-      <div v-if="detail?.repository_url || skillItem.repository_url" class="marketplace-detail__links">
+      <div
+        v-if="detail?.repository_url || skillItem.repository_url"
+        class="marketplace-detail__links"
+      >
         <a
           :href="detail?.repository_url || skillItem.repository_url || '#'"
           target="_blank"
           rel="noreferrer"
           class="marketplace-detail__link"
         >
-          <EaIcon name="external-link" :size="14" />
+          <EaIcon
+            name="external-link"
+            :size="14"
+          />
           {{ t('marketplace.openRepository') }}
         </a>
       </div>
@@ -133,7 +179,10 @@ onMounted(loadDetail)
         </div>
       </section>
 
-      <section v-if="renderedSkillContent" class="marketplace-detail__section">
+      <section
+        v-if="renderedSkillContent"
+        class="marketplace-detail__section"
+      >
         <h4>{{ t('marketplace.skillContentLabel') }}</h4>
         <div class="marketplace-detail__markdown">
           <MarkdownRenderer :content="renderedSkillContent" />
@@ -143,10 +192,16 @@ onMounted(loadDetail)
 
     <template #footer>
       <div class="marketplace-detail__footer">
-        <EaButton type="ghost" @click="closeModal">
+        <EaButton
+          type="ghost"
+          @click="closeModal"
+        >
           {{ t('common.close') }}
         </EaButton>
-        <EaButton type="primary" @click="openInstall">
+        <EaButton
+          type="primary"
+          @click="openInstall"
+        >
           {{ t('marketplace.install') }}
         </EaButton>
       </div>

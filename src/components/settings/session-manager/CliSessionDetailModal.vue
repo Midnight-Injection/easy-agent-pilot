@@ -48,7 +48,9 @@ const getMessageDisplayContent = (message: CliSessionMessage) =>
   >
     <template #header>
       <div class="modal-title-wrap">
-        <h3 class="modal-title">{{ t('settings.sessionManager.detailTitle') }}</h3>
+        <h3 class="modal-title">
+          {{ t('settings.sessionManager.detailTitle') }}
+        </h3>
         <span
           v-if="detail"
           class="modal-subtitle"

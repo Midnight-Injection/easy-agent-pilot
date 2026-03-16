@@ -211,7 +211,9 @@ onMounted(async () => {
   <div class="plan-progress-detail">
     <div class="detail-header">
       <div>
-        <h4 class="detail-title">计划总览</h4>
+        <h4 class="detail-title">
+          计划总览
+        </h4>
         <p class="detail-subtitle">
           {{ plan?.name || '未命名计划' }}
         </p>
@@ -248,7 +250,9 @@ onMounted(async () => {
           v-if="snapshot.activeTask"
           class="active-task-card"
         >
-          <div class="active-task-card__label">当前执行位置</div>
+          <div class="active-task-card__label">
+            当前执行位置
+          </div>
           <div class="active-task-card__title">
             第 {{ snapshot.currentTaskIndex }}/{{ snapshot.totalTasks }} 个任务: {{ snapshot.activeTask.title }}
           </div>
@@ -261,9 +265,15 @@ onMounted(async () => {
           v-else
           class="active-task-card active-task-card--empty"
         >
-          <div class="active-task-card__label">当前执行位置</div>
-          <div class="active-task-card__title">暂无正在执行的任务</div>
-          <div class="active-task-card__hint">点击任务卡片可查看单任务详情与执行日志</div>
+          <div class="active-task-card__label">
+            当前执行位置
+          </div>
+          <div class="active-task-card__title">
+            暂无正在执行的任务
+          </div>
+          <div class="active-task-card__hint">
+            点击任务卡片可查看单任务详情与执行日志
+          </div>
         </div>
 
         <div class="stats-grid">
@@ -314,9 +324,14 @@ onMounted(async () => {
               <div class="task-row__main">
                 <div class="task-row__title-line">
                   <span class="task-row__title">{{ task.title }}</span>
-                  <span class="task-row__status" :class="task.statusClass">{{ task.statusLabel }}</span>
+                  <span
+                    class="task-row__status"
+                    :class="task.statusClass"
+                  >{{ task.statusLabel }}</span>
                 </div>
-                <div class="task-row__summary">{{ task.summary }}</div>
+                <div class="task-row__summary">
+                  {{ task.summary }}
+                </div>
                 <div
                   v-if="task.failReason"
                   class="task-row__failure"
@@ -346,8 +361,12 @@ onMounted(async () => {
               :key="item.id"
               class="failure-item"
             >
-              <div class="failure-item__title">{{ item.title }}</div>
-              <div class="failure-item__reason">{{ compactText(item.reason) }}</div>
+              <div class="failure-item__title">
+                {{ item.title }}
+              </div>
+              <div class="failure-item__reason">
+                {{ compactText(item.reason) }}
+              </div>
             </div>
           </div>
         </div>
@@ -367,7 +386,9 @@ onMounted(async () => {
               :key="section.key"
               class="file-group"
             >
-              <div class="file-group__label">{{ section.label }}</div>
+              <div class="file-group__label">
+                {{ section.label }}
+              </div>
               <div class="file-group__files">
                 <span
                   v-for="file in section.files"

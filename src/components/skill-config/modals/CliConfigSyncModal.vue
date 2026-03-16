@@ -331,7 +331,9 @@ watch(
       <section class="cli-sync-panel cli-sync-panel--source">
         <div class="cli-sync-panel__header">
           <div>
-            <div class="cli-sync-panel__title">{{ t('settings.integration.sync.sourcePanelTitle') }}</div>
+            <div class="cli-sync-panel__title">
+              {{ t('settings.integration.sync.sourcePanelTitle') }}
+            </div>
             <div class="cli-sync-panel__subtitle">
               {{ t('settings.integration.sync.selectedCount', { n: selectedNames.length }) }}
             </div>
@@ -425,7 +427,9 @@ watch(
       <section class="cli-sync-panel cli-sync-panel--target">
         <div class="cli-sync-panel__header">
           <div>
-            <div class="cli-sync-panel__title">{{ t('settings.integration.sync.targetPanelTitle') }}</div>
+            <div class="cli-sync-panel__title">
+              {{ t('settings.integration.sync.targetPanelTitle') }}
+            </div>
             <div class="cli-sync-panel__subtitle">
               {{ t('settings.integration.sync.targetCount', { n: targetItems.length }) }}
             </div>
@@ -434,12 +438,20 @@ watch(
 
         <div class="cli-sync-stats">
           <div class="cli-sync-stats__card">
-            <div class="cli-sync-stats__label">{{ t('settings.integration.sync.summary.newCount') }}</div>
-            <div class="cli-sync-stats__value">{{ newCount }}</div>
+            <div class="cli-sync-stats__label">
+              {{ t('settings.integration.sync.summary.newCount') }}
+            </div>
+            <div class="cli-sync-stats__value">
+              {{ newCount }}
+            </div>
           </div>
           <div class="cli-sync-stats__card cli-sync-stats__card--warning">
-            <div class="cli-sync-stats__label">{{ t('settings.integration.sync.summary.existingCount') }}</div>
-            <div class="cli-sync-stats__value">{{ existingCount }}</div>
+            <div class="cli-sync-stats__label">
+              {{ t('settings.integration.sync.summary.existingCount') }}
+            </div>
+            <div class="cli-sync-stats__value">
+              {{ existingCount }}
+            </div>
           </div>
         </div>
 
@@ -524,7 +536,9 @@ watch(
             v-if="syncResult.skippedItems.length > 0"
             class="cli-sync-result__list"
           >
-            <div class="cli-sync-result__title">{{ t('settings.integration.sync.result.skippedList') }}</div>
+            <div class="cli-sync-result__title">
+              {{ t('settings.integration.sync.result.skippedList') }}
+            </div>
             <div
               v-for="item in syncResult.skippedItems"
               :key="`skip-${item.name}`"
@@ -538,7 +552,9 @@ watch(
             v-if="syncResult.failedItems.length > 0"
             class="cli-sync-result__list"
           >
-            <div class="cli-sync-result__title">{{ t('settings.integration.sync.result.failedList') }}</div>
+            <div class="cli-sync-result__title">
+              {{ t('settings.integration.sync.result.failedList') }}
+            </div>
             <div
               v-for="item in syncResult.failedItems"
               :key="`fail-${item.name}`"
