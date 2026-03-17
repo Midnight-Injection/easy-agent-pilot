@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use std::ptr::null_mut;
 use std::sync::{mpsc, Arc};
 use std::thread;
 use tauri::AppHandle;
@@ -67,14 +68,14 @@ pub fn register_shortcut(app: AppHandle, shortcut: String) -> Result<(), String>
     let join_handle = thread::spawn(move || {
         let mut msg = MSG::default();
         unsafe {
-            PeekMessageW(&mut msg, 0, 0, 0, PM_NOREMOVE);
+            PeekMessageW(&mut msg, null_mut(), 0, 0, PM_NOREMOVE);
         }
 
         let thread_id = unsafe { GetCurrentThreadId() };
         *ACTIVE_RUNTIME.lock() = Some(worker_runtime);
 
         let hook =
-            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), 0, 0) };
+            unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), null_mut(), 0) };
         if hook == 0 {
             *ACTIVE_RUNTIME.lock() = None;
             let _ = ready_tx.send(Err("WINDOWS_SHORTCUT_OVERRIDE_FAILED".to_string()));
@@ -84,7 +85,7 @@ pub fn register_shortcut(app: AppHandle, shortcut: String) -> Result<(), String>
         let _ = ready_tx.send(Ok(thread_id));
 
         loop {
-            let status = unsafe { GetMessageW(&mut msg, 0, 0, 0) };
+            let status = unsafe { GetMessageW(&mut msg, null_mut(), 0, 0) };
             if status <= 0 {
                 break;
             }
