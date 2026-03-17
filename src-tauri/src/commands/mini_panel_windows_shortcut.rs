@@ -1,5 +1,6 @@
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use std::mem::zeroed;
 use std::ptr::null_mut;
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -66,7 +67,7 @@ pub fn register_shortcut(app: AppHandle, shortcut: String) -> Result<(), String>
 
     let worker_runtime = runtime.clone();
     let join_handle = thread::spawn(move || {
-        let mut msg = MSG::default();
+        let mut msg: MSG = unsafe { zeroed() };
         unsafe {
             PeekMessageW(&mut msg, null_mut(), 0, 0, PM_NOREMOVE);
         }
@@ -76,7 +77,7 @@ pub fn register_shortcut(app: AppHandle, shortcut: String) -> Result<(), String>
 
         let hook =
             unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(low_level_keyboard_proc), null_mut(), 0) };
-        if hook == 0 {
+        if hook.is_null() {
             *ACTIVE_RUNTIME.lock() = None;
             let _ = ready_tx.send(Err("WINDOWS_SHORTCUT_OVERRIDE_FAILED".to_string()));
             return;

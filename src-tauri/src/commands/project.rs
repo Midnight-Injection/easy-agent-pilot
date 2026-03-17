@@ -6,8 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{Duration, Instant};
+
+#[cfg(target_os = "macos")]
+use std::process::Command;
 
 use super::support::{now_rfc3339, open_db_connection, open_db_connection_with_foreign_keys};
 
