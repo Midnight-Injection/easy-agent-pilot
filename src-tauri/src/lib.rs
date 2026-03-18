@@ -21,7 +21,12 @@ pub fn run() {
     // MCP Bridge 插件仅在调试模式下启用
     #[cfg(debug_assertions)]
     {
-        builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+        builder = builder.plugin(
+            tauri_plugin_mcp_bridge::Builder::new()
+                .bind_address("127.0.0.1")
+                .base_port(9423)
+                .build(),
+        );
     }
 
     builder
@@ -201,6 +206,7 @@ pub fn run() {
             commands::data::export_data_to_file,
             commands::data::export_selected_data,
             commands::data::export_selected_to_file,
+            commands::data::get_data_management_stats,
             commands::data::validate_import_data,
             commands::data::import_data_from_file,
             commands::data::clear_all_data,

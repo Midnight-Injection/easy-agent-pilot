@@ -128,6 +128,344 @@ fn get_db_path() -> Result<PathBuf> {
     Ok(persistence_dir.join("data").join("easy-agent.db"))
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DataManagementStats {
+    pub storage_path: String,
+    pub database_path: String,
+    pub total_size_bytes: u64,
+    pub session_data_size_bytes: u64,
+    pub message_data_size_bytes: u64,
+    pub log_data_size_bytes: u64,
+    pub config_data_size_bytes: u64,
+    pub project_count: i64,
+    pub session_count: i64,
+    pub message_count: i64,
+    pub log_count: i64,
+}
+
+fn file_size(path: &PathBuf) -> u64 {
+    fs::metadata(path).map(|meta| meta.len()).unwrap_or(0)
+}
+
+fn total_database_size(db_path: &PathBuf) -> u64 {
+    let mut total = file_size(db_path);
+
+    if let Some(file_name) = db_path.file_name().and_then(|name| name.to_str()) {
+        for suffix in ["-wal", "-shm"] {
+            let sibling = db_path.with_file_name(format!("{}{}", file_name, suffix));
+            total += file_size(&sibling);
+        }
+    }
+
+    total
+}
+
+fn query_count(conn: &Connection, sql: &str) -> Result<i64, String> {
+    conn.query_row(sql, [], |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())
+}
+
+fn query_size(conn: &Connection, sql: &str) -> Result<u64, String> {
+    let value = conn
+        .query_row(sql, [], |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())?;
+    Ok(value.max(0) as u64)
+}
+
+fn table_exists(conn: &Connection, table_name: &str) -> Result<bool, String> {
+    let count = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [table_name],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(count > 0)
+}
+
+#[tauri::command]
+pub fn get_data_management_stats() -> Result<DataManagementStats, String> {
+    let persistence_dir = super::get_persistence_dir_path().map_err(|e| e.to_string())?;
+    let db_path = get_db_path().map_err(|e| e.to_string())?;
+    let conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
+
+    let project_count = query_count(&conn, "SELECT COUNT(*) FROM projects")?;
+    let session_count = query_count(&conn, "SELECT COUNT(*) FROM sessions")?;
+    let message_count = query_count(&conn, "SELECT COUNT(*) FROM messages")?;
+    let log_count = query_count(&conn, "SELECT COUNT(*) FROM task_execution_logs")?
+        + query_count(&conn, "SELECT COUNT(*) FROM task_execution_results")?
+        + query_count(&conn, "SELECT COUNT(*) FROM task_split_sessions")?
+        + query_count(&conn, "SELECT COUNT(*) FROM plan_split_logs")?;
+
+    let session_data_size_bytes = query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(path, '')) +
+            LENGTH(COALESCE(description, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM projects",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(project_id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(agent_type, '')) +
+            LENGTH(COALESCE(status, '')) +
+            LENGTH(COALESCE(last_message, '')) +
+            LENGTH(COALESCE(error_message, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM sessions",
+    )?;
+
+    let message_data_size_bytes = query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(session_id, '')) +
+            LENGTH(COALESCE(role, '')) +
+            LENGTH(COALESCE(content, '')) +
+            LENGTH(COALESCE(attachments, '')) +
+            LENGTH(COALESCE(status, '')) +
+            LENGTH(COALESCE(error_message, '')) +
+            LENGTH(COALESCE(tool_calls, '')) +
+            LENGTH(COALESCE(thinking, '')) +
+            LENGTH(COALESCE(edit_traces, '')) +
+            LENGTH(COALESCE(compression_metadata, '')) +
+            LENGTH(COALESCE(created_at, ''))
+        ), 0) FROM messages",
+    )?;
+
+    let log_data_size_bytes = query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(project_id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(description, '')) +
+            LENGTH(COALESCE(split_agent_id, '')) +
+            LENGTH(COALESCE(split_model_id, '')) +
+            LENGTH(COALESCE(status, '')) +
+            LENGTH(COALESCE(agent_team, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM plans",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(plan_id, '')) +
+            LENGTH(COALESCE(parent_id, '')) +
+            LENGTH(COALESCE(title, '')) +
+            LENGTH(COALESCE(description, '')) +
+            LENGTH(COALESCE(status, '')) +
+            LENGTH(COALESCE(priority, '')) +
+            LENGTH(COALESCE(assignee, '')) +
+            LENGTH(COALESCE(session_id, '')) +
+            LENGTH(COALESCE(progress_file, '')) +
+            LENGTH(COALESCE(dependencies, '')) +
+            LENGTH(COALESCE(last_result_status, '')) +
+            LENGTH(COALESCE(last_result_summary, '')) +
+            LENGTH(COALESCE(last_result_files, '')) +
+            LENGTH(COALESCE(last_fail_reason, '')) +
+            LENGTH(COALESCE(last_result_at, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM tasks",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(plan_id, '')) +
+            LENGTH(COALESCE(status, '')) +
+            LENGTH(COALESCE(raw_content, '')) +
+            LENGTH(COALESCE(parsed_output, '')) +
+            LENGTH(COALESCE(parse_error, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, '')) +
+            LENGTH(COALESCE(execution_session_id, '')) +
+            LENGTH(COALESCE(execution_request_json, '')) +
+            LENGTH(COALESCE(llm_messages_json, '')) +
+            LENGTH(COALESCE(messages_json, '')) +
+            LENGTH(COALESCE(form_queue_json, '')) +
+            LENGTH(COALESCE(error_message, '')) +
+            LENGTH(COALESCE(started_at, '')) +
+            LENGTH(COALESCE(completed_at, '')) +
+            LENGTH(COALESCE(stopped_at, ''))
+        ), 0) FROM task_split_sessions",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(plan_id, '')) +
+            LENGTH(COALESCE(session_id, '')) +
+            LENGTH(COALESCE(log_type, '')) +
+            LENGTH(COALESCE(content, '')) +
+            LENGTH(COALESCE(metadata, '')) +
+            LENGTH(COALESCE(created_at, ''))
+        ), 0) FROM plan_split_logs",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(task_id, '')) +
+            LENGTH(COALESCE(log_type, '')) +
+            LENGTH(COALESCE(content, '')) +
+            LENGTH(COALESCE(metadata, '')) +
+            LENGTH(COALESCE(created_at, ''))
+        ), 0) FROM task_execution_logs",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(task_id, '')) +
+            LENGTH(COALESCE(plan_id, '')) +
+            LENGTH(COALESCE(task_title_snapshot, '')) +
+            LENGTH(COALESCE(task_description_snapshot, '')) +
+            LENGTH(COALESCE(result_status, '')) +
+            LENGTH(COALESCE(result_summary, '')) +
+            LENGTH(COALESCE(result_files, '')) +
+            LENGTH(COALESCE(fail_reason, '')) +
+            LENGTH(COALESCE(created_at, ''))
+        ), 0) FROM task_execution_results",
+    )?;
+
+    let config_data_size_bytes = query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(type, '')) +
+            LENGTH(COALESCE(mode, '')) +
+            LENGTH(COALESCE(api_key, '')) +
+            LENGTH(COALESCE(base_url, '')) +
+            LENGTH(COALESCE(model, '')) +
+            LENGTH(COALESCE(cli_path, '')) +
+            LENGTH(COALESCE(status, '')) +
+            LENGTH(COALESCE(test_message, '')) +
+            LENGTH(COALESCE(tested_at, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM agents",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(server_type, '')) +
+            LENGTH(COALESCE(command, '')) +
+            LENGTH(COALESCE(args, '')) +
+            LENGTH(COALESCE(env, '')) +
+            LENGTH(COALESCE(url, '')) +
+            LENGTH(COALESCE(headers, '')) +
+            LENGTH(COALESCE(test_status, '')) +
+            LENGTH(COALESCE(test_message, '')) +
+            LENGTH(COALESCE(tested_at, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM mcp_servers",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(path, '')) +
+            LENGTH(COALESCE(version, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM cli_paths",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(type, '')) +
+            LENGTH(COALESCE(url_or_path, '')) +
+            LENGTH(COALESCE(status, '')) +
+            LENGTH(COALESCE(last_synced_at, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM market_sources",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(key, '')) +
+            LENGTH(COALESCE(value, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM app_settings",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(agent_id, '')) +
+            LENGTH(COALESCE(model_id, '')) +
+            LENGTH(COALESCE(display_name, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM agent_models",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(agent_id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(transport_type, '')) +
+            LENGTH(COALESCE(command, '')) +
+            LENGTH(COALESCE(args, '')) +
+            LENGTH(COALESCE(env, '')) +
+            LENGTH(COALESCE(url, '')) +
+            LENGTH(COALESCE(headers, '')) +
+            LENGTH(COALESCE(scope, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM agent_mcp_configs",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(agent_id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(description, '')) +
+            LENGTH(COALESCE(skill_path, '')) +
+            LENGTH(COALESCE(scripts_path, '')) +
+            LENGTH(COALESCE(references_path, '')) +
+            LENGTH(COALESCE(assets_path, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM agent_skills_configs",
+    )? + query_size(
+        &conn,
+        "SELECT COALESCE(SUM(
+            LENGTH(COALESCE(id, '')) +
+            LENGTH(COALESCE(agent_id, '')) +
+            LENGTH(COALESCE(name, '')) +
+            LENGTH(COALESCE(version, '')) +
+            LENGTH(COALESCE(description, '')) +
+            LENGTH(COALESCE(plugin_path, '')) +
+            LENGTH(COALESCE(created_at, '')) +
+            LENGTH(COALESCE(updated_at, ''))
+        ), 0) FROM agent_plugins_configs",
+    )?;
+
+    Ok(DataManagementStats {
+        storage_path: persistence_dir.to_string_lossy().to_string(),
+        database_path: db_path.to_string_lossy().to_string(),
+        total_size_bytes: total_database_size(&db_path),
+        session_data_size_bytes,
+        message_data_size_bytes,
+        log_data_size_bytes,
+        config_data_size_bytes,
+        project_count,
+        session_count,
+        message_count,
+        log_count,
+    })
+}
+
 /// 导出所有数据
 #[tauri::command]
 pub fn export_all_data() -> Result<ExportData, String> {
@@ -429,48 +767,66 @@ pub fn clear_all_data() -> Result<(), String> {
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // 按照外键依赖顺序删除（子表先删除）
-    // 1. 删除 session_mcp（依赖 sessions 和 mcp_servers）
-    tx.execute("DELETE FROM session_mcp", [])
-        .map_err(|e| format!("删除 session_mcp 失败: {}", e))?;
+    let delete_statements = [
+        ("session_mcp", "DELETE FROM session_mcp"),
+        ("messages", "DELETE FROM messages"),
+        ("task_execution_logs", "DELETE FROM task_execution_logs"),
+        (
+            "task_execution_results",
+            "DELETE FROM task_execution_results",
+        ),
+        ("plan_split_logs", "DELETE FROM plan_split_logs"),
+        ("task_split_sessions", "DELETE FROM task_split_sessions"),
+        ("window_session_locks", "DELETE FROM window_session_locks"),
+        ("tasks", "DELETE FROM tasks"),
+        ("plans", "DELETE FROM plans"),
+        ("project_access_log", "DELETE FROM project_access_log"),
+        ("memory_compressions", "DELETE FROM memory_compressions"),
+        ("user_memories", "DELETE FROM user_memories"),
+        ("raw_memory_records", "DELETE FROM raw_memory_records"),
+        ("memory_merge_runs", "DELETE FROM memory_merge_runs"),
+        (
+            "project_memory_libraries",
+            "DELETE FROM project_memory_libraries",
+        ),
+        ("memory_libraries", "DELETE FROM memory_libraries"),
+        ("memory_categories", "DELETE FROM memory_categories"),
+        (
+            "installed_mcp_test_results",
+            "DELETE FROM installed_mcp_test_results",
+        ),
+        ("mcp_install_history", "DELETE FROM mcp_install_history"),
+        ("agent_mcp_configs", "DELETE FROM agent_mcp_configs"),
+        ("agent_skills_configs", "DELETE FROM agent_skills_configs"),
+        ("agent_plugins_configs", "DELETE FROM agent_plugins_configs"),
+        ("agent_models", "DELETE FROM agent_models"),
+        ("provider_profiles", "DELETE FROM provider_profiles"),
+        ("employees", "DELETE FROM employees"),
+        ("departments", "DELETE FROM departments"),
+        ("sessions", "DELETE FROM sessions"),
+        ("projects", "DELETE FROM projects"),
+        ("agents", "DELETE FROM agents"),
+        ("mcp_servers", "DELETE FROM mcp_servers"),
+        ("cli_paths", "DELETE FROM cli_paths"),
+        ("market_sources", "DELETE FROM market_sources"),
+        ("skills", "DELETE FROM skills"),
+        ("themes", "DELETE FROM themes"),
+        ("app_state", "DELETE FROM app_state"),
+        ("app_settings", "DELETE FROM app_settings"),
+    ];
 
-    // 2. 删除 messages（依赖 sessions）
-    tx.execute("DELETE FROM messages", [])
-        .map_err(|e| format!("删除 messages 失败: {}", e))?;
-
-    // 3. 删除 sessions（依赖 projects）
-    tx.execute("DELETE FROM sessions", [])
-        .map_err(|e| format!("删除 sessions 失败: {}", e))?;
-
-    // 4. 删除 projects
-    tx.execute("DELETE FROM projects", [])
-        .map_err(|e| format!("删除 projects 失败: {}", e))?;
-
-    // 5. 删除 agents
-    tx.execute("DELETE FROM agents", [])
-        .map_err(|e| format!("删除 agents 失败: {}", e))?;
-
-    // 6. 删除 mcp_servers
-    tx.execute("DELETE FROM mcp_servers", [])
-        .map_err(|e| format!("删除 mcp_servers 失败: {}", e))?;
-
-    // 7. 删除 cli_paths
-    tx.execute("DELETE FROM cli_paths", [])
-        .map_err(|e| format!("删除 cli_paths 失败: {}", e))?;
-
-    // 8. 删除 market_sources
-    tx.execute("DELETE FROM market_sources", [])
-        .map_err(|e| format!("删除 market_sources 失败: {}", e))?;
-
-    // 9. 删除 skills
-    tx.execute("DELETE FROM skills", [])
-        .map_err(|e| format!("删除 skills 失败: {}", e))?;
-
-    // 10. 删除 app_settings
-    tx.execute("DELETE FROM app_settings", [])
-        .map_err(|e| format!("删除 app_settings 失败: {}", e))?;
+    for (table, sql) in delete_statements {
+        if table_exists(&tx, table)? {
+            tx.execute(sql, [])
+                .map_err(|e| format!("删除 {} 失败: {}", table, e))?;
+        }
+    }
 
     // 提交事务
     tx.commit().map_err(|e| e.to_string())?;
+
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;")
+        .map_err(|e| format!("压缩数据库失败: {}", e))?;
 
     Ok(())
 }
@@ -796,4 +1152,209 @@ pub fn import_data_from_file(file_path: String) -> Result<ImportResult, String> 
     tx.commit().map_err(|e| e.to_string())?;
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{commands, database};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct HomeGuard {
+        original_home: Option<String>,
+    }
+
+    impl HomeGuard {
+        fn set(temp_home: &PathBuf) -> Self {
+            let original_home = std::env::var("HOME").ok();
+            std::env::set_var("HOME", temp_home);
+            Self { original_home }
+        }
+    }
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            if let Some(original_home) = &self.original_home {
+                std::env::set_var("HOME", original_home);
+            } else {
+                std::env::remove_var("HOME");
+            }
+        }
+    }
+
+    fn unique_temp_home() -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!(
+            "easy-agent-data-test-{}-{}",
+            std::process::id(),
+            nanos
+        ))
+    }
+
+    #[test]
+    fn data_management_roundtrip_works_in_isolated_home() {
+        let temp_home = unique_temp_home();
+        fs::create_dir_all(&temp_home).unwrap();
+        let _home_guard = HomeGuard::set(&temp_home);
+
+        commands::init_persistence_dirs().unwrap();
+        database::init_database().unwrap();
+
+        let db_path = get_db_path().unwrap();
+        let conn = Connection::open(&db_path).unwrap();
+
+        conn.execute(
+            "INSERT INTO projects (id, name, path, description, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            [
+                "project-1",
+                "Demo",
+                "/tmp/demo",
+                "demo project",
+                "2026-03-18T00:00:00Z",
+                "2026-03-18T00:00:00Z",
+            ],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO sessions (id, project_id, name, agent_type, status, pinned, last_message, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            [
+                "session-1",
+                "project-1",
+                "Session",
+                "codex",
+                "idle",
+                "0",
+                "hello",
+                "2026-03-18T00:00:01Z",
+                "2026-03-18T00:00:01Z",
+            ],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO messages (id, session_id, role, content, status, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            [
+                "message-1",
+                "session-1",
+                "user",
+                "hello world",
+                "completed",
+                "2026-03-18T00:00:02Z",
+            ],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO plans (id, project_id, name, description, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            [
+                "plan-1",
+                "project-1",
+                "Plan",
+                "plan description",
+                "draft",
+                "2026-03-18T00:00:03Z",
+                "2026-03-18T00:00:03Z",
+            ],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO tasks (id, plan_id, title, description, status, priority, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            [
+                "task-1",
+                "plan-1",
+                "Task",
+                "task description",
+                "pending",
+                "high",
+                "2026-03-18T00:00:04Z",
+                "2026-03-18T00:00:04Z",
+            ],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_execution_logs (id, task_id, log_type, content, metadata, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            [
+                "log-1",
+                "task-1",
+                "info",
+                "log content",
+                "{\"source\":\"test\"}",
+                "2026-03-18T00:00:05Z",
+            ],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO task_execution_results (id, task_id, plan_id, task_title_snapshot, task_description_snapshot, result_status, result_summary, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            [
+                "result-1",
+                "task-1",
+                "plan-1",
+                "Task",
+                "task description",
+                "completed",
+                "done",
+                "2026-03-18T00:00:06Z",
+            ],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO app_settings (key, value, updated_at) VALUES (?1, ?2, ?3)",
+            ["language", "zh-CN", "2026-03-18T00:00:07Z"],
+        )
+        .unwrap();
+
+        let stats_before = get_data_management_stats().unwrap();
+        assert_eq!(stats_before.project_count, 1);
+        assert_eq!(stats_before.session_count, 1);
+        assert_eq!(stats_before.message_count, 1);
+        assert_eq!(stats_before.log_count, 2);
+        assert!(stats_before.total_size_bytes > 0);
+        assert!(stats_before.message_data_size_bytes > 0);
+        assert!(stats_before.log_data_size_bytes > 0);
+
+        let backup_path = temp_home.join("backup.json");
+        export_selected_to_file(
+            backup_path.to_string_lossy().to_string(),
+            ExportOptions::default(),
+        )
+        .unwrap();
+        validate_import_data(backup_path.to_string_lossy().to_string()).unwrap();
+
+        clear_all_data().unwrap();
+
+        let stats_cleared = get_data_management_stats().unwrap();
+        assert_eq!(stats_cleared.project_count, 0);
+        assert_eq!(stats_cleared.session_count, 0);
+        assert_eq!(stats_cleared.message_count, 0);
+        assert_eq!(stats_cleared.log_count, 0);
+
+        let import_result = import_data_from_file(backup_path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(import_result.projects_imported, 1);
+        assert_eq!(import_result.sessions_imported, 1);
+        assert_eq!(import_result.messages_imported, 1);
+        assert_eq!(import_result.app_settings_imported, 1);
+
+        let stats_after = get_data_management_stats().unwrap();
+        assert_eq!(stats_after.project_count, 1);
+        assert_eq!(stats_after.session_count, 1);
+        assert_eq!(stats_after.message_count, 1);
+        assert_eq!(stats_after.log_count, 0);
+
+        fs::remove_dir_all(&temp_home).unwrap();
+    }
 }

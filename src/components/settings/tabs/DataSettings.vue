@@ -7,18 +7,23 @@ import { useI18n } from 'vue-i18n'
 import { useProjectStore } from '@/stores/project'
 import { useSessionStore } from '@/stores/session'
 import { useMessageStore } from '@/stores/message'
-import { useSettingsStore } from '@/stores/settings'
+import SettingsSectionCard from '@/components/settings/common/SettingsSectionCard.vue'
 import DataClearConfirmDialog from '@/components/settings/data/DataClearConfirmDialog.vue'
 import DataStorageCard from '@/components/settings/data/DataStorageCard.vue'
 import DataTransferCard from '@/components/settings/data/DataTransferCard.vue'
-import InstallSessionsCard from '@/components/settings/data/InstallSessionsCard.vue'
-import type { ExportOptions, ExportOptionItem, ExportOptionKey, ImportStatItem, ImportStats } from '@/components/settings/data/types'
+import type {
+  DataManagementStats,
+  ExportOptions,
+  ExportOptionItem,
+  ExportOptionKey,
+  ImportStatItem,
+  ImportStats
+} from '@/components/settings/data/types'
 
 const { t } = useI18n()
 const projectStore = useProjectStore()
 const sessionStore = useSessionStore()
 const messageStore = useMessageStore()
-const settingsStore = useSettingsStore()
 
 const exportOptions = reactive<ExportOptions>({
   include_projects: true,
@@ -44,9 +49,6 @@ const exportOptionItems = computed<ExportOptionItem[]>(() => [
 
 const allSelected = computed(() => Object.values(exportOptions).every(Boolean))
 const hasAnySelected = computed(() => Object.values(exportOptions).some(Boolean))
-
-const isCancellingSession = ref<string | null>(null)
-const isCleaningUpSession = ref<string | null>(null)
 
 const isExporting = ref(false)
 const exportMessage = ref('')
@@ -81,6 +83,9 @@ const clearConfirmText = ref('')
 const isClearing = ref(false)
 const clearMessage = ref('')
 const clearSuccess = ref(false)
+const isLoadingStats = ref(false)
+const statsError = ref<string | null>(null)
+const dataStats = ref<DataManagementStats | null>(null)
 
 function updateExportOption(key: ExportOptionKey, checked: boolean) {
   exportOptions[key] = checked
@@ -92,32 +97,16 @@ function toggleAllExportOptions(select: boolean) {
   })
 }
 
-async function loadSessions() {
-  await settingsStore.loadPendingInstallSessions()
-}
-
-async function handleCancelSession(sessionId: string) {
-  isCancellingSession.value = sessionId
+async function loadDataStats() {
+  isLoadingStats.value = true
+  statsError.value = null
   try {
-    const result = await settingsStore.cancelInstallSession(sessionId)
-    if (result.success) {
-      await loadSessions()
-    }
+    dataStats.value = await invoke<DataManagementStats>('get_data_management_stats')
   } catch (error) {
-    console.error('Failed to cancel session:', error)
+    console.error('Failed to load data stats:', error)
+    statsError.value = error instanceof Error ? error.message : String(error)
   } finally {
-    isCancellingSession.value = null
-  }
-}
-
-async function handleCleanupSession(sessionId: string) {
-  isCleaningUpSession.value = sessionId
-  try {
-    await settingsStore.cleanupInstallSession(sessionId)
-  } catch (error) {
-    console.error('Failed to cleanup session:', error)
-  } finally {
-    isCleaningUpSession.value = null
+    isLoadingStats.value = false
   }
 }
 
@@ -199,6 +188,11 @@ async function handleImport() {
     }
 
     importStats.value = await invoke<ImportStats>('import_data_from_file', { filePath })
+    await projectStore.loadProjects()
+    sessionStore.sessions = []
+    sessionStore.setCurrentSession(null)
+    messageStore.messages = []
+    await loadDataStats()
     importSuccess.value = true
     importMessage.value = t('settings.data.importSuccess')
   } catch (error) {
@@ -237,6 +231,7 @@ async function confirmClearData() {
     sessionStore.sessions = []
     sessionStore.setCurrentSession(null)
     messageStore.messages = []
+    await loadDataStats()
 
     clearSuccess.value = true
     clearMessage.value = t('settings.data.clearSuccess')
@@ -263,7 +258,7 @@ function handleClearDialogVisibleChange(visible: boolean) {
 }
 
 onMounted(() => {
-  void loadSessions()
+  void loadDataStats()
 })
 </script>
 
@@ -273,7 +268,12 @@ onMounted(() => {
       {{ t('settings.nav.data') }}
     </h3>
 
-    <DataStorageCard />
+    <DataStorageCard
+      :loading="isLoadingStats"
+      :error="statsError"
+      :stats="dataStats"
+      @refresh="loadDataStats"
+    />
 
     <DataTransferCard
       :export-option-items="exportOptionItems"
@@ -292,25 +292,20 @@ onMounted(() => {
       @update-option="updateExportOption"
     />
 
-    <InstallSessionsCard
-      :loading="settingsStore.isLoadingPendingSessions"
-      :error="settingsStore.pendingSessionsError"
-      :sessions="settingsStore.pendingInstallSessions"
-      :cancelling-session-id="isCancellingSession"
-      :cleaning-session-id="isCleaningUpSession"
-      @refresh="loadSessions"
-      @cancel-session="handleCancelSession"
-      @cleanup-session="handleCleanupSession"
-    />
-
-    <div class="settings-card settings-card--danger">
-      <h4 class="settings-card__title">
-        {{ t('settings.data.dangerZone') }}
-      </h4>
-      <div class="settings-item">
-        <div class="settings-item__info">
-          <span class="settings-item__label">{{ t('settings.data.clearAllData') }}</span>
-          <span class="settings-item__desc">{{ t('settings.data.clearAllDataDesc') }}</span>
+    <SettingsSectionCard
+      :title="t('settings.data.dangerZone')"
+      :description="t('settings.data.dangerZoneHint')"
+      class="danger-card"
+    >
+      <div class="danger-card__content">
+        <div class="danger-card__info">
+          <span class="danger-card__badge">{{ t('settings.data.dangerZoneTag') }}</span>
+          <div class="danger-card__title">
+            {{ t('settings.data.clearAllData') }}
+          </div>
+          <div class="danger-card__desc">
+            {{ t('settings.data.clearAllDataDesc') }}
+          </div>
         </div>
         <EaButton
           type="danger"
@@ -320,7 +315,7 @@ onMounted(() => {
           {{ t('settings.data.clearData') }}
         </EaButton>
       </div>
-    </div>
+    </SettingsSectionCard>
 
     <DataClearConfirmDialog
       :visible="showClearConfirm"
@@ -349,48 +344,60 @@ onMounted(() => {
   font-weight: var(--font-weight-semibold);
 }
 
-.settings-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-4);
-  padding: var(--spacing-5);
-  border-radius: var(--radius-lg);
-  background-color: var(--color-bg-secondary);
+.danger-card {
+  border-color: color-mix(in srgb, var(--color-error) 16%, var(--color-border) 84%);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--color-error-light) 38%, transparent) 0%, transparent 42%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-bg-secondary) 94%, white 6%) 0%, var(--color-bg-secondary) 100%);
 }
 
-.settings-card--danger {
-  border: 1px solid var(--color-error-light);
-}
-
-.settings-card__title {
-  margin: 0;
-  padding-bottom: var(--spacing-3);
-  border-bottom: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-}
-
-.settings-item {
+.danger-card__content {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--spacing-4);
+  padding: var(--spacing-4);
+  border: 1px solid color-mix(in srgb, var(--color-error) 14%, var(--color-border) 86%);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-bg-secondary) 84%, white 16%);
 }
 
-.settings-item__info {
+.danger-card__info {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: column;
-  gap: var(--spacing-1);
+  gap: var(--spacing-2);
 }
 
-.settings-item__label {
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
+.danger-card__badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-error) 18%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-error-light) 62%, white 38%);
+  color: color-mix(in srgb, var(--color-error) 78%, #7f1d1d);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
 }
 
-.settings-item__desc {
-  color: var(--color-text-tertiary);
-  font-size: var(--font-size-xs);
+.danger-card__title {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+.danger-card__desc {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .danger-card__content {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 </style>

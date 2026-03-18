@@ -36,6 +36,20 @@ export interface ImportStatItem {
   value: number
 }
 
+export interface DataManagementStats {
+  storage_path: string
+  database_path: string
+  total_size_bytes: number
+  session_data_size_bytes: number
+  message_data_size_bytes: number
+  log_data_size_bytes: number
+  config_data_size_bytes: number
+  project_count: number
+  session_count: number
+  message_count: number
+  log_count: number
+}
+
 export interface InstallStatusInfo {
   text: string
   class: string
