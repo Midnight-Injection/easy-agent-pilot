@@ -19,6 +19,7 @@ export interface QueuedMessageDraft {
   displayContent?: string
   attachments: MessageAttachment[]
   agentId: string
+  modelId?: string
   createdAt: string
   status: 'queued' | 'failed'
   errorMessage?: string

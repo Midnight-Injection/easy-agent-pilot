@@ -966,13 +966,30 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     }
   }
 
-  const validateCurrentAgentAvailability = () => {
+  const getExecutionAgentConfig = () => {
     if (!currentAgent.value) {
+      return null
+    }
+
+    const selectedModel = selectedModelId.value.trim()
+    if (!selectedModel) {
+      return currentAgent.value
+    }
+
+    return {
+      ...currentAgent.value,
+      modelId: selectedModel
+    }
+  }
+
+  const validateCurrentAgentAvailability = () => {
+    const executionAgent = getExecutionAgentConfig()
+    if (!executionAgent) {
       notificationStore.smartError('发送消息', new Error('请先选择一个智能体'))
       return false
     }
 
-    const availability = conversationService.isAgentAvailable(currentAgent.value)
+    const availability = conversationService.isAgentAvailable(executionAgent)
     if (!availability.available) {
       notificationStore.smartError('发送消息', new Error(availability.reason || '智能体不可用'))
       return false
@@ -996,12 +1013,13 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     const sessionId = currentSessionId.value
     if ((!userInput.trim() && attachments.length === 0) || !sessionId || isSending.value) return false
 
-    if (!currentAgent.value) {
+    const executionAgent = getExecutionAgentConfig()
+    if (!executionAgent) {
       notificationStore.smartError('发送消息', new Error('请先选择一个智能体'))
       return false
     }
 
-    const availability = conversationService.isAgentAvailable(currentAgent.value)
+    const availability = conversationService.isAgentAvailable(executionAgent)
     if (!availability.available) {
       notificationStore.smartError('发送消息', new Error(availability.reason || '智能体不可用'))
       return false
@@ -1011,10 +1029,13 @@ export function useConversationComposer(options: UseConversationComposerOptions)
       await conversationService.sendMessage(
         sessionId,
         userInput,
-        currentAgent.value.id,
+        executionAgent.id,
         currentSession.value?.projectId,
         attachments,
-        { workingDirectory: currentWorkingDirectory.value || undefined }
+        {
+          workingDirectory: currentWorkingDirectory.value || undefined,
+          modelId: selectedModelId.value.trim() || undefined
+        }
       )
       return true
     } catch (error) {
@@ -1105,7 +1126,8 @@ export function useConversationComposer(options: UseConversationComposerOptions)
         content: userInput,
         displayContent: rawInput,
         attachments,
-        agentId: queuedAgent.id
+        agentId: queuedAgent.id,
+        modelId: selectedModelId.value.trim() || undefined
       })
       clearComposerDraft(sessionId)
       focusInput()

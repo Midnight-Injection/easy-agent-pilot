@@ -1,3 +1,4 @@
+import { invoke } from '@tauri-apps/api/core'
 import { useMessageStore, type Message, type MessageAttachment, type ToolCall } from '@/stores/message'
 import { useSessionStore } from '@/stores/session'
 import { useSessionExecutionStore } from '@/stores/sessionExecution'
@@ -20,6 +21,11 @@ import {
   buildUsageNotice,
   upsertRuntimeNotice
 } from '@/utils/runtimeNotice'
+
+interface CliConfigModelProfile {
+  main_model?: string | null
+  codex_model?: string | null
+}
 
 /**
  * 对话服务
@@ -53,6 +59,7 @@ export class ConversationService {
     attachments: MessageAttachment[] = [],
     options?: {
       workingDirectory?: string
+      modelId?: string
     }
   ): Promise<void> {
     const messageStore = useMessageStore()
@@ -64,10 +71,14 @@ export class ConversationService {
     const memoryStore = useMemoryStore()
 
     // 获取智能体配置
-    const agent = agentStore.agents.find(a => a.id === agentId)
-    if (!agent) {
+    const storedAgent = agentStore.agents.find(a => a.id === agentId)
+    if (!storedAgent) {
       throw new Error('智能体不存在')
     }
+    const modelIdOverride = options?.modelId?.trim() || undefined
+    const agent = modelIdOverride
+      ? { ...storedAgent, modelId: modelIdOverride }
+      : storedAgent
 
     // 检查策略支持
     if (!agentExecutor.isSupported(agent)) {
@@ -118,10 +129,24 @@ export class ConversationService {
         status: 'streaming'
       })
 
-      const environmentNotice = await buildCliEnvironmentNotice(agent)
+      const usageModelHint = await this.resolveUsageModelHint(agent)
+      const executionAgent = (!agent.modelId?.trim() && usageModelHint)
+        ? { ...agent, modelId: usageModelHint }
+        : agent
+
+      const environmentNotice = await buildCliEnvironmentNotice(executionAgent)
       if (environmentNotice) {
         await messageStore.updateMessage(aiMessage.id, {
           runtimeNotices: [environmentNotice]
+        })
+      }
+
+      const initialUsageNotice = buildUsageNotice({ model: usageModelHint })
+      if (initialUsageNotice) {
+        const currentMessage = messageStore.messagesBySession(sessionId)
+          .find(message => message.id === aiMessage.id)
+        await messageStore.updateMessage(aiMessage.id, {
+          runtimeNotices: upsertRuntimeNotice(currentMessage?.runtimeNotices, initialUsageNotice)
         })
       }
 
@@ -171,7 +196,7 @@ export class ConversationService {
 
       const context: ConversationContext = {
         sessionId,
-        agent,
+        agent: executionAgent,
         messages,
         workingDirectory,
         mcpServers: undefined, // MCP 配置暂时禁用
@@ -223,7 +248,8 @@ export class ConversationService {
         nextDraft.content,
         nextDraft.agentId,
         projectId,
-        nextDraft.attachments
+        nextDraft.attachments,
+        { modelId: nextDraft.modelId }
       )
     } catch (error) {
       const notificationStore = useNotificationStore()
@@ -293,7 +319,9 @@ export class ConversationService {
     let accumulatedThinking = ''
     const toolCalls: ToolCall[] = []
     const editTraces: FileEditTrace[] = []
-    const usageState: { model?: string, inputTokens?: number, outputTokens?: number } = {}
+    const usageState: { model?: string, inputTokens?: number, outputTokens?: number } = {
+      model: context.agent.modelId?.trim() || undefined
+    }
     const fileTraceCollector = new FileTraceCollector({
       sessionId,
       messageId: aiMessage.id,
@@ -435,7 +463,7 @@ export class ConversationService {
                 status: 'completed'
               })
               // 更新会话最后消息
-            sessionStore.updateLastMessage(
+              sessionStore.updateLastMessage(
                 sessionId,
                 accumulatedContent.slice(0, 50)
               )
@@ -471,6 +499,35 @@ export class ConversationService {
         errorMessage
       })
       this.finalizeSend(sessionId)
+    }
+  }
+
+  private async resolveUsageModelHint(agent: AgentConfig): Promise<string | undefined> {
+    const explicitModel = agent.modelId?.trim()
+    if (explicitModel && explicitModel !== 'default') {
+      return explicitModel
+    }
+
+    if (agent.type !== 'cli') {
+      return undefined
+    }
+
+    const cliType = agent.provider === 'claude' || agent.provider === 'codex'
+      ? agent.provider
+      : null
+    if (!cliType) {
+      return undefined
+    }
+
+    try {
+      const profile = await invoke<CliConfigModelProfile>('read_current_cli_config', { cliType })
+      if (cliType === 'codex') {
+        return profile.codex_model?.trim() || undefined
+      }
+      return profile.main_model?.trim() || undefined
+    } catch (error) {
+      console.warn('[ConversationService] Failed to resolve usage model hint:', error)
+      return undefined
     }
   }
 
