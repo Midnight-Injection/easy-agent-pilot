@@ -171,6 +171,7 @@ pub fn run() {
             commands::mini_panel::ensure_mini_panel_state,
             commands::mini_panel::set_mini_panel_working_directory,
             commands::mini_panel::get_mini_panel_default_shortcut,
+            commands::mini_panel::suggest_mini_panel_directories,
             commands::mini_panel::register_mini_panel_windows_shortcut,
             commands::mini_panel::unregister_mini_panel_windows_shortcut,
             commands::mini_panel::show_mini_panel,

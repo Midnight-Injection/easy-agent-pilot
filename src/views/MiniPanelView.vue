@@ -2,7 +2,6 @@
 import { onMounted, onUnmounted, ref, type ComponentPublicInstance } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { EaIcon } from '@/components/common'
 import TokenProgressBar from '@/components/common/TokenProgressBar.vue'
 import { MessageList } from '@/components/message'
 import ConversationComposer from '@/components/layout/ConversationComposer.vue'
@@ -30,6 +29,15 @@ const toPendingImages = (attachments: MessageAttachment[]) => attachments.map(at
 
 async function hideMiniPanel() {
   await invoke('hide_mini_panel')
+}
+
+function handleEscapeKey(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented) {
+    return
+  }
+
+  event.preventDefault()
+  void hideMiniPanel()
 }
 
 function handleOpenCompress() {
@@ -69,6 +77,7 @@ async function handleRetry(message: Message) {
 onMounted(async () => {
   await miniPanelStore.initSessionContext()
   composerRef.value?.focusInput()
+  document.addEventListener('keydown', handleEscapeKey, true)
 
   const currentWindow = getCurrentWindow()
   unlistenFocus = await currentWindow.listen('mini-panel:focus-input', () => {
@@ -78,28 +87,25 @@ onMounted(async () => {
 
 onUnmounted(() => {
   unlistenFocus?.()
+  document.removeEventListener('keydown', handleEscapeKey, true)
 })
 </script>
 
 <template>
   <div class="mini-panel">
-    <header class="mini-panel__header">
-      <div class="mini-panel__token-bar">
-        <TokenProgressBar @compress="handleOpenCompress" />
-      </div>
-      <button
-        class="mini-panel__close"
-        @click="hideMiniPanel"
-      >
-        <EaIcon
-          name="x"
-          :size="16"
-        />
-      </button>
-    </header>
-
     <div class="mini-panel__body">
       <section class="mini-panel__conversation">
+        <div class="mini-panel__overlay">
+          <div class="mini-panel__token-bar-shell">
+            <div class="mini-panel__token-bar">
+              <TokenProgressBar
+                :session-id="miniPanelStore.sessionId"
+                @compress="handleOpenCompress"
+              />
+            </div>
+          </div>
+        </div>
+
         <MessageList
           class="mini-panel__messages"
           :session-id="miniPanelStore.sessionId || undefined"
@@ -114,7 +120,6 @@ onUnmounted(() => {
         :working-directory="miniPanelStore.workingDirectory"
         :set-working-directory="miniPanelStore.setWorkingDirectory"
         show-working-directory
-        hide-status-bar
         compact
         class="mini-panel__composer"
       />
@@ -124,6 +129,7 @@ onUnmounted(() => {
 
 <style scoped>
 .mini-panel {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -134,147 +140,444 @@ onUnmounted(() => {
     linear-gradient(180deg, #f7fbff, #edf4fb 40%, #f8fafc);
 }
 
-.mini-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  position: relative;
-  padding: 14px 18px 10px;
-  min-height: 56px;
-}
-
-.mini-panel__token-bar {
-  position: absolute;
-  left: 50%;
-  top: 14px;
-  transform: translateX(-50%);
-  width: min(320px, calc(100% - 88px));
-}
-
-.mini-panel__close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
-  background: rgba(255, 255, 255, 0.88);
-  color: var(--color-text-secondary);
-  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-  z-index: 1;
-}
-
-.mini-panel__close:hover {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: color-mix(in srgb, var(--color-border-dark) 82%, transparent);
-  color: var(--color-text-primary);
-}
-
 .mini-panel__body {
   min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 0 18px 18px;
+  gap: 8px;
+  padding: 10px 12px 12px;
 }
 
 .mini-panel__conversation {
+  position: relative;
+  isolation: isolate;
   min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
-  border-radius: 18px;
+  border-radius: 14px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.96));
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.mini-panel__overlay {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+.mini-panel__token-bar-shell {
+  width: min(196px, calc(100% - 28px));
+  pointer-events: auto;
+  min-width: 0;
+}
+
+.mini-panel__token-bar {
+  width: 100%;
 }
 
 .mini-panel__messages {
   flex: 1;
   min-height: 0;
-  padding-top: 6px;
+  padding-top: 2px;
 }
 
 .mini-panel__composer {
   flex-shrink: 0;
   border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
-  border-radius: 18px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
 }
 
 :deep(.mini-panel__token-bar .token-progress) {
   width: 100%;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.58);
+  border-color: color-mix(in srgb, var(--color-border) 42%, transparent);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+:deep(.mini-panel__token-bar .token-progress:hover) {
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.1);
+}
+
+:deep(.mini-panel__token-bar .token-progress__bar) {
+  min-width: 88px;
+  height: 4px;
+}
+
+:deep(.mini-panel__token-bar .token-progress__text) {
+  min-width: 28px;
+  font-size: 10px;
+  line-height: 1;
 }
 
 :deep(.mini-panel__composer.conversation-composer) {
-  padding: 12px;
-  gap: 8px;
+  padding: 8px;
+  gap: 6px;
   background: transparent;
 }
 
+:deep(.mini-panel__composer .conversation-composer__path-row) {
+  margin-bottom: -2px;
+}
+
+:deep(.mini-panel__composer .conversation-composer__status) {
+  gap: 6px;
+  align-items: center;
+}
+
+:deep(.mini-panel__composer .conversation-composer__status-left),
+:deep(.mini-panel__composer .conversation-composer__status-right) {
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+:deep(.mini-panel__composer .conversation-composer__path) {
+  gap: 5px;
+  min-height: 24px;
+  max-width: min(100%, 220px);
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
 :deep(.mini-panel__composer .conversation-composer__panel) {
-  gap: 8px;
+  gap: 6px;
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue) {
+  gap: 5px;
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue-item) {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 6px 7px;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.94);
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue-index) {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  font-size: 10px;
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue-top) {
+  gap: 6px;
+  font-size: 10px;
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue-preview) {
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-line-clamp: 2;
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue-actions) {
+  gap: 4px;
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue-action) {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+:deep(.mini-panel__composer .conversation-composer__queue-error) {
+  margin-top: 3px;
+  font-size: 10px;
 }
 
 :deep(.mini-panel__composer .conversation-composer__editor-shell) {
-  min-height: 108px;
-  border-radius: 16px;
+  min-height: 92px;
+  border-radius: 12px;
   background: rgba(248, 250, 252, 0.98);
 }
 
 :deep(.mini-panel__composer .conversation-composer__render),
 :deep(.mini-panel__composer .conversation-composer__textarea) {
-  min-height: 108px;
-  padding: 14px 16px;
+  min-height: 92px;
+  padding: 10px 12px;
+}
+
+:deep(.mini-panel__composer .composer-chip),
+:deep(.mini-panel__composer .conversation-composer__send) {
+  min-height: 24px;
+  padding: 0 8px;
+  gap: 5px;
+  border-radius: 999px;
+}
+
+:deep(.mini-panel__composer .composer-chip__button) {
+  min-height: 24px;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 11px;
+}
+
+:deep(.mini-panel__composer .composer-chip--dropdown) {
+  max-width: 134px;
+}
+
+:deep(.mini-panel__composer .composer-chip--dropdown .composer-chip__button) {
+  width: 100%;
+  max-width: 134px;
+}
+
+:deep(.mini-panel__composer .composer-chip__button > span) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:deep(.mini-panel__composer .composer-chip__menu) {
+  min-width: 168px;
+  padding: 6px;
+  border-radius: 12px;
+}
+
+:deep(.mini-panel__composer .composer-chip__option) {
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  font-size: 11px;
+}
+
+:deep(.mini-panel__composer .composer-chip__option > span:first-of-type) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:deep(.mini-panel__composer .composer-chip__tag) {
+  font-size: 9px;
+}
+
+:deep(.mini-panel__composer .composer-chip--image) {
+  min-width: 52px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 :deep(.mini-panel__messages.message-list) {
-  padding: 12px 14px 22px;
+  padding: 40px 10px 12px;
 }
 
 :deep(.mini-panel__messages .message-bubble) {
-  --assistant-body-width: clamp(14rem, 78%, 38rem);
-  --user-body-width: clamp(11rem, 62%, 28rem);
+  --assistant-body-width: clamp(11.75rem, 72%, 18rem);
+  --user-body-width: clamp(8.75rem, 56%, 14rem);
+  --message-fixed-width: 14.75rem;
+  --message-min-width: var(--message-fixed-width);
+  --message-max-width: 18rem;
+  --message-max-height: 22rem;
+  --message-compact-max-width: var(--message-fixed-width);
+  --message-compact-max-height: 13.5rem;
+  --message-trace-max-width: 18rem;
+  --thinking-display-width: var(--message-fixed-width);
+  gap: 8px;
+}
+
+:deep(.mini-panel__messages .message-bubble__avatar) {
+  width: 24px;
+  height: 24px;
+}
+
+:deep(.mini-panel__messages .avatar-icon) {
+  font-size: 12px;
 }
 
 :deep(.mini-panel__messages .message-bubble__body) {
   min-width: 0;
+  gap: 6px;
 }
 
 :deep(.mini-panel__messages .message-bubble--assistant .message-bubble__body) {
-  width: min(calc(100% - 32px - var(--spacing-3)), var(--assistant-body-width));
+  width: min(calc(100% - 24px - 8px), var(--assistant-body-width));
 }
 
 :deep(.mini-panel__messages .message-bubble--user .message-bubble__body) {
-  width: min(100%, var(--user-body-width));
+  width: fit-content;
+  max-width: min(100%, var(--user-body-width));
 }
 
 :deep(.mini-panel__messages .message-bubble__content) {
   width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+:deep(.mini-panel__messages .message-bubble--user .message-bubble__content) {
+  width: fit-content;
+  min-width: 0;
+  max-width: min(100%, var(--user-body-width));
+}
+
+:deep(.mini-panel__messages .message-bubble__thinking),
+:deep(.mini-panel__messages .message-bubble__tool-calls),
+:deep(.mini-panel__messages .message-bubble__runtime) {
+  width: min(100%, var(--message-compact-max-width));
+  min-width: 0;
+}
+
+:deep(.mini-panel__messages .message-bubble__tool-calls) {
+  gap: 6px;
+}
+
+:deep(.mini-panel__messages .message-bubble__runtime) {
+  width: min(100%, 15rem);
+}
+
+:deep(.mini-panel__messages .runtime-notice-list) {
+  gap: 4px;
+}
+
+:deep(.mini-panel__messages .runtime-notice) {
+  border-radius: 10px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
+}
+
+:deep(.mini-panel__messages .runtime-notice__header) {
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+:deep(.mini-panel__messages .runtime-notice__header-main) {
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+}
+
+:deep(.mini-panel__messages .runtime-notice__eyebrow) {
+  font-size: 0.52rem;
+  line-height: 1;
+}
+
+:deep(.mini-panel__messages .runtime-notice__title) {
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+:deep(.mini-panel__messages .runtime-notice__header-side) {
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+:deep(.mini-panel__messages .runtime-notice__chips) {
+  flex-wrap: nowrap;
+  gap: 3px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+:deep(.mini-panel__messages .runtime-notice__chip) {
+  flex: 0 0 auto;
+  padding: 0.14rem 0.38rem;
+  font-size: 0.58rem;
+  line-height: 1.1;
+}
+
+:deep(.mini-panel__messages .runtime-notice__chevron) {
+  font-size: 0.58rem;
+}
+
+:deep(.mini-panel__messages .runtime-notice__content) {
+  padding: 0 8px 8px;
+}
+
+:deep(.mini-panel__messages .message-bubble__meta) {
+  gap: 6px;
+  padding: 0;
+  margin-top: 0;
+  font-size: 10px;
+}
+
+:deep(.mini-panel__messages .message-bubble__attachments) {
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+:deep(.mini-panel__messages .message-bubble__attachment-image) {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+}
+
+:deep(.mini-panel__messages .file-mention) {
+  gap: 4px;
+  padding: 2px 6px;
+  margin: 0 1px;
+  border-radius: 8px;
+  font-size: 0.76em;
+}
+
+:deep(.mini-panel__messages .file-mention__path) {
+  max-width: 132px;
+}
+
+:deep(.mini-panel__messages .message-bubble__trace-rail) {
+  gap: 6px;
+}
+
+:deep(.mini-panel__messages .message-bubble__trace-rail-head) {
+  gap: 8px;
+}
+
+:deep(.mini-panel__messages .message-bubble__trace-strip) {
+  gap: 6px;
+  padding-bottom: 4px;
+}
+
+:deep(.mini-panel__messages .message-bubble__trace-tile) {
+  flex-basis: 100px;
+  width: 100px;
+  min-height: 102px;
+  padding: 8px 8px 10px;
+  border-radius: 14px;
 }
 
 @media (max-width: 900px) {
-  .mini-panel__header {
-    padding: 12px 14px 8px;
+  .mini-panel__body {
+    padding: 8px 10px 10px;
   }
 
-  .mini-panel__body {
-    padding: 0 14px 14px;
+  .mini-panel__overlay {
+    top: 8px;
   }
 
   :deep(.mini-panel__messages.message-list) {
-    padding: 10px 10px 18px;
+    padding: 38px 8px 10px;
   }
 
   :deep(.mini-panel__messages .message-bubble) {
-    --assistant-body-width: min(100%, calc(100% - 28px));
-    --user-body-width: min(82%, 24rem);
+    --assistant-body-width: min(100%, calc(100% - 22px));
+    --user-body-width: min(78%, 13rem);
   }
 }
 </style>

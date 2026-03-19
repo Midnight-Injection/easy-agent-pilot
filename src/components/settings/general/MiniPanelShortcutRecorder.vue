@@ -7,8 +7,9 @@ import {
   buildShortcutFromKeyboardEvent,
   DEFAULT_MINI_PANEL_SHORTCUT,
   formatShortcutForDisplay,
-  IS_WINDOWS,
+  formatShortcutPreviewFromKeyboardEvent,
   resolveMiniPanelShortcut,
+  SUPPORTS_NATIVE_SHORTCUT_OVERRIDE,
   validateShortcutForCurrentPlatform
 } from '@/utils/shortcut'
 
@@ -29,8 +30,11 @@ const { registrationState, registrationError, registrationMode } = useMiniPanelS
 const isRecording = ref(false)
 const recorderRef = ref<HTMLButtonElement | null>(null)
 const captureHint = ref('')
+const recordingPreview = ref('')
+const suppressNextToggleUntil = ref(0)
 
 const displayValue = computed(() => formatShortcutForDisplay(props.modelValue))
+const recordingDisplayValue = computed(() => recordingPreview.value || t('settings.general.miniPanelShortcutRecording'))
 
 const statusText = computed(() => {
   if (props.disabled) {
@@ -54,12 +58,16 @@ const statusText = computed(() => {
       return t('settings.general.miniPanelShortcutConflict')
     }
 
-    if (registrationError.value === 'WINDOWS_SHORTCUT_OVERRIDE_UNSUPPORTED') {
+    if (registrationError.value === 'NATIVE_SHORTCUT_OVERRIDE_UNSUPPORTED') {
       return t('settings.general.miniPanelShortcutOverrideUnsupported')
     }
 
-    if (registrationError.value === 'WINDOWS_SHORTCUT_OVERRIDE_FAILED') {
+    if (registrationError.value === 'NATIVE_SHORTCUT_OVERRIDE_FAILED') {
       return t('settings.general.miniPanelShortcutOverrideFailed')
+    }
+
+    if (registrationError.value === 'NATIVE_SHORTCUT_OVERRIDE_PERMISSION_REQUIRED') {
+      return t('settings.general.miniPanelShortcutOverridePermissionRequired')
     }
 
     return registrationError.value || t('settings.general.miniPanelShortcutConflict')
@@ -86,20 +94,21 @@ const statusClass = computed(() => ({
   'shortcut-status--muted': props.disabled || registrationState.value === 'idle'
 }))
 
-const canEnableWindowsOverride = computed(() => (
-  IS_WINDOWS
+const canEnableShortcutOverride = computed(() => (
+  SUPPORTS_NATIVE_SHORTCUT_OVERRIDE
   && !props.disabled
   && !props.windowsOverrideEnabled
   && registrationState.value === 'error'
-  && (
-    registrationError.value === 'GLOBAL_SHORTCUT_CONFLICT'
-    || registrationError.value === 'GLOBAL_SHORTCUT_RESERVED_WINDOWS_ALT_SPACE'
-  )
+  && registrationError.value !== 'GLOBAL_SHORTCUT_PERMISSION_REQUIRED'
+  && registrationError.value !== 'NATIVE_SHORTCUT_OVERRIDE_UNSUPPORTED'
+  && registrationError.value !== 'NATIVE_SHORTCUT_OVERRIDE_FAILED'
+  && registrationError.value !== 'NATIVE_SHORTCUT_OVERRIDE_PERMISSION_REQUIRED'
 ))
 
 function stopRecording() {
   isRecording.value = false
   captureHint.value = ''
+  recordingPreview.value = ''
 }
 
 async function startRecording() {
@@ -109,11 +118,16 @@ async function startRecording() {
 
   isRecording.value = true
   captureHint.value = t('settings.general.miniPanelShortcutRecordingDesc')
+  recordingPreview.value = ''
   await nextTick()
   recorderRef.value?.focus()
 }
 
 function toggleRecording() {
+  if (Date.now() < suppressNextToggleUntil.value) {
+    return
+  }
+
   if (isRecording.value) {
     stopRecording()
     return
@@ -136,9 +150,12 @@ function handleKeydown(event: KeyboardEvent) {
   event.stopPropagation()
 
   if (event.key === 'Escape') {
+    suppressNextToggleUntil.value = Date.now() + 160
     stopRecording()
     return
   }
+
+  recordingPreview.value = formatShortcutPreviewFromKeyboardEvent(event)
 
   const result = buildShortcutFromKeyboardEvent(event)
   if (result.accelerator) {
@@ -151,6 +168,7 @@ function handleKeydown(event: KeyboardEvent) {
     }
 
     emit('update:modelValue', result.accelerator)
+    suppressNextToggleUntil.value = Date.now() + 160
     stopRecording()
     return
   }
@@ -161,6 +179,25 @@ function handleKeydown(event: KeyboardEvent) {
   }
 
   captureHint.value = t('settings.general.miniPanelShortcutUnsupported')
+}
+
+function handleKeyup(event: KeyboardEvent) {
+  if (!isRecording.value || event.key === 'Escape') {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  recordingPreview.value = formatShortcutPreviewFromKeyboardEvent(event)
+}
+
+function swallowDisplayKeyEvent(event: KeyboardEvent) {
+  if (!isRecording.value) {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
 }
 
 function enableWindowsOverride() {
@@ -178,10 +215,14 @@ watch(
 
 onMounted(() => {
   window.addEventListener('blur', stopRecording)
+  window.addEventListener('keydown', handleKeydown, true)
+  window.addEventListener('keyup', handleKeyup, true)
 })
 
 onUnmounted(() => {
   window.removeEventListener('blur', stopRecording)
+  window.removeEventListener('keydown', handleKeydown, true)
+  window.removeEventListener('keyup', handleKeyup, true)
 })
 </script>
 
@@ -198,10 +239,11 @@ onUnmounted(() => {
         }"
         :disabled="disabled"
         @click="toggleRecording"
-        @keydown="handleKeydown"
+        @keydown="swallowDisplayKeyEvent"
+        @keyup="swallowDisplayKeyEvent"
       >
         <span class="shortcut-display__value">
-          {{ isRecording ? t('settings.general.miniPanelShortcutRecording') : displayValue }}
+          {{ isRecording ? recordingDisplayValue : displayValue }}
         </span>
         <span
           v-if="isRecording"
@@ -239,7 +281,7 @@ onUnmounted(() => {
       {{ statusText }}
     </p>
     <div
-      v-if="canEnableWindowsOverride"
+      v-if="canEnableShortcutOverride"
       class="shortcut-recorder__override"
     >
       <EaButton

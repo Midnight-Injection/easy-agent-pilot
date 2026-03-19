@@ -1474,8 +1474,8 @@ function close() {
 }
 
 .add-step-btn.test {
-  border-color: #86efac;
-  color: #22c55e;
+  border-color: var(--color-border, #e2e8f0);
+  color: var(--color-text-tertiary, #94a3b8);
 }
 
 .add-step-btn.test:hover {

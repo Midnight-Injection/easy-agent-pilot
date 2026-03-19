@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, toRef } from 'vue'
 import DynamicForm from '@/components/plan/DynamicForm.vue'
 import { parseStructuredContent } from '@/utils/structuredContent'
+import { useTypewriterText } from '@/composables/useTypewriterText'
 import MarkdownRenderer from './MarkdownRenderer.vue'
 import StructuredResultCard from './StructuredResultCard.vue'
 
@@ -9,9 +10,11 @@ const props = withDefaults(defineProps<{
   content: string
   interactiveForms?: boolean
   formDisabled?: boolean
+  animate?: boolean
 }>(), {
   interactiveForms: false,
-  formDisabled: false
+  formDisabled: false,
+  animate: false
 })
 
 const emit = defineEmits<{
@@ -19,7 +22,13 @@ const emit = defineEmits<{
   (e: 'form-cancel', formId: string): void
 }>()
 
-const blocks = computed(() => parseStructuredContent(props.content))
+const { displayedText } = useTypewriterText(
+  toRef(props, 'content'),
+  toRef(props, 'animate'),
+  { charsPerSecond: 140, maxChunkSize: 24 }
+)
+
+const blocks = computed(() => parseStructuredContent(displayedText.value))
 
 function handleFormSubmit(formId: string, values: Record<string, unknown>) {
   emit('form-submit', formId, values)
@@ -39,6 +48,7 @@ function handleFormCancel(formId: string) {
       <MarkdownRenderer
         v-if="block.type === 'markdown'"
         :content="block.content"
+        :animate="false"
       />
 
       <div

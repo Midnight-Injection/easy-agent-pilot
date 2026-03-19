@@ -16,9 +16,14 @@ export interface TimelineEntry {
   content?: string
   timestamp?: string
   role?: 'user' | 'assistant' | 'system'
+  animate?: boolean
   toolCall?: ToolCall
+  toolCompact?: boolean
+  toolDefaultExpanded?: boolean
+  toolDefaultResultExpanded?: boolean
   formSchema?: DynamicFormSchema
+  formPrompt?: string
   formInitialValues?: Record<string, unknown>
   formDisabled?: boolean
-  formVariant?: 'active' | 'submitted'
+  formVariant?: 'active' | 'submitted' | 'archived'
 }

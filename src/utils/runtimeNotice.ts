@@ -1,0 +1,281 @@
+import { invoke } from '@tauri-apps/api/core'
+import type { AgentConfig } from '@/stores/agent'
+
+export interface RuntimeNotice {
+  id: string
+  title: string
+  content: string
+  tone?: 'info' | 'success' | 'warning'
+}
+
+export interface UsageNoticeSummary {
+  model: string | null
+  input: string | null
+  output: string | null
+}
+
+interface RuntimeNoticeLine {
+  label: string
+  value: string
+}
+
+interface CliConfigScanResult {
+  skills: Array<{ name: string }>
+  plugins: Array<{ name: string }>
+}
+
+interface CliConfig {
+  mcp_servers?: Record<string, unknown>
+  mcpServers?: Record<string, unknown>
+}
+
+interface UsageSnapshot {
+  model?: string
+  inputTokens?: number
+  outputTokens?: number
+}
+
+function inferRuntimeNoticeId(title: string): string {
+  if (title.includes('运行扩展')) {
+    return 'environment'
+  }
+  return 'system'
+}
+
+function formatNameList(label: string, names: string[], maxCount: number = 5): string | null {
+  if (names.length === 0) return null
+
+  const visibleNames = names.slice(0, maxCount)
+  const suffix = names.length > maxCount
+    ? ` 等 ${names.length} 个`
+    : ` (${names.length})`
+
+  return `- ${label}: ${visibleNames.join('、')}${suffix}`
+}
+
+function uniqueNames(names: string[]): string[] {
+  return Array.from(new Set(names.map(name => name.trim()).filter(Boolean)))
+}
+
+function parseRuntimeNoticeLines(content: string): RuntimeNoticeLine[] {
+  return content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^-\s*/, ''))
+    .map((line) => {
+      const separatorIndex = line.indexOf(':')
+      if (separatorIndex < 0) {
+        return null
+      }
+
+      return {
+        label: line.slice(0, separatorIndex).trim(),
+        value: line.slice(separatorIndex + 1).trim()
+      }
+    })
+    .filter((line): line is RuntimeNoticeLine => Boolean(line?.label && line.value))
+}
+
+function formatCompactNumber(value: number): string {
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1).replace(/\.0$/, '')}m`
+  if (value >= 1000) return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`
+  return String(value)
+}
+
+function extractListCount(value: string): number | null {
+  const match = value.match(/等\s+(\d+)\s+个|\((\d+)\)$/)
+  if (!match) {
+    return null
+  }
+
+  return Number(match[1] || match[2] || 0) || null
+}
+
+export async function buildCliEnvironmentNotice(agent: AgentConfig): Promise<RuntimeNotice | null> {
+  if (agent.type !== 'cli') {
+    return null
+  }
+
+  const cliPath = agent.cliPath || agent.provider
+  const cliType = agent.provider
+
+  if (!cliPath || !cliType) {
+    return null
+  }
+
+  try {
+    const [scanResult, cliConfig] = await Promise.all([
+      invoke<CliConfigScanResult>('scan_cli_config', { cliPath, cliType }),
+      invoke<CliConfig>('read_cli_config', { cliPath, cliType })
+    ])
+
+    const skillNames = uniqueNames(scanResult.skills.map(skill => skill.name))
+    const pluginNames = uniqueNames(scanResult.plugins.map(plugin => plugin.name))
+    const mcpNames = uniqueNames(Object.keys(cliConfig.mcp_servers || cliConfig.mcpServers || {}))
+
+    const lines = [
+      formatNameList('Skills', skillNames),
+      formatNameList('Plugins', pluginNames),
+      formatNameList('MCP', mcpNames)
+    ].filter(Boolean) as string[]
+
+    if (lines.length === 0) {
+      return null
+    }
+
+    return {
+      id: 'environment',
+      title: '已加载运行扩展',
+      content: lines.join('\n'),
+      tone: 'info'
+    }
+  } catch (error) {
+    console.warn('[runtimeNotice] Failed to build CLI environment notice:', error)
+    return null
+  }
+}
+
+export function buildRuntimeNoticeFromSystemContent(content?: string | null): RuntimeNotice | null {
+  const trimmed = content?.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const lines = trimmed.split('\n')
+  const headerLine = lines[0]?.trim()
+  const hasMarkdownHeader = Boolean(headerLine?.startsWith('### '))
+  const title = hasMarkdownHeader
+    ? headerLine.replace(/^###\s+/, '').trim()
+    : '运行状态'
+  const body = hasMarkdownHeader ? lines.slice(1).join('\n').trim() : trimmed
+
+  if (!title || !body) {
+    return null
+  }
+
+  return {
+    id: inferRuntimeNoticeId(title),
+    title,
+    content: body,
+    tone: 'info'
+  }
+}
+
+export function summarizeRuntimeNotice(notice: RuntimeNotice): string[] {
+  const lines = parseRuntimeNoticeLines(notice.content)
+
+  if (notice.id === 'environment' || notice.title.includes('运行扩展')) {
+    return lines
+      .map((line) => {
+        const count = extractListCount(line.value)
+        if (count !== null) {
+          return `${line.label} ${count}`
+        }
+
+        const preview = line.value.split('、')[0]?.trim()
+        return preview ? `${line.label} ${preview}` : line.label
+      })
+      .slice(0, 5)
+  }
+
+  if (notice.id === 'usage' || notice.title.includes('用量')) {
+    return lines
+      .map((line) => {
+        if (line.label.includes('模型')) {
+          return line.value
+        }
+
+        const numeric = Number(line.value.replace(/[^\d]/g, ''))
+        if (Number.isFinite(numeric) && numeric > 0) {
+          const prefix = line.label.includes('输入') ? 'In' : line.label.includes('输出') ? 'Out' : line.label
+          return `${prefix} ${formatCompactNumber(numeric)}`
+        }
+
+        return `${line.label} ${line.value}`.trim()
+      })
+      .slice(0, 3)
+  }
+
+  return lines
+    .map(line => `${line.label} ${line.value}`.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+}
+
+export function getUsageNoticeSummary(notice: RuntimeNotice): UsageNoticeSummary | null {
+  if (notice.id !== 'usage' && !notice.title.includes('用量')) {
+    return null
+  }
+
+  const lines = parseRuntimeNoticeLines(notice.content)
+  let model: string | null = null
+  let input: string | null = null
+  let output: string | null = null
+
+  lines.forEach((line) => {
+    if (line.label.includes('模型')) {
+      model = line.value || null
+      return
+    }
+
+    const numeric = Number(line.value.replace(/[^\d]/g, ''))
+    const formatted = Number.isFinite(numeric) && numeric > 0
+      ? formatCompactNumber(numeric)
+      : (line.value || null)
+
+    if (line.label.includes('输入')) {
+      input = formatted
+      return
+    }
+
+    if (line.label.includes('输出')) {
+      output = formatted
+    }
+  })
+
+  return { model, input, output }
+}
+
+export function buildUsageNotice(usage: UsageSnapshot): RuntimeNotice | null {
+  const inputTokens = typeof usage.inputTokens === 'number' ? usage.inputTokens : undefined
+  const outputTokens = typeof usage.outputTokens === 'number' ? usage.outputTokens : undefined
+  const model = usage.model?.trim()
+
+  if (!model && inputTokens === undefined && outputTokens === undefined) {
+    return null
+  }
+
+  const lines = [
+    model ? `- 模型: ${model}` : null,
+    inputTokens !== undefined ? `- 输入 Tokens: ${inputTokens}` : null,
+    outputTokens !== undefined ? `- 输出 Tokens: ${outputTokens}` : null
+  ].filter(Boolean) as string[]
+
+  return {
+    id: 'usage',
+    title: '模型与用量',
+    content: lines.join('\n'),
+    tone: 'info'
+  }
+}
+
+export function upsertRuntimeNotice(
+  notices: RuntimeNotice[] | undefined,
+  nextNotice: RuntimeNotice | null
+): RuntimeNotice[] | undefined {
+  const current = notices ? [...notices] : []
+
+  if (!nextNotice) {
+    return current.length > 0 ? current : undefined
+  }
+
+  const existingIndex = current.findIndex(notice => notice.id === nextNotice.id)
+  if (existingIndex >= 0) {
+    current[existingIndex] = nextNotice
+  } else {
+    current.push(nextNotice)
+  }
+
+  return current
+}

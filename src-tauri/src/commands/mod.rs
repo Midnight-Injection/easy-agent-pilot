@@ -20,6 +20,8 @@ pub mod mcpmarket_source;
 pub mod memory;
 pub mod message;
 pub mod mini_panel;
+#[cfg(target_os = "macos")]
+pub(crate) mod mini_panel_macos_shortcut;
 #[cfg(target_os = "windows")]
 pub(crate) mod mini_panel_windows_shortcut;
 pub mod plan;

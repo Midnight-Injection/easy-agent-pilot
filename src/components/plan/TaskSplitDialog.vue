@@ -4,18 +4,22 @@ import { usePlanStore } from '@/stores/plan'
 import { useTaskSplitStore } from '@/stores/taskSplit'
 import { useTaskStore } from '@/stores/task'
 import { useProjectStore } from '@/stores/project'
+import { useThemeStore } from '@/stores/theme'
 import TaskSplitPreview from './TaskSplitPreview.vue'
 import TaskResplitModal from './TaskResplitModal.vue'
 import ExecutionTimeline from '@/components/message/ExecutionTimeline.vue'
 import { useOverlayDismiss } from '@/composables/useOverlayDismiss'
-import type { AITaskItem, DynamicFormSchema, TaskResplitConfig } from '@/types/plan'
+import type { AITaskItem, DynamicFormSchema, PlanSplitLogRecord, TaskResplitConfig } from '@/types/plan'
 import type { TimelineEntry } from '@/types/timeline'
-import { buildToolCallFromLogs, extractDynamicFormSchema, extractDynamicFormSchemas } from '@/utils/toolCallLog'
+import { buildToolCallFromLogs, extractDynamicFormSchemas } from '@/utils/toolCallLog'
+import { buildUsageNotice } from '@/utils/runtimeNotice'
 
 const planStore = usePlanStore()
 const taskSplitStore = useTaskSplitStore()
 const taskStore = useTaskStore()
 const projectStore = useProjectStore()
+const themeStore = useThemeStore()
+const isDarkTheme = computed(() => themeStore.isDark)
 
 const isConfirming = ref(false)
 const messagesContainerRef = ref<HTMLElement | null>(null)
@@ -30,11 +34,16 @@ const showPreview = computed(() => taskSplitStore.splitResult !== null)
 
 // 当前表单数据
 const activeFormSchema = computed(() => taskSplitStore.activeFormSchema)
-const showStopButton = computed(() =>
-  taskSplitStore.session?.status === 'running' || taskSplitStore.session?.status === 'waiting_input'
-)
+const isSessionRunning = computed(() => taskSplitStore.session?.status === 'running')
+const showStopButton = computed(() => taskSplitStore.session?.status === 'running')
 const showLoadingIndicator = computed(() => taskSplitStore.session?.status === 'running')
 const canRetrySplit = computed(() => taskSplitStore.session?.status === 'failed')
+const retryActionLabel = computed(() => {
+  const hasUserMessage = taskSplitStore.messages.some(message =>
+    message.role === 'user' && message.content.trim()
+  )
+  return hasUserMessage ? '重新发送' : '重试'
+})
 const splitErrorMessage = computed(() =>
   taskSplitStore.session?.errorMessage?.trim()
   || taskSplitStore.session?.parseError?.trim()
@@ -45,11 +54,76 @@ const footerHint = computed(() => {
     return splitErrorMessage.value || 'AI 响应失败，可点击重试重新发起请求。'
   }
 
+  if (taskSplitStore.session?.status === 'stopped') {
+    if (activeFormSchema.value) {
+      return '当前会话已停止，可继续填写上方表单后再提交。'
+    }
+    const hasArchivedForms = taskSplitStore.logs.some(log =>
+      log.type === 'content' && log.content.includes('"type": "form_request"')
+    )
+    return hasArchivedForms
+      ? '当前会话已停止，历史表单已固化展示，可回看每一轮的建议与表单内容。'
+      : '当前会话已停止，且没有待填写的表单数据，仅保留已有思考记录。'
+  }
+
   if (taskSplitStore.session?.status === 'running') {
     return '后台正在执行拆分，可关闭弹框稍后回来查看'
   }
 
+  if (taskSplitStore.session?.status === 'waiting_input' && activeFormSchema.value) {
+    return '请根据上方 AI 动态表单逐步补充需求'
+  }
+
+  if (!activeFormSchema.value && !showPreview.value) {
+    return '当前会话没有待展示的表单数据。'
+  }
+
   return '请根据上方 AI 动态表单逐步补充需求'
+})
+
+const latestRuntimeLog = computed(() => {
+  if (taskSplitStore.logs.length === 0) return null
+  return [...taskSplitStore.logs].sort((left, right) =>
+    compareTimestamp(left.createdAt, right.createdAt)
+  )[taskSplitStore.logs.length - 1] ?? null
+})
+
+const runningStatusText = computed(() => {
+  if (!isSessionRunning.value) {
+    return ''
+  }
+
+  const latestLog = latestRuntimeLog.value
+  if (!latestLog) {
+    return '任务已启动，等待首个输出...'
+  }
+
+  if (latestLog.type === 'thinking') {
+    return '正在思考并拆分任务...'
+  }
+
+  if (latestLog.type === 'system') {
+    return '正在加载运行扩展...'
+  }
+
+  if (latestLog.type === 'tool_use') {
+    const toolCall = buildToolCallFromLogs(latestLog, taskSplitStore.logs)
+    return toolCall ? `正在调用工具 ${toolCall.name}...` : '正在调用工具...'
+  }
+
+  if (latestLog.type === 'content') {
+    return '正在生成结构化结果...'
+  }
+
+  if (latestLog.type === 'tool_result') {
+    return '工具返回结果，正在继续处理...'
+  }
+
+  if (latestLog.type === 'error') {
+    return '收到错误输出，正在等待最终状态...'
+  }
+
+  return '正在处理中...'
 })
 
 function scrollMessagesToBottom() {
@@ -61,6 +135,18 @@ function scrollMessagesToBottom() {
 
 function compareTimestamp(left?: string, right?: string) {
   return new Date(left || 0).getTime() - new Date(right || 0).getTime()
+}
+
+function parseLogMetadata(log: PlanSplitLogRecord): Record<string, unknown> | null {
+  if (!log.metadata) return null
+  if (typeof log.metadata === 'string') {
+    try {
+      return JSON.parse(log.metadata) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+  return log.metadata as unknown as Record<string, unknown>
 }
 
 function buildSummaryValueMap(schema: DynamicFormSchema, content: string): Record<string, string> {
@@ -148,54 +234,144 @@ function buildFormValuesFromMessage(schema: DynamicFormSchema, messageContent: s
   return values
 }
 
-const historicalSubmittedForms = computed(() => {
-  const structuredFormQueue: Array<{ schema: DynamicFormSchema; requestedAt: string }> = []
+interface FormRequestSnapshot {
+  formId: string
+  schema: DynamicFormSchema
+  promptText?: string
+  requestedAt: string
+}
+
+interface FormRequestTurn {
+  requestedAt: string
+  promptText?: string
+  forms: FormRequestSnapshot[]
+}
+
+function extractFormRequestTurnFromLog(log: PlanSplitLogRecord): FormRequestTurn | null {
+  const toTurn = (
+    payload: Record<string, unknown>,
+    requestedAt: string
+  ): FormRequestTurn | null => {
+    const schemas = extractDynamicFormSchemas(payload)
+    if (schemas.length === 0) {
+      return null
+    }
+
+    const promptText = typeof payload.question === 'string' ? payload.question.trim() : undefined
+    return {
+      requestedAt,
+      promptText,
+      forms: schemas.map(schema => ({
+        formId: schema.formId,
+        schema,
+        promptText,
+        requestedAt
+      }))
+    }
+  }
+
+  if (log.type === 'content') {
+    try {
+      return toTurn(JSON.parse(log.content) as Record<string, unknown>, log.createdAt)
+    } catch {
+      return null
+    }
+  }
+
+  const toolCall = buildToolCallFromLogs(log, taskSplitStore.logs)
+  if (!toolCall) {
+    return null
+  }
+
+  const isStructuredOutput = toolCall.name.toLowerCase() === 'structuredoutput'
+    || toolCall.name.toLowerCase() === 'structured_output'
+  if (!isStructuredOutput) {
+    return null
+  }
+
+  return toTurn(toolCall.arguments, log.createdAt)
+}
+
+const formRequestTurns = computed<FormRequestTurn[]>(() => {
+  const turns: FormRequestTurn[] = []
   const sortedLogs = [...taskSplitStore.logs].sort((left, right) =>
     compareTimestamp(left.createdAt, right.createdAt)
   )
 
   for (const log of sortedLogs) {
-    let schemas: DynamicFormSchema[]
-
-    if (log.type === 'content') {
-      try {
-        schemas = extractDynamicFormSchemas(JSON.parse(log.content) as Record<string, unknown>)
-      } catch {
-        schemas = []
-      }
-    } else {
-      const toolCall = buildToolCallFromLogs(log, taskSplitStore.logs)
-      if (!toolCall) continue
-
-      const isStructuredOutput = toolCall.name.toLowerCase() === 'structuredoutput'
-        || toolCall.name.toLowerCase() === 'structured_output'
-      if (!isStructuredOutput) continue
-
-      schemas = extractDynamicFormSchemas(toolCall.arguments)
-    }
-
-    for (const schema of schemas) {
-      structuredFormQueue.push({
-        schema,
-        requestedAt: log.createdAt
-      })
+    const turn = extractFormRequestTurnFromLog(log)
+    if (turn) {
+      turns.push(turn)
     }
   }
 
+  return turns
+})
+
+const formRequestHistory = computed<FormRequestSnapshot[]>(() =>
+  formRequestTurns.value.flatMap(turn => turn.forms)
+)
+
+const suppressAssistantContentLogs = computed(() =>
+  formRequestTurns.value.length > 0 || showPreview.value
+)
+
+const hasRuntimeSystemLog = computed(() =>
+  taskSplitStore.logs.some(log => log.type === 'system' && log.content.trim())
+)
+
+const usageNoticeEntry = computed<TimelineEntry | null>(() => {
+  const usageLogs = [...taskSplitStore.logs]
+    .filter(log => log.type === 'usage' || log.type === 'message_start')
+    .sort((left, right) => compareTimestamp(left.createdAt, right.createdAt))
+
+  const usageState: { model?: string, inputTokens?: number, outputTokens?: number } = {}
+  for (const log of usageLogs) {
+    const metadata = parseLogMetadata(log)
+    const model = typeof metadata?.model === 'string' ? metadata.model : undefined
+    const inputTokens = typeof metadata?.inputTokens === 'number' ? metadata.inputTokens : undefined
+    const outputTokens = typeof metadata?.outputTokens === 'number' ? metadata.outputTokens : undefined
+
+    if (model) usageState.model = model
+    if (inputTokens !== undefined) usageState.inputTokens = inputTokens
+    if (outputTokens !== undefined) usageState.outputTokens = outputTokens
+  }
+
+  const notice = buildUsageNotice(usageState)
+  if (!notice) return null
+
+  const latestUsageLog = usageLogs[usageLogs.length - 1]
+  return {
+    id: `usage-${latestUsageLog?.id || 'runtime'}`,
+    type: 'system',
+    content: `### ${notice.title}\n${notice.content}`,
+    timestamp: latestUsageLog?.createdAt || taskSplitStore.session?.updatedAt
+  }
+})
+
+const historicalSubmittedForms = computed(() => {
   const derivedSnapshots: Array<{
     formId: string
     schema: DynamicFormSchema
+    promptText?: string
+    requestedAt: string
     values: Record<string, unknown>
     submittedAt: string
+    sourceMessageId?: string
   }> = []
   const sortedMessages = [...taskSplitStore.messages].sort((left, right) =>
     compareTimestamp(left.timestamp, right.timestamp)
   )
   let formQueueIndex = 0
+  let latestAssistantPrompt = ''
 
   for (const message of sortedMessages) {
+    if (message.role === 'assistant') {
+      latestAssistantPrompt = message.content.trim()
+      continue
+    }
     if (message.role !== 'user') continue
-    const pendingForm = structuredFormQueue[formQueueIndex]
+    const pendingForm = formRequestHistory.value[formQueueIndex]
     if (!pendingForm) break
     if (compareTimestamp(message.timestamp, pendingForm.requestedAt) < 0) {
       continue
@@ -204,8 +380,11 @@ const historicalSubmittedForms = computed(() => {
     derivedSnapshots.push({
       formId: pendingForm.schema.formId,
       schema: pendingForm.schema,
+      promptText: latestAssistantPrompt || undefined,
+      requestedAt: pendingForm.requestedAt,
       values: buildFormValuesFromMessage(pendingForm.schema, message.content),
-      submittedAt: message.timestamp
+      submittedAt: message.timestamp,
+      sourceMessageId: message.id
     })
     formQueueIndex += 1
   }
@@ -217,7 +396,16 @@ const historicalSubmittedForms = computed(() => {
   }
 
   for (const snapshot of taskSplitStore.submittedForms) {
-    mergedSnapshots.set(snapshot.formId, snapshot)
+    const derivedSnapshot = mergedSnapshots.get(snapshot.formId)
+    mergedSnapshots.set(snapshot.formId, {
+      formId: snapshot.formId,
+      schema: snapshot.schema,
+      promptText: snapshot.promptText,
+      requestedAt: derivedSnapshot?.requestedAt || snapshot.submittedAt,
+      values: snapshot.values,
+      submittedAt: snapshot.submittedAt,
+      sourceMessageId: derivedSnapshot?.sourceMessageId
+    })
   }
 
   return Array.from(mergedSnapshots.values()).sort((left, right) =>
@@ -227,11 +415,19 @@ const historicalSubmittedForms = computed(() => {
 
 const timelineEntries = computed<TimelineEntry[]>(() => {
   const entries: TimelineEntry[] = []
-  const submittedFormIds = new Set(historicalSubmittedForms.value.map(item => item.formId))
   const activeFormId = activeFormSchema.value?.formId ?? null
+  const activeFormPrompt = [...taskSplitStore.messages]
+    .slice()
+    .reverse()
+    .find(message => message.role === 'assistant' && message.content.trim())
+    ?.content
+    ?.trim()
+  const animateLiveEntries = isSessionRunning.value
+  let lastThinkingEntry: TimelineEntry | null = null
+  let lastAssistantContentEntry: TimelineEntry | null = null
 
   for (const message of taskSplitStore.messages) {
-    if (!message.content.trim()) {
+    if (message.role !== 'user' || !message.content.trim()) {
       continue
     }
 
@@ -244,47 +440,103 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
     })
   }
 
-  for (const log of taskSplitStore.logs) {
-    if (!['thinking', 'tool_use', 'error'].includes(log.type)) {
+  if (!hasRuntimeSystemLog.value) {
+    for (const notice of taskSplitStore.runtimeNotices) {
+      entries.push({
+        id: `runtime-notice-${notice.id}`,
+        type: 'system',
+        content: `### ${notice.title}\n${notice.content}`,
+        timestamp: taskSplitStore.session?.startedAt || taskSplitStore.session?.createdAt
+      })
+    }
+  }
+
+  if (usageNoticeEntry.value) {
+    entries.push(usageNoticeEntry.value)
+  }
+
+  const sortedLogs = [...taskSplitStore.logs].sort((left, right) =>
+    compareTimestamp(left.createdAt, right.createdAt)
+  )
+
+  for (const log of sortedLogs) {
+    if (!['content', 'thinking', 'tool_use', 'tool_result', 'usage', 'message_start', 'error', 'system'].includes(log.type)) {
+      lastThinkingEntry = null
+      lastAssistantContentEntry = null
+      continue
+    }
+
+    if (log.type === 'content' && log.content) {
+      if (suppressAssistantContentLogs.value) {
+        lastThinkingEntry = null
+        lastAssistantContentEntry = null
+        continue
+      }
+
+      if (lastAssistantContentEntry) {
+        lastAssistantContentEntry.content = `${lastAssistantContentEntry.content || ''}${log.content}`
+        lastAssistantContentEntry.timestamp = log.createdAt
+        lastAssistantContentEntry.animate = animateLiveEntries
+      } else {
+        const contentEntry: TimelineEntry = {
+          id: `content-${log.id}`,
+          type: 'content',
+          role: 'assistant',
+          content: log.content,
+          timestamp: log.createdAt,
+          animate: animateLiveEntries
+        }
+        entries.push(contentEntry)
+        lastAssistantContentEntry = contentEntry
+      }
+
+      lastThinkingEntry = null
       continue
     }
 
     if (log.type === 'thinking') {
-      const lastEntry = entries[entries.length - 1]
-      if (lastEntry?.type === 'thinking') {
-        lastEntry.content = [lastEntry.content, log.content].filter(Boolean).join('\n')
-        lastEntry.timestamp = log.createdAt
+      if (lastThinkingEntry) {
+        lastThinkingEntry.content = [lastThinkingEntry.content, log.content].filter(Boolean).join('\n')
+        lastThinkingEntry.timestamp = log.createdAt
+        lastThinkingEntry.animate = animateLiveEntries
         continue
       }
+
+      const thinkingEntry: TimelineEntry = {
+        id: `log-${log.id}`,
+        type: 'thinking',
+        content: log.content,
+        timestamp: log.createdAt,
+        animate: animateLiveEntries
+      }
+      entries.push(thinkingEntry)
+      lastThinkingEntry = thinkingEntry
+      lastAssistantContentEntry = null
+      continue
+    }
+
+    lastThinkingEntry = null
+    lastAssistantContentEntry = null
+
+    if (log.type === 'system') {
+      entries.push({
+        id: `system-${log.id}`,
+        type: 'system',
+        content: log.content,
+        timestamp: log.createdAt
+      })
+      continue
     }
 
     if (log.type === 'tool_use') {
       const toolCall = buildToolCallFromLogs(log, taskSplitStore.logs)
       if (!toolCall) continue
+      const normalizedToolName = toolCall.name.toLowerCase()
+      const isStructuredOutput = normalizedToolName === 'structuredoutput'
+        || normalizedToolName === 'structured_output'
+      const hasFormOutput = Boolean(extractFormRequestTurnFromLog(log))
 
-      const isStructuredOutput = toolCall.name.toLowerCase() === 'structuredoutput'
-        || toolCall.name.toLowerCase() === 'structured_output'
-
-      const fallbackFormSchema = !activeFormSchema.value && !showPreview.value
-        ? extractDynamicFormSchema(toolCall.arguments)
-        : null
-
-      if (
-        fallbackFormSchema
-        && fallbackFormSchema.formId !== activeFormId
-        && !submittedFormIds.has(fallbackFormSchema.formId)
-      ) {
-        entries.push({
-          id: `form-log-${log.id}`,
-          type: 'form',
-          formSchema: fallbackFormSchema,
-          formDisabled: true,
-          formVariant: 'submitted',
-          timestamp: log.createdAt
-        })
-      }
-
-      if (isStructuredOutput) {
+      if (isStructuredOutput && hasFormOutput) {
         continue
       }
 
@@ -292,16 +544,29 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
         id: `tool-${log.id}`,
         type: 'tool',
         toolCall,
-        timestamp: log.createdAt
+        timestamp: log.createdAt,
+        animate: animateLiveEntries,
+        toolCompact: isStructuredOutput,
+        toolDefaultExpanded: isStructuredOutput ? false : undefined,
+        toolDefaultResultExpanded: isStructuredOutput ? false : undefined
       })
+      continue
+    }
+
+    if (log.type === 'tool_result') {
+      continue
+    }
+
+    if (log.type === 'usage' || log.type === 'message_start') {
       continue
     }
 
     entries.push({
       id: `log-${log.id}`,
-      type: log.type === 'thinking' ? 'thinking' : log.type === 'error' ? 'error' : 'system',
+      type: log.type === 'error' ? 'error' : 'system',
       content: log.content,
-      timestamp: log.createdAt
+      timestamp: log.createdAt,
+      animate: animateLiveEntries
     })
   }
 
@@ -314,10 +579,36 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
       id: `submitted-form-${submittedForm.formId}-${submittedForm.submittedAt}`,
       type: 'form',
       formSchema: submittedForm.schema,
+      formPrompt: submittedForm.promptText,
       formInitialValues: submittedForm.values,
       formDisabled: true,
       formVariant: 'submitted',
-      timestamp: submittedForm.submittedAt
+      timestamp: submittedForm.requestedAt
+    })
+  }
+
+  const requestedFormIds = new Set<string>()
+  for (const submittedForm of historicalSubmittedForms.value) {
+    requestedFormIds.add(submittedForm.formId)
+  }
+  if (activeFormId) {
+    requestedFormIds.add(activeFormId)
+  }
+
+  for (const turn of formRequestTurns.value) {
+    const pendingForm = turn.forms.find(form => !requestedFormIds.has(form.formId))
+    if (!pendingForm) {
+      continue
+    }
+
+    entries.push({
+      id: `archived-form-${pendingForm.formId}-${pendingForm.requestedAt}`,
+      type: 'form',
+      formSchema: pendingForm.schema,
+      formPrompt: pendingForm.promptText,
+      formDisabled: true,
+      formVariant: 'archived',
+      timestamp: pendingForm.requestedAt
     })
   }
 
@@ -326,6 +617,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
       id: `form-${activeFormSchema.value.formId}`,
       type: 'form',
       formSchema: activeFormSchema.value,
+      formPrompt: activeFormPrompt,
       formDisabled: taskSplitStore.isProcessing,
       formVariant: 'active',
       timestamp: taskSplitStore.session?.updatedAt || new Date().toISOString()
@@ -340,12 +632,23 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
 })
 
 const messageRenderState = computed(() => {
-  const lastEntry = timelineEntries.value[timelineEntries.value.length - 1]
+  const timelineSignature = timelineEntries.value
+    .map(entry => [
+      entry.id,
+      entry.type,
+      entry.timestamp || '',
+      entry.content?.length ?? 0,
+      entry.toolCall?.status ?? '',
+      entry.toolCall?.result?.length ?? 0,
+      entry.toolCall ? Object.keys(entry.toolCall.arguments || {}).length : 0,
+      entry.formSchema?.formId ?? '',
+      entry.animate ? '1' : '0'
+    ].join(':'))
+    .join('|')
   return [
     planStore.splitDialogVisible,
     timelineEntries.value.length,
-    lastEntry?.id ?? '',
-    lastEntry?.content?.length ?? 0,
+    timelineSignature,
     taskSplitStore.isProcessing,
     activeFormSchema.value?.formId ?? '',
     showPreview.value
@@ -514,10 +817,14 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
     <div
       v-if="planStore.splitDialogVisible"
       class="split-dialog-overlay"
+      :class="{ 'split-dialog-overlay--dark': isDarkTheme }"
       @pointerdown.capture="handleOverlayPointerDown"
       @click.self="handleOverlayClick"
     >
-      <div class="split-dialog">
+      <div
+        class="split-dialog"
+        :class="{ 'split-dialog--dark': isDarkTheme }"
+      >
         <div class="dialog-header">
           <h4>
             <span class="dialog-icon">✂️</span>
@@ -563,6 +870,9 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
                     <span class="dot" />
                     <span class="dot" />
                   </div>
+                  <div class="message-loading-status">
+                    {{ runningStatusText }}
+                  </div>
                 </div>
               </div>
             </div>
@@ -600,7 +910,7 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
                 class="btn btn-secondary btn-retry"
                 @click="retrySplitTask"
               >
-                重试
+                {{ retryActionLabel }}
               </button>
               <button
                 v-if="showStopButton"
@@ -683,6 +993,24 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
 }
 
 .split-dialog {
+  --split-dialog-bg:
+    radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.12), transparent 26%),
+    radial-gradient(circle at 88% 100%, rgba(99, 102, 241, 0.1), transparent 30%),
+    var(--color-surface, #fff);
+  --split-dialog-border: rgba(148, 163, 184, 0.2);
+  --split-dialog-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1));
+  --split-dialog-header-bg: linear-gradient(90deg, rgba(239, 246, 255, 0.92), rgba(238, 242, 255, 0.9));
+  --split-dialog-footer-bg: linear-gradient(180deg, #f8fbff, #f1f5ff);
+  --split-pane-bg: var(--color-surface, #fff);
+  --split-pane-border: rgba(125, 148, 188, 0.22);
+  --split-pane-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  --split-messages-bg:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.06), transparent 42%),
+    linear-gradient(to bottom, var(--color-bg-secondary, #f8fafc), var(--color-surface, #fff) 35%);
+  --split-assistant-message-bg: linear-gradient(180deg, #ffffff, #f8fbff);
+  --split-assistant-message-border: rgba(148, 163, 184, 0.26);
+  --split-assistant-message-text: var(--color-text-primary, #1e293b);
+  --split-loading-text: var(--color-text-secondary, #64748b);
   background-color: var(--color-surface, #fff);
   border-radius: 1.15rem;
   width: min(96vw, 92rem);
@@ -690,13 +1018,10 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
   height: 80vh;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1));
+  box-shadow: var(--split-dialog-shadow);
   animation: dialogIn 0.2s var(--easing-out);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background:
-    radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.12), transparent 26%),
-    radial-gradient(circle at 88% 100%, rgba(99, 102, 241, 0.1), transparent 30%),
-    var(--color-surface, #fff);
+  border: 1px solid var(--split-dialog-border);
+  background: var(--split-dialog-bg);
 }
 
 @keyframes dialogIn {
@@ -717,7 +1042,7 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
   padding: var(--spacing-4, 1rem) var(--spacing-5, 1.25rem);
   border-bottom: 1px solid var(--color-border, #e2e8f0);
   flex-shrink: 0;
-  background: linear-gradient(90deg, rgba(239, 246, 255, 0.92), rgba(238, 242, 255, 0.9));
+  background: var(--split-dialog-header-bg);
 }
 
 .dialog-header h4 {
@@ -778,23 +1103,23 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
   flex: 1;
   display: flex;
   flex-direction: column;
-  border: 1px solid rgba(125, 148, 188, 0.22);
+  border: 1px solid var(--split-pane-border);
   border-radius: 0.95rem;
   overflow: hidden;
-  background-color: var(--color-surface, #fff);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  background-color: var(--split-pane-bg);
+  box-shadow: var(--split-pane-shadow);
 }
 
 .preview-pane {
   min-width: 0;
   width: 46%;
-  border: 1px solid rgba(125, 148, 188, 0.22);
+  border: 1px solid var(--split-pane-border);
   border-radius: 0.95rem;
   overflow: hidden;
-  background-color: var(--color-surface, #fff);
+  background-color: var(--split-pane-bg);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--split-pane-shadow);
 }
 
 .messages-container {
@@ -805,9 +1130,7 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2, 0.5rem);
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.06), transparent 42%),
-    linear-gradient(to bottom, var(--color-bg-secondary, #f8fafc), var(--color-surface, #fff) 35%);
+  background: var(--split-messages-bg);
 }
 
 .message {
@@ -842,10 +1165,10 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
 }
 
 .message.assistant .message-content {
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
-  color: var(--color-text-primary, #1e293b);
+  background: var(--split-assistant-message-bg);
+  color: var(--split-assistant-message-text);
   border-bottom-left-radius: 0.38rem;
-  border-color: rgba(148, 163, 184, 0.26);
+  border-color: var(--split-assistant-message-border);
 }
 
 .message-content p {
@@ -877,6 +1200,13 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
   gap: 4px;
   padding: var(--spacing-4, 1rem);
   box-shadow: none;
+}
+
+.message-loading-status {
+  margin-top: -0.35rem;
+  padding: 0 var(--spacing-4, 1rem) var(--spacing-4, 1rem);
+  font-size: 0.78rem;
+  color: var(--split-loading-text);
 }
 
 .message-content.loading .dot {
@@ -945,7 +1275,7 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
 .dialog-footer {
   padding: var(--spacing-4, 1rem) var(--spacing-5, 1.25rem);
   border-top: 1px solid var(--color-border, #e2e8f0);
-  background: linear-gradient(180deg, #f8fbff, #f1f5ff);
+  background: var(--split-dialog-footer-bg);
   flex-shrink: 0;
 }
 
@@ -1077,6 +1407,62 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
 .btn-danger:hover {
   transform: translateY(-1px);
   box-shadow: 0 12px 24px rgba(220, 38, 38, 0.24);
+}
+
+.split-dialog--dark .dialog-footer {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.96)) !important;
+  border-top-color: rgba(71, 85, 105, 0.68) !important;
+}
+
+.split-dialog--dark .footer-bar {
+  background: transparent !important;
+}
+
+.split-dialog--dark .idle-hint {
+  color: #94a3b8 !important;
+}
+
+.split-dialog--dark .idle-hint--error {
+  color: #fca5a5 !important;
+}
+
+.split-dialog--dark .btn-secondary {
+  background: rgba(15, 23, 42, 0.92) !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(71, 85, 105, 0.76) !important;
+}
+
+.split-dialog--dark .btn-secondary:hover {
+  background: rgba(30, 41, 59, 0.96) !important;
+  border-color: rgba(100, 116, 139, 0.82) !important;
+}
+
+:global([data-theme='dark']) .split-dialog,
+:global(.dark) .split-dialog {
+  --split-dialog-bg:
+    radial-gradient(circle at 12% 0%, rgba(14, 165, 233, 0.16), transparent 26%),
+    radial-gradient(circle at 88% 100%, rgba(99, 102, 241, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.96));
+  --split-dialog-border: rgba(71, 85, 105, 0.72);
+  --split-dialog-shadow: 0 28px 56px rgba(2, 6, 23, 0.48);
+  --split-dialog-header-bg: linear-gradient(90deg, rgba(30, 64, 175, 0.2), rgba(49, 46, 129, 0.22));
+  --split-dialog-footer-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.96));
+  --split-pane-bg: rgba(15, 23, 42, 0.86);
+  --split-pane-border: rgba(71, 85, 105, 0.76);
+  --split-pane-shadow: 0 16px 34px rgba(2, 6, 23, 0.28);
+  --split-messages-bg:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 42%),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.98), rgba(17, 24, 39, 0.94) 35%);
+  --split-assistant-message-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.92));
+  --split-assistant-message-border: rgba(71, 85, 105, 0.62);
+  --split-assistant-message-text: #e2e8f0;
+  --split-loading-text: #94a3b8;
+}
+
+:global([data-theme='dark']) .split-dialog .btn-close:hover,
+:global(.dark) .split-dialog .btn-close:hover {
+  background-color: rgba(51, 65, 85, 0.72);
+  color: #f8fafc;
 }
 
 /* 取消状态的消息样式 */

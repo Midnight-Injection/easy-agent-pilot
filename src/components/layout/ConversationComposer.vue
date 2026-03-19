@@ -4,7 +4,9 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { EaIcon } from '@/components/common'
 import CompressionConfirmDialog from '@/components/common/CompressionConfirmDialog.vue'
 import { useConversationComposer } from '@/composables/useConversationComposer'
+import { useThemeStore } from '@/stores/theme'
 import type { SlashCommandPanelType } from '@/services/slashCommands'
+import CdPathDropdown from './CdPathDropdown.vue'
 import FileMentionDropdown from './FileMentionDropdown.vue'
 import SlashCommandDropdown from './SlashCommandDropdown.vue'
 
@@ -31,17 +33,22 @@ const emit = defineEmits<{
   focus: []
 }>()
 
+const themeStore = useThemeStore()
 const rootRef = ref<HTMLElement | null>(null)
 const isDragOver = ref(false)
 let unlistenDragDrop: (() => void) | null = null
 const isMainPanel = computed(() => props.panelType === 'main')
 const isMiniPanel = computed(() => props.panelType === 'mini')
+const isDarkTheme = computed(() => themeStore.isDark)
 
 const {
   agentDropdownRef,
   agentOptions,
   buildQueuedMessagePreview,
+  cdPathPosition,
+  cdPathQuery,
   closeFileMention,
+  closeCdPathSuggestions,
   closeSlashCommand,
   currentAgent,
   currentAgentId,
@@ -53,6 +60,7 @@ const {
   focusInput,
   getModelLabel,
   handleCancelCompress,
+  handleCdPathSelect,
   handleConfirmCompress,
   handleFileSelect,
   handleImageFileChange,
@@ -88,6 +96,7 @@ const {
   selectModel,
   shouldShowCompressButton,
   showCompressionDialog,
+  showCdPathSuggestions,
   showFileMention,
   showSlashCommand,
   slashCommandPosition,
@@ -155,7 +164,8 @@ defineExpose({
       'conversation-composer--main': isMainPanel,
       'conversation-composer--mini': isMiniPanel,
       'conversation-composer--compact': compact,
-      'conversation-composer--drag-over': isDragOver
+      'conversation-composer--drag-over': isDragOver,
+      'conversation-composer--dark': isDarkTheme
     }"
   >
     <div
@@ -258,6 +268,56 @@ defineExpose({
             </div>
           </Transition>
         </div>
+
+        <div
+          v-if="currentAgent"
+          ref="modelDropdownRef"
+          class="composer-chip composer-chip--dropdown"
+          :class="{ 'composer-chip--open': isModelDropdownOpen }"
+        >
+          <button
+            class="composer-chip__button"
+            @click="toggleModelDropdown"
+          >
+            <EaIcon
+              name="cpu"
+              :size="12"
+            />
+            <span>{{ getModelLabel(selectedModelId) }}</span>
+            <EaIcon
+              :name="isModelDropdownOpen ? 'chevron-up' : 'chevron-down'"
+              :size="10"
+            />
+          </button>
+          <Transition name="dropdown">
+            <div
+              v-if="isModelDropdownOpen"
+              class="composer-chip__menu"
+            >
+              <div
+                v-for="model in presetModelOptions"
+                :key="model.value"
+                class="composer-chip__option"
+                :class="{ 'composer-chip__option--selected': model.value === selectedModelId }"
+                @click="selectModel(model.value)"
+              >
+                {{ model.label }}
+              </div>
+            </div>
+          </Transition>
+        </div>
+
+        <button
+          class="composer-chip composer-chip--image"
+          :disabled="isUploadingImages"
+          @click="openImagePicker"
+        >
+          <EaIcon
+            name="image-up"
+            :size="12"
+          />
+          <span>{{ isUploadingImages ? '上传中…' : '图片' }}</span>
+        </button>
       </div>
     </div>
 
@@ -485,10 +545,14 @@ defineExpose({
                 class="conversation-composer__text"
               >{{ segment.content }}</span>
               <span
-                v-else
+                v-else-if="segment.type === 'file'"
                 class="conversation-composer__file-tag"
                 :title="segment.titleContent"
               >{{ segment.displayContent || segment.content }}</span>
+              <span
+                v-else
+                class="conversation-composer__slash-tag"
+              >{{ segment.content }}</span>
             </template>
           </template>
           <span
@@ -548,11 +612,29 @@ defineExpose({
       @select="handleSlashCommandSelect"
       @close="closeSlashCommand"
     />
+
+    <CdPathDropdown
+      :visible="showCdPathSuggestions"
+      :position="cdPathPosition"
+      :query="cdPathQuery"
+      :current-directory="currentWorkingDirectory"
+      @select="handleCdPathSelect"
+      @close="closeCdPathSuggestions"
+    />
   </div>
 </template>
 
 <style scoped>
 .conversation-composer {
+  --composer-chip-bg: rgba(255, 255, 255, 0.9);
+  --composer-chip-border: color-mix(in srgb, var(--color-border) 78%, transparent);
+  --composer-chip-text: var(--color-text-primary);
+  --composer-chip-hover-bg: rgba(248, 250, 252, 0.98);
+  --composer-menu-bg: rgba(255, 255, 255, 0.98);
+  --composer-menu-border: color-mix(in srgb, var(--color-border) 72%, transparent);
+  --composer-menu-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+  --composer-menu-option-hover: color-mix(in srgb, var(--color-primary-light) 56%, white);
+  --composer-menu-tag-text: var(--color-text-tertiary);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -634,10 +716,10 @@ defineExpose({
   gap: 8px;
   min-height: 32px;
   padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+  border: 1px solid var(--composer-chip-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--color-text-primary);
+  background: var(--composer-chip-bg);
+  color: var(--composer-chip-text);
 }
 
 .conversation-composer__path {
@@ -746,7 +828,7 @@ defineExpose({
 .conversation-composer--main .composer-chip:hover,
 .conversation-composer--main .conversation-composer__send--main:hover {
   border-color: rgba(148, 163, 184, 0.88);
-  background: rgba(248, 250, 252, 0.98);
+  background: var(--composer-chip-hover-bg);
 }
 
 .composer-chip__menu {
@@ -756,10 +838,10 @@ defineExpose({
   top: auto;
   min-width: 220px;
   padding: 8px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border: 1px solid var(--composer-menu-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+  background: var(--composer-menu-bg);
+  box-shadow: var(--composer-menu-shadow);
   z-index: var(--z-dropdown);
 }
 
@@ -779,13 +861,13 @@ defineExpose({
 
 .composer-chip__option:hover,
 .composer-chip__option--selected {
-  background: color-mix(in srgb, var(--color-primary-light) 56%, white);
+  background: var(--composer-menu-option-hover);
 }
 
 .composer-chip__tag {
   margin-left: auto;
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--composer-menu-tag-text);
 }
 
 .conversation-composer__file-input {
@@ -1059,6 +1141,26 @@ defineExpose({
   text-underline-offset: 2px;
 }
 
+.conversation-composer__slash-tag {
+  display: inline;
+  color: color-mix(in srgb, var(--color-warning) 82%, var(--color-text-primary));
+  font: inherit;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      transparent 18%,
+      color-mix(in srgb, var(--color-warning) 12%, transparent) 18%,
+      color-mix(in srgb, var(--color-warning) 12%, transparent) 100%
+    );
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-warning) 34%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 .conversation-composer__send {
   background: var(--color-primary);
   color: white;
@@ -1162,32 +1264,169 @@ defineExpose({
 }
 
 /* 暗色模式优化 */
-[data-theme='dark'] .conversation-composer--main {
+:global([data-theme='dark']) .conversation-composer--main,
+:global(.dark) .conversation-composer--main {
   background: var(--color-bg-primary);
 }
 
-[data-theme='dark'] .conversation-composer--main .conversation-composer__panel {
+:global([data-theme='dark']) .conversation-composer--main .conversation-composer__panel,
+:global(.dark) .conversation-composer--main .conversation-composer__panel {
   background: var(--color-surface);
   border-color: var(--color-border);
 }
 
-[data-theme='dark'] .conversation-composer--main .conversation-composer__editor-shell {
+:global([data-theme='dark']) .conversation-composer--main .conversation-composer__editor-shell,
+:global(.dark) .conversation-composer--main .conversation-composer__editor-shell {
   background: var(--color-bg-secondary);
   border-color: var(--color-border);
 }
 
-[data-theme='dark'] .conversation-composer--main .conversation-composer__editor-shell:focus-within {
+:global([data-theme='dark']) .conversation-composer--main .conversation-composer__editor-shell:focus-within,
+:global(.dark) .conversation-composer--main .conversation-composer__editor-shell:focus-within {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.5);
 }
 
-[data-theme='dark'] .conversation-composer--main .composer-chip,
-[data-theme='dark'] .conversation-composer--main .conversation-composer__send {
+:global([data-theme='dark']) .conversation-composer--main .composer-chip,
+:global(.dark) .conversation-composer--main .composer-chip,
+:global([data-theme='dark']) .conversation-composer--main .conversation-composer__send,
+:global(.dark) .conversation-composer--main .conversation-composer__send {
   background: var(--color-surface);
   border-color: var(--color-border);
 }
 
-[data-theme='dark'] .conversation-composer--main .conversation-composer__send--main {
+:global([data-theme='dark']) .conversation-composer--main .conversation-composer__send--main,
+:global(.dark) .conversation-composer--main .conversation-composer__send--main {
   background: var(--color-primary);
+}
+
+:global([data-theme='dark']) .conversation-composer__path,
+:global(.dark) .conversation-composer__path,
+:global([data-theme='dark']) .conversation-composer__queue-pill,
+:global(.dark) .conversation-composer__queue-pill,
+:global([data-theme='dark']) .composer-chip,
+:global(.dark) .composer-chip,
+:global([data-theme='dark']) .conversation-composer__send,
+:global(.dark) .conversation-composer__send {
+  --composer-chip-bg: rgba(30, 41, 59, 0.94);
+  --composer-chip-border: rgba(71, 85, 105, 0.82);
+  --composer-chip-text: #e2e8f0;
+  --composer-chip-hover-bg: rgba(51, 65, 85, 0.94);
+  --composer-menu-bg: rgba(15, 23, 42, 0.98);
+  --composer-menu-border: rgba(71, 85, 105, 0.82);
+  --composer-menu-shadow: 0 18px 38px rgba(2, 6, 23, 0.34);
+  --composer-menu-option-hover: rgba(51, 65, 85, 0.88);
+  --composer-menu-tag-text: #94a3b8;
+  background: rgba(30, 41, 59, 0.94);
+  border-color: rgba(71, 85, 105, 0.82);
+  color: #e2e8f0;
+}
+
+:global([data-theme='dark']) .conversation-composer__queue-pill--main,
+:global(.dark) .conversation-composer__queue-pill--main {
+  background: rgba(30, 64, 175, 0.2);
+  border-color: rgba(96, 165, 250, 0.28);
+  color: #bfdbfe;
+}
+
+:global([data-theme='dark']) .conversation-composer__attachment,
+:global(.dark) .conversation-composer__attachment,
+:global([data-theme='dark']) .conversation-composer__queue-item,
+:global(.dark) .conversation-composer__queue-item {
+  border-color: rgba(71, 85, 105, 0.72);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: none;
+}
+
+:global([data-theme='dark']) .conversation-composer__queue-index,
+:global(.dark) .conversation-composer__queue-index {
+  background: rgba(51, 65, 85, 0.92);
+  color: #cbd5e1;
+}
+
+:global([data-theme='dark']) .conversation-composer__attachment-remove,
+:global(.dark) .conversation-composer__attachment-remove {
+  background: rgba(2, 6, 23, 0.8);
+}
+
+:global([data-theme='dark']) .composer-chip__menu,
+:global(.dark) .composer-chip__menu {
+  background: rgba(15, 23, 42, 0.98) !important;
+  border-color: rgba(71, 85, 105, 0.82) !important;
+  box-shadow: 0 18px 38px rgba(2, 6, 23, 0.34) !important;
+  color: #e2e8f0;
+}
+
+:global([data-theme='dark']) .composer-chip__option:hover,
+:global(.dark) .composer-chip__option:hover,
+:global([data-theme='dark']) .composer-chip__option--selected,
+:global(.dark) .composer-chip__option--selected {
+  background: var(--composer-menu-option-hover);
+}
+
+:global([data-theme='dark']) .composer-chip__option,
+:global(.dark) .composer-chip__option,
+:global([data-theme='dark']) .composer-chip__button,
+:global(.dark) .composer-chip__button {
+  color: #e2e8f0;
+}
+
+:global([data-theme='dark']) .composer-chip__tag,
+:global(.dark) .composer-chip__tag {
+  color: #94a3b8;
+}
+
+:global([data-theme='dark']) .conversation-composer__slash-tag,
+:global(.dark) .conversation-composer__slash-tag,
+.conversation-composer--dark .conversation-composer__slash-tag {
+  color: #fbbf24;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      transparent 18%,
+      rgba(245, 158, 11, 0.14) 18%,
+      rgba(245, 158, 11, 0.14) 100%
+    );
+  text-decoration-color: rgba(245, 158, 11, 0.34);
+}
+
+.conversation-composer--dark.conversation-composer--main .composer-chip,
+.conversation-composer--dark.conversation-composer--main .conversation-composer__send,
+.conversation-composer--dark .conversation-composer__path,
+.conversation-composer--dark .conversation-composer__queue-pill {
+  background: rgba(30, 41, 59, 0.94) !important;
+  border-color: rgba(71, 85, 105, 0.82) !important;
+  color: #e2e8f0 !important;
+}
+
+.conversation-composer--dark.conversation-composer--main .composer-chip:hover,
+.conversation-composer--dark.conversation-composer--main .composer-chip--open,
+.conversation-composer--dark.conversation-composer--main .composer-chip--dropdown:hover {
+  background: rgba(51, 65, 85, 0.94) !important;
+  border-color: rgba(100, 116, 139, 0.88) !important;
+}
+
+.conversation-composer--dark .composer-chip__button,
+.conversation-composer--dark .composer-chip__button span,
+.conversation-composer--dark .composer-chip__button svg,
+.conversation-composer--dark .composer-chip__option {
+  color: #e2e8f0 !important;
+}
+
+.conversation-composer--dark .composer-chip__menu {
+  background: rgba(15, 23, 42, 0.98) !important;
+  border-color: rgba(71, 85, 105, 0.82) !important;
+  box-shadow: 0 18px 38px rgba(2, 6, 23, 0.34) !important;
+  color: #e2e8f0 !important;
+}
+
+.conversation-composer--dark .composer-chip__option:hover,
+.conversation-composer--dark .composer-chip__option--selected {
+  background: rgba(51, 65, 85, 0.88) !important;
+}
+
+.conversation-composer--dark .composer-chip__tag {
+  color: #94a3b8 !important;
 }
 </style>

@@ -2,13 +2,24 @@
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ToolCall } from '@/stores/message'
+import { useTypewriterText } from '@/composables/useTypewriterText'
 
-const props = defineProps<{ toolCall: ToolCall }>()
+const props = withDefaults(defineProps<{
+  toolCall: ToolCall
+  live?: boolean
+  compact?: boolean
+  defaultExpanded?: boolean
+  defaultResultExpanded?: boolean
+}>(), {
+  live: false,
+  compact: false,
+  defaultExpanded: undefined,
+  defaultResultExpanded: undefined
+})
 const { t } = useI18n()
 
-// 折叠状态 - 默认收起工具调用和结果
-const isExpanded = ref(false)
-const isResultExpanded = ref(false)
+const isExpanded = ref(props.defaultExpanded ?? false)
+const isResultExpanded = ref(props.defaultResultExpanded ?? false)
 
 // 切换展开状态
 const toggleExpand = () => {
@@ -58,30 +69,67 @@ const toolIcon = computed(() => {
   return '🔧'
 })
 
+const isTerminalLikeTool = computed(() => {
+  const name = props.toolCall.name.toLowerCase()
+  return name.includes('bash')
+    || name.includes('shell')
+    || name.includes('terminal')
+    || name.includes('command')
+})
+
 // 格式化参数
 const formattedArguments = computed(() => {
   return JSON.stringify(props.toolCall.arguments, null, 2)
 })
 
-// 格式化结果（截取前500字符用于预览）
-const resultPreview = computed(() => {
-  if (!props.toolCall.result) return ''
-  const result = props.toolCall.result
-  if (result.length > 500) {
-    return result.substring(0, 500) + '...'
+const { displayedText: animatedArguments } = useTypewriterText(
+  formattedArguments,
+  computed(() => props.live),
+  { charsPerSecond: 120, maxChunkSize: 18 }
+)
+
+const { displayedText: animatedResult } = useTypewriterText(
+  computed(() => props.toolCall.result || ''),
+  computed(() => props.live),
+  { charsPerSecond: 120, maxChunkSize: 18 }
+)
+
+const toolSummary = computed(() => {
+  const command = props.toolCall.arguments?.command
+  if (typeof command === 'string' && command.trim()) {
+    const normalized = command.trim().replace(/\s+/g, ' ')
+    return normalized.length > 56 ? `${normalized.slice(0, 56)}...` : normalized
   }
-  return result
+
+  const description = props.toolCall.arguments?.description
+  if (typeof description === 'string' && description.trim()) {
+    const normalized = description.trim().replace(/\s+/g, ' ')
+    return normalized.length > 56 ? `${normalized.slice(0, 56)}...` : normalized
+  }
+
+  const firstArgument = Object.entries(props.toolCall.arguments ?? {})[0]
+  if (firstArgument) {
+    const [, value] = firstArgument
+    const preview = (typeof value === 'string' ? value : JSON.stringify(value))
+      .replace(/\s+/g, ' ')
+      .trim()
+    return preview.length > 56 ? `${preview.slice(0, 56)}...` : preview
+  }
+
+  return props.toolCall.status === 'running' ? '等待工具结果...' : '查看参数与结果'
 })
 </script>
 
 <template>
   <div
     class="tool-call"
-    :class="statusClass"
+    :class="[statusClass, { 'tool-call--compact': compact }]"
   >
     <!-- 工具调用头部 -->
-    <div
+    <button
+      type="button"
       class="tool-call__header"
+      :aria-expanded="isExpanded"
       @click="toggleExpand"
     >
       <div class="tool-call__header-left">
@@ -95,6 +143,7 @@ const resultPreview = computed(() => {
         </span>
       </div>
       <div class="tool-call__header-right">
+        <span class="tool-call__summary">{{ toolSummary }}</span>
         <span class="tool-call__toggle">
           {{ isExpanded ? t('message.collapse') : t('message.expand') }}
         </span>
@@ -103,7 +152,7 @@ const resultPreview = computed(() => {
           :class="{ 'tool-call__chevron--expanded': isExpanded }"
         >▼</span>
       </div>
-    </div>
+    </button>
 
     <!-- 工具调用内容 -->
     <div
@@ -116,7 +165,7 @@ const resultPreview = computed(() => {
           <span>📥</span>
           <span>{{ t('message.parameters') }}</span>
         </div>
-        <pre class="tool-call__code">{{ formattedArguments }}</pre>
+        <pre class="tool-call__code">{{ animatedArguments }}</pre>
       </div>
 
       <!-- 结果 -->
@@ -124,9 +173,10 @@ const resultPreview = computed(() => {
         v-if="toolCall.result"
         class="tool-call__section"
       >
-        <div
+        <button
+          type="button"
           class="tool-call__section-header"
-          @click="toggleResultExpand"
+          @click.stop="toggleResultExpand"
         >
           <div class="tool-call__section-title">
             <span>📤</span>
@@ -139,18 +189,15 @@ const resultPreview = computed(() => {
               :class="{ 'tool-call__chevron--expanded': isResultExpanded }"
             >▼</span>
           </div>
-        </div>
+        </button>
         <div
           v-show="isResultExpanded"
           class="tool-call__result"
         >
-          <pre class="tool-call__code tool-call__result-content">{{ toolCall.result }}</pre>
-        </div>
-        <div
-          v-show="!isResultExpanded"
-          class="tool-call__result-preview"
-        >
-          <pre class="tool-call__code">{{ resultPreview }}</pre>
+          <pre
+            class="tool-call__code tool-call__result-content"
+            :class="{ 'tool-call__code--terminal': isTerminalLikeTool }"
+          >{{ animatedResult }}</pre>
         </div>
       </div>
 
@@ -173,60 +220,72 @@ const resultPreview = computed(() => {
 
 <style scoped>
 .tool-call {
-  width: 100%;
-  min-width: 100%;
+  align-self: flex-start;
+  width: min(100%, var(--thinking-display-width, var(--timeline-entry-width, clamp(18rem, 40%, 34rem))));
+  min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.1), rgba(251, 146, 60, 0.05));
-  border: 1px solid rgba(251, 146, 60, 0.3);
+  background: var(--tool-call-bg);
+  border: 1px solid var(--tool-call-border);
+  box-shadow: var(--tool-call-shadow);
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+
+.tool-call--compact {
+  width: min(100%, var(--thinking-display-width, var(--timeline-entry-width, clamp(18rem, 40%, 34rem))));
 }
 
 .tool-call:hover {
-  border-color: rgba(251, 146, 60, 0.5);
+  border-color: var(--tool-call-hover-border);
+  box-shadow: var(--tool-call-hover-shadow);
 }
 
 .tool-call--running {
-  border-color: rgba(59, 130, 246, 0.5);
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
+  border-color: var(--tool-call-running-border);
+  background: var(--tool-call-running-bg);
 }
 
 .tool-call--success {
-  border-color: rgba(34, 197, 94, 0.4);
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+  border-color: var(--tool-call-success-border);
+  background: var(--tool-call-success-bg);
 }
 
 .tool-call--error {
-  border-color: rgba(239, 68, 68, 0.5);
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+  border-color: var(--tool-call-error-border);
+  background: var(--tool-call-error-bg);
 }
 
 .tool-call__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--spacing-2);
+  width: 100%;
   padding: var(--spacing-2) var(--spacing-3);
+  border: 0;
+  background: transparent;
   cursor: pointer;
   user-select: none;
+  text-align: left;
   transition: background 0.2s ease;
 }
 
 .tool-call__header:hover {
-  background: rgba(251, 146, 60, 0.15);
+  background: var(--tool-call-header-hover);
 }
 
 .tool-call--running .tool-call__header:hover {
-  background: rgba(59, 130, 246, 0.15);
+  background: var(--tool-call-running-hover);
 }
 
 .tool-call--success .tool-call__header:hover {
-  background: rgba(34, 197, 94, 0.15);
+  background: var(--tool-call-success-hover);
 }
 
 .tool-call--error .tool-call__header:hover {
-  background: rgba(239, 68, 68, 0.15);
+  background: var(--tool-call-error-hover);
 }
 
 .tool-call__header-left {
@@ -234,7 +293,7 @@ const resultPreview = computed(() => {
   align-items: center;
   gap: var(--spacing-2);
   min-width: 0;
-  flex: 1;
+  flex: 1 1 auto;
 }
 
 .tool-call__icon {
@@ -244,10 +303,12 @@ const resultPreview = computed(() => {
 
 .tool-call__name {
   font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--color-text-primary);
+  font-weight: 600;
+  color: var(--tool-call-name);
   min-width: 0;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tool-call__status {
@@ -256,33 +317,49 @@ const resultPreview = computed(() => {
 }
 
 .tool-call__status--running {
-  color: var(--color-primary);
+  color: var(--tool-call-running-status);
   animation: spin 1s linear infinite;
 }
 
 .tool-call__status--success {
-  color: var(--color-success);
+  color: var(--tool-call-success-status);
 }
 
 .tool-call__status--error {
-  color: var(--color-error);
+  color: var(--tool-call-error-status);
 }
 
 .tool-call__header-right {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  flex-shrink: 0;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: min(70%, 24rem);
+}
+
+.tool-call__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(18rem, 42vw);
+  font-size: 0.72rem;
+  color: var(--tool-call-summary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: right;
 }
 
 .tool-call__toggle {
+  flex-shrink: 0;
   font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
+  color: var(--tool-call-meta);
+  white-space: nowrap;
 }
 
 .tool-call__chevron {
   font-size: 10px;
-  color: var(--color-text-tertiary);
+  color: var(--tool-call-meta);
   transition: transform 0.2s ease;
 }
 
@@ -293,23 +370,21 @@ const resultPreview = computed(() => {
 .tool-call__content {
   width: 100%;
   box-sizing: border-box;
-  border-top: 1px solid rgba(251, 146, 60, 0.15);
+  border-top: 1px solid var(--tool-call-content-border);
   padding: var(--spacing-2) var(--spacing-3);
-  max-height: calc(var(--message-compact-max-height, 20rem) - 44px);
-  overflow: auto;
-  scrollbar-gutter: stable;
+  overflow: visible;
 }
 
 .tool-call--running .tool-call__content {
-  border-top-color: rgba(59, 130, 246, 0.15);
+  border-top-color: var(--tool-call-running-content-border);
 }
 
 .tool-call--success .tool-call__content {
-  border-top-color: rgba(34, 197, 94, 0.15);
+  border-top-color: var(--tool-call-success-content-border);
 }
 
 .tool-call--error .tool-call__content {
-  border-top-color: rgba(239, 68, 68, 0.15);
+  border-top-color: var(--tool-call-error-content-border);
 }
 
 .tool-call__section {
@@ -324,8 +399,12 @@ const resultPreview = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
   cursor: pointer;
   user-select: none;
+  border: 0;
+  background: transparent;
+  text-align: left;
   padding: var(--spacing-1) 0;
   transition: background 0.2s ease;
   border-radius: var(--radius-sm);
@@ -335,7 +414,7 @@ const resultPreview = computed(() => {
 }
 
 .tool-call__section-header:hover {
-  background: rgba(251, 146, 60, 0.1);
+  background: var(--tool-call-section-hover);
 }
 
 .tool-call__section-title {
@@ -344,7 +423,7 @@ const resultPreview = computed(() => {
   gap: var(--spacing-2);
   font-size: var(--font-size-xs);
   font-weight: 500;
-  color: var(--color-text-secondary);
+  color: var(--tool-call-meta);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -354,7 +433,7 @@ const resultPreview = computed(() => {
   align-items: center;
   gap: var(--spacing-2);
   font-size: var(--font-size-xs);
-  color: var(--color-text-tertiary);
+  color: var(--tool-call-meta);
 }
 
 .tool-call__code {
@@ -363,21 +442,22 @@ const resultPreview = computed(() => {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--tool-call-code-bg);
   border-radius: var(--radius-md);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
   line-height: 1.5;
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   word-break: break-word;
   overflow-x: auto;
   color: var(--color-text-primary);
 }
 
-:global([data-theme='dark']) .tool-call__code,
-:global(.dark) .tool-call__code {
-  background: rgba(0, 0, 0, 0.2);
+.tool-call__code--terminal {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .tool-call__result {
@@ -385,52 +465,23 @@ const resultPreview = computed(() => {
 }
 
 .tool-call__result-content {
-  max-height: min(14rem, calc(var(--message-compact-max-height, 20rem) - 8rem));
+  max-height: min(18rem, 42vh);
   overflow: auto;
   scrollbar-gutter: stable;
-}
-
-.tool-call__result-preview {
-  margin-top: var(--spacing-1);
 }
 
 .tool-call__error-section {
   margin-top: var(--spacing-2);
   padding: var(--spacing-2);
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--tool-call-error-panel-bg);
   border-radius: var(--radius-md);
   border-left: 3px solid var(--color-error);
 }
 
 .tool-call__error {
   font-size: var(--font-size-xs);
-  color: var(--color-error);
+  color: var(--tool-call-error-text);
   line-height: 1.5;
-}
-
-/* 暗色模式适配 */
-:global([data-theme='dark']) .tool-call,
-:global(.dark) .tool-call {
-  background: linear-gradient(135deg, rgba(251, 146, 60, 0.08), rgba(251, 146, 60, 0.03));
-  border-color: rgba(251, 146, 60, 0.25);
-}
-
-:global([data-theme='dark']) .tool-call--running,
-:global(.dark) .tool-call--running {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.03));
-  border-color: rgba(59, 130, 246, 0.4);
-}
-
-:global([data-theme='dark']) .tool-call--success,
-:global(.dark) .tool-call--success {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(34, 197, 94, 0.03));
-  border-color: rgba(34, 197, 94, 0.3);
-}
-
-:global([data-theme='dark']) .tool-call--error,
-:global(.dark) .tool-call--error {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.03));
-  border-color: rgba(239, 68, 68, 0.4);
 }
 
 @keyframes spin {

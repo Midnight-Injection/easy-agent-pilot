@@ -1,12 +1,25 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, toRef } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTypewriterText } from '@/composables/useTypewriterText'
 
-defineProps<{ thinking: string }>()
+const props = withDefaults(defineProps<{
+  thinking: string
+  live?: boolean
+  defaultExpanded?: boolean
+}>(), {
+  live: false,
+  defaultExpanded: false
+})
 const { t } = useI18n()
 
-// 折叠状态 - 默认收起
-const isExpanded = ref(false)
+const { displayedText } = useTypewriterText(
+  toRef(props, 'thinking'),
+  toRef(props, 'live'),
+  { charsPerSecond: 120, maxChunkSize: 16 }
+)
+
+const isExpanded = ref(props.defaultExpanded)
 
 // 切换展开状态
 const toggleExpand = () => {
@@ -24,7 +37,6 @@ const toggleExpand = () => {
       <div class="thinking-display__header-left">
         <span class="thinking-display__icon">💭</span>
         <span class="thinking-display__title">{{ t('message.thinking') }}</span>
-        <span class="thinking-display__badge">{{ t('message.thinking') }}</span>
       </div>
       <div class="thinking-display__header-right">
         <span class="thinking-display__toggle">
@@ -43,7 +55,7 @@ const toggleExpand = () => {
       class="thinking-display__content"
     >
       <div class="thinking-display__scroll">
-        <pre class="thinking-display__text">{{ thinking }}</pre>
+        <pre class="thinking-display__text">{{ displayedText }}</pre>
       </div>
     </div>
   </div>
@@ -51,8 +63,9 @@ const toggleExpand = () => {
 
 <style scoped>
 .thinking-display {
-  width: 100%;
-  min-width: 100%;
+  align-self: flex-start;
+  width: min(100%, var(--thinking-display-width, var(--timeline-entry-width, clamp(18rem, 40%, 34rem))));
+  min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
   border-radius: var(--radius-lg);
@@ -93,6 +106,9 @@ const toggleExpand = () => {
 }
 
 .thinking-display__header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
   flex-shrink: 0;
 }
 
@@ -106,17 +122,6 @@ const toggleExpand = () => {
   font-weight: 500;
   color: var(--color-text-primary);
   min-width: 0;
-}
-
-.thinking-display__badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  background: linear-gradient(135deg, #0891b2, #0f766e);
-  color: white;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
 }
 
 .thinking-display__toggle {
@@ -153,20 +158,22 @@ const toggleExpand = () => {
 
 /* 自定义滚动条 */
 .thinking-display__scroll::-webkit-scrollbar {
-  width: 4px;
+  width: var(--scrollbar-size-thin);
 }
 
 .thinking-display__scroll::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track);
 }
 
 .thinking-display__scroll::-webkit-scrollbar-thumb {
-  background: rgba(8, 145, 178, 0.24);
-  border-radius: 2px;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 .thinking-display__scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(8, 145, 178, 0.36);
+  background: var(--scrollbar-thumb-hover);
 }
 
 .thinking-display__text {
@@ -201,11 +208,6 @@ const toggleExpand = () => {
 :global([data-theme='dark']) .thinking-display__content,
 :global(.dark) .thinking-display__content {
   border-top-color: rgba(34, 211, 238, 0.14);
-}
-
-:global([data-theme='dark']) .thinking-display__badge,
-:global(.dark) .thinking-display__badge {
-  background: linear-gradient(135deg, #06b6d4, #0f766e);
 }
 
 :global([data-theme='dark']) .thinking-display__text,

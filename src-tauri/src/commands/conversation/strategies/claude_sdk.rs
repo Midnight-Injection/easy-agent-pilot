@@ -71,6 +71,9 @@ fn emit_sdk_event(
                 tool_input: event.tool_input.clone(),
                 tool_result: event.tool_result.clone(),
                 error: event.error.clone(),
+                input_tokens: event.input_tokens,
+                output_tokens: event.output_tokens,
+                model: event.model.clone(),
             },
         );
     }

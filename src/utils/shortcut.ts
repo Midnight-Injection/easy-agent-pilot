@@ -1,6 +1,7 @@
 const PLATFORM_SOURCE = navigator.platform || navigator.userAgent
 const IS_MAC = /mac|iphone|ipad|ipod/i.test(PLATFORM_SOURCE)
 const IS_WINDOWS = /win/i.test(PLATFORM_SOURCE)
+const SUPPORTS_NATIVE_SHORTCUT_OVERRIDE = IS_WINDOWS || IS_MAC
 const DEFAULT_MINI_PANEL_SHORTCUT = IS_WINDOWS ? 'CommandOrControl+Shift+Space' : 'Alt+Space'
 
 const MODIFIER_ORDER = ['CommandOrControl', 'Control', 'Alt', 'Shift', 'Super'] as const
@@ -279,6 +280,38 @@ export function formatShortcutForDisplay(shortcut: string | null | undefined): s
     .join('+')
 }
 
+export function formatShortcutPreviewFromKeyboardEvent(event: KeyboardEvent): string {
+  const modifiers = new Set<ModifierToken>()
+
+  if (event.metaKey) {
+    modifiers.add(IS_MAC ? 'CommandOrControl' : 'Super')
+  }
+
+  if (event.ctrlKey) {
+    modifiers.add(IS_MAC ? 'Control' : 'CommandOrControl')
+  }
+
+  if (event.altKey) {
+    modifiers.add('Alt')
+  }
+
+  if (event.shiftKey) {
+    modifiers.add('Shift')
+  }
+
+  const orderedModifiers = MODIFIER_ORDER.filter(token => modifiers.has(token))
+  const tokens: string[] = [...orderedModifiers]
+
+  if (!MODIFIER_CODES.has(event.code)) {
+    const keyToken = normalizeKeyToken(event.code) ?? normalizeKeyToken(event.key)
+    if (keyToken) {
+      tokens.push(keyToken)
+    }
+  }
+
+  return tokens.map(token => formatKeyForDisplay(token)).join('+')
+}
+
 export function resolveMiniPanelShortcut(shortcut: string | null | undefined): string {
   return normalizeShortcut(shortcut ?? '') ?? DEFAULT_MINI_PANEL_SHORTCUT
 }
@@ -342,4 +375,4 @@ export function buildShortcutFromKeyboardEvent(event: KeyboardEvent): ShortcutCa
   }
 }
 
-export { DEFAULT_MINI_PANEL_SHORTCUT, IS_WINDOWS }
+export { DEFAULT_MINI_PANEL_SHORTCUT, IS_WINDOWS, IS_MAC, SUPPORTS_NATIVE_SHORTCUT_OVERRIDE }

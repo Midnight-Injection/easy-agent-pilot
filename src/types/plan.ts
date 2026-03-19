@@ -217,6 +217,9 @@ export interface FormField {
   placeholder?: string
   required?: boolean
   default?: any
+  suggestion?: any
+  suggestionReason?: string
+  optionReasons?: Record<string, string>
   options?: FormFieldOption[]
   validation?: FieldValidation
   condition?: FieldCondition
@@ -369,6 +372,8 @@ export type PlanSplitLogType =
   | 'thinking'
   | 'tool_use'
   | 'tool_result'
+  | 'usage'
+  | 'message_start'
   | 'error'
   | 'system'
 
@@ -405,7 +410,7 @@ export interface PlanSplitLogRecord {
 }
 
 export interface PlanSplitStreamPayload {
-  type: 'content' | 'thinking' | 'tool_use' | 'tool_result' | 'error' | 'done' | 'session_updated'
+  type: 'content' | 'thinking' | 'tool_use' | 'tool_result' | 'usage' | 'message_start' | 'error' | 'system' | 'done' | 'session_updated'
   planId: string
   sessionId?: string
   content?: string
@@ -414,6 +419,9 @@ export interface PlanSplitStreamPayload {
   toolInput?: string
   toolResult?: string
   error?: string
+  inputTokens?: number
+  outputTokens?: number
+  model?: string
   metadata?: string | null
   createdAt?: string
   session?: PlanSplitSessionRecord

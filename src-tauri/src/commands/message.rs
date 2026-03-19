@@ -47,6 +47,7 @@ pub struct Message {
     pub tool_calls: Option<Vec<ToolCall>>,
     pub thinking: Option<String>,
     pub edit_traces: Option<String>,
+    pub runtime_notices: Option<String>,
     pub compression_metadata: Option<String>,
     pub created_at: String,
 }
@@ -64,6 +65,7 @@ pub struct CreateMessageInput {
     pub tool_calls: Option<String>, // JSON string
     pub thinking: Option<String>,
     pub edit_traces: Option<String>,
+    pub runtime_notices: Option<String>,
     pub compression_metadata: Option<String>,
 }
 
@@ -78,6 +80,7 @@ pub struct UpdateMessageInput {
     pub tool_calls: Option<String>, // JSON string
     pub thinking: Option<String>,
     pub edit_traces: Option<String>,
+    pub runtime_notices: Option<String>,
     pub compression_metadata: Option<String>,
 }
 
@@ -200,8 +203,9 @@ fn map_message_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         tool_calls: parse_tool_calls(tool_calls_json),
         thinking: row.get(9)?,
         edit_traces: row.get(10)?,
-        compression_metadata: row.get(11)?,
-        created_at: row.get(12)?,
+        runtime_notices: row.get(11)?,
+        compression_metadata: row.get(12)?,
+        created_at: row.get(13)?,
     })
 }
 
@@ -266,7 +270,7 @@ pub fn list_messages(
         (
             format!(
                 r#"
-                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at
+                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, runtime_notices, compression_metadata, created_at
                 FROM messages
                 WHERE session_id = ?1 AND created_at < ?2
                 ORDER BY created_at DESC
@@ -283,7 +287,7 @@ pub fn list_messages(
         (
             format!(
                 r#"
-                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at
+                SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, runtime_notices, compression_metadata, created_at
                 FROM messages
                 WHERE session_id = ?1
                 ORDER BY created_at DESC
@@ -329,7 +333,7 @@ pub fn create_message(input: CreateMessageInput) -> Result<Message, String> {
     let tool_calls = parse_tool_calls(input.tool_calls.clone());
 
     conn.execute(
-        "INSERT INTO messages (id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        "INSERT INTO messages (id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, runtime_notices, compression_metadata, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         rusqlite::params![
             &id,
             &input.session_id,
@@ -342,6 +346,7 @@ pub fn create_message(input: CreateMessageInput) -> Result<Message, String> {
             &input.tool_calls,
             &input.thinking,
             &input.edit_traces,
+            &input.runtime_notices,
             &input.compression_metadata,
             &now
         ],
@@ -367,6 +372,7 @@ pub fn create_message(input: CreateMessageInput) -> Result<Message, String> {
         tool_calls,
         thinking: input.thinking,
         edit_traces: input.edit_traces,
+        runtime_notices: input.runtime_notices,
         compression_metadata: input.compression_metadata,
         created_at: now,
     })
@@ -411,6 +417,10 @@ pub fn update_message(id: String, input: UpdateMessageInput) -> Result<Message, 
     }
     if input.edit_traces.is_some() {
         updates.push(format!("edit_traces = ?{}", param_index));
+        param_index += 1;
+    }
+    if input.runtime_notices.is_some() {
+        updates.push(format!("runtime_notices = ?{}", param_index));
         param_index += 1;
     }
     if input.compression_metadata.is_some() {
@@ -473,6 +483,11 @@ pub fn update_message(id: String, input: UpdateMessageInput) -> Result<Message, 
             .map_err(|e| e.to_string())?;
         param_count += 1;
     }
+    if let Some(ref runtime_notices) = input.runtime_notices {
+        stmt.raw_bind_parameter(param_count, runtime_notices)
+            .map_err(|e| e.to_string())?;
+        param_count += 1;
+    }
     if let Some(ref compression_metadata) = input.compression_metadata {
         stmt.raw_bind_parameter(param_count, compression_metadata)
             .map_err(|e| e.to_string())?;
@@ -494,7 +509,7 @@ pub fn update_message(id: String, input: UpdateMessageInput) -> Result<Message, 
 fn get_message_by_id(conn: &Connection, id: &str) -> Result<Message, String> {
     let message = conn
         .query_row(
-            "SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at FROM messages WHERE id = ?1",
+            "SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, runtime_notices, compression_metadata, created_at FROM messages WHERE id = ?1",
             [id],
             map_message_row,
         )

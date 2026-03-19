@@ -6,6 +6,7 @@ import { useSessionStore } from './session'
 import { getErrorMessage } from '@/utils/api'
 import type { CompressionStrategy } from './token'
 import type { FileEditTrace } from '@/types/fileTrace'
+import type { RuntimeNotice } from '@/utils/runtimeNotice'
 
 export type MessageRole = 'user' | 'assistant' | 'system' | 'compression'
 export type MessageStatus = 'pending' | 'streaming' | 'completed' | 'error' | 'interrupted'
@@ -57,6 +58,7 @@ export interface Message {
   // 思考内容（扩展思维模型的思考过程）
   thinking?: string
   editTraces?: FileEditTrace[]
+  runtimeNotices?: RuntimeNotice[]
   createdAt: string
   // 压缩消息的元数据
   compressionMetadata?: CompressionMetadata
@@ -88,6 +90,8 @@ interface RustMessage {
   thinking?: string | null
   editTraces?: string | null
   edit_traces?: string | null
+  runtimeNotices?: string | null
+  runtime_notices?: string | null
   compressionMetadata?: string | null
   compression_metadata?: string | null
   createdAt?: string
@@ -129,6 +133,7 @@ interface CreateMessageInput {
   tool_calls?: string // JSON string
   thinking?: string
   edit_traces?: string
+  runtime_notices?: string
   compression_metadata?: string
 }
 
@@ -141,6 +146,7 @@ interface UpdateMessageInput {
   tool_calls?: string // JSON string
   thinking?: string
   edit_traces?: string
+  runtime_notices?: string
   compression_metadata?: string
 }
 
@@ -182,10 +188,19 @@ function transformMessage(rustMsg: RustMessage): Message {
   const errorMessage = rustMsg.errorMessage ?? rustMsg.error_message
   const rawCompressionMetadata = rustMsg.compressionMetadata ?? rustMsg.compression_metadata
   const rawEditTraces = rustMsg.editTraces ?? rustMsg.edit_traces
+  const rawRuntimeNotices = rustMsg.runtimeNotices ?? rustMsg.runtime_notices
   const editTraces = (() => {
     if (!rawEditTraces) return undefined
     try {
       return JSON.parse(rawEditTraces) as FileEditTrace[]
+    } catch {
+      return undefined
+    }
+  })()
+  const runtimeNotices = (() => {
+    if (!rawRuntimeNotices) return undefined
+    try {
+      return JSON.parse(rawRuntimeNotices) as RuntimeNotice[]
     } catch {
       return undefined
     }
@@ -211,6 +226,7 @@ function transformMessage(rustMsg: RustMessage): Message {
     toolCalls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
     thinking: rustMsg.thinking ?? undefined,
     editTraces: editTraces && editTraces.length > 0 ? editTraces : undefined,
+    runtimeNotices: runtimeNotices && runtimeNotices.length > 0 ? runtimeNotices : undefined,
     compressionMetadata,
     createdAt: createdAt || new Date().toISOString()
   }
@@ -415,6 +431,7 @@ export const useMessageStore = defineStore('message', () => {
       tool_calls: message.toolCalls ? serializeToolCalls(message.toolCalls) : undefined,
       thinking: message.thinking,
       edit_traces: message.editTraces ? JSON.stringify(message.editTraces) : undefined,
+      runtime_notices: message.runtimeNotices ? JSON.stringify(message.runtimeNotices) : undefined,
       compression_metadata: message.compressionMetadata
         ? JSON.stringify(message.compressionMetadata)
         : undefined
@@ -455,6 +472,9 @@ export const useMessageStore = defineStore('message', () => {
     if (updates.thinking !== undefined) input.thinking = updates.thinking
     if (updates.editTraces !== undefined) {
       input.edit_traces = JSON.stringify(updates.editTraces)
+    }
+    if (updates.runtimeNotices !== undefined) {
+      input.runtime_notices = JSON.stringify(updates.runtimeNotices)
     }
     if (updates.compressionMetadata !== undefined) {
       input.compression_metadata = JSON.stringify(updates.compressionMetadata)

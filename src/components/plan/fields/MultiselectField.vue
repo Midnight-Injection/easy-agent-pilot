@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { FormField } from '@/types/plan'
+import { useThemeStore } from '@/stores/theme'
 
 const props = defineProps<{
   field: FormField
@@ -13,51 +14,111 @@ const emit = defineEmits<{
   (e: 'update:modelValue', value: (string | number)[]): void
 }>()
 
+const themeStore = useThemeStore()
+const isDarkTheme = computed(() => themeStore.isDark)
+
 const inputId = computed(() => `field-${props.field.name}`)
 const field = computed(() => props.field)
-
-// "其他"选项的值
 const OTHER_VALUE = '__other__'
-
-// 是否选择了"其他"
 const isOtherSelected = ref(false)
-
-// "其他"输入框的值
-const otherValue = ref('')
-
-// "其他"选项的标签
-const otherLabel = computed(() => props.field.otherLabel || '其他')
+const otherValues = ref<string[]>([])
 const hasExplicitOtherOption = computed(() =>
   props.field.options?.some(option => String(option.value) === OTHER_VALUE) ?? false
 )
+const optionReasons = computed(() => props.field.optionReasons ?? {})
+const recommendedValues = computed(() => {
+  if (Array.isArray(props.field.suggestion)) {
+    return props.field.suggestion.map(value => String(value))
+  }
 
-// 获取预设选项的值集合
+  if (props.field.suggestion === undefined || props.field.suggestion === null || props.field.suggestion === '') {
+    return []
+  }
+
+  return [String(props.field.suggestion)]
+})
+const suggestedLabel = computed(() => {
+  if (recommendedValues.value.length === 0) {
+    return ''
+  }
+
+  return recommendedValues.value
+    .map(value => props.field.options?.find(option => String(option.value) === value)?.label || value)
+    .join('、')
+})
+
 const presetValues = computed(() => {
   return new Set(props.field.options?.map(opt => opt.value) || [])
 })
 
+function extractCustomValues(values: (string | number)[]): string[] {
+  return values
+    .filter(value => !presetValues.value.has(value) && value !== OTHER_VALUE)
+    .map(value => String(value))
+}
 
-// 监听 modelValue 变化
-watch(() => props.modelValue, (newVal) => {
-  // 检查是否有非预设值
-  const hasOtherValue = newVal.some(v => !presetValues.value.has(v) && v !== OTHER_VALUE)
-  if (hasOtherValue) {
-    isOtherSelected.value = true
-    // 取第一个非预设值显示在输入框
-    const others = newVal.filter(v => !presetValues.value.has(v) && v !== OTHER_VALUE)
-    otherValue.value = others.length > 0 ? String(others[0]) : ''
+function normalizeCustomValues(values: string[]): string[] {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+
+  values.forEach(value => {
+    const next = value.trim()
+    if (!next || seen.has(next)) {
+      return
+    }
+    seen.add(next)
+    normalized.push(next)
+  })
+
+  return normalized
+}
+
+function isSameStringArray(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) {
+    return false
   }
+
+  return left.every((value, index) => value === right[index])
+}
+
+function emitCombinedValues(selectedPresetValues: (string | number)[], customValues: string[]) {
+  emit('update:modelValue', [...selectedPresetValues, ...normalizeCustomValues(customValues)])
+}
+
+watch(() => props.modelValue, newVal => {
+  const customValues = extractCustomValues(newVal)
+  const normalizedIncoming = normalizeCustomValues(customValues)
+  const normalizedLocal = normalizeCustomValues(otherValues.value)
+
+  if (customValues.length > 0) {
+    isOtherSelected.value = true
+    if (!isSameStringArray(normalizedIncoming, normalizedLocal)) {
+      otherValues.value = customValues
+    }
+    return
+  }
+
+  if (newVal.some(value => value === OTHER_VALUE)) {
+    isOtherSelected.value = true
+    otherValues.value = ['']
+    return
+  }
+
+  if (isOtherSelected.value && otherValues.value.length > 0 && normalizedLocal.length === 0) {
+    return
+  }
+
+  isOtherSelected.value = false
+  otherValues.value = []
 }, { immediate: true })
 
-// 检查预设选项是否被选中
 function isSelected(value: string | number): boolean {
   return props.modelValue.includes(value)
 }
 
-// 切换预设选项
 function toggleOption(value: string | number) {
   const current = [...props.modelValue].filter(v => presetValues.value.has(v))
-  const others = props.modelValue.filter(v => !presetValues.value.has(v) && v !== OTHER_VALUE)
+  const customValues = extractCustomValues(props.modelValue)
 
   const index = current.indexOf(value)
   if (index === -1) {
@@ -66,38 +127,61 @@ function toggleOption(value: string | number) {
     current.splice(index, 1)
   }
 
-  emit('update:modelValue', [...current, ...others])
+  emitCombinedValues(current, customValues)
 }
 
-// 切换"其他"选项
 function toggleOther() {
   isOtherSelected.value = !isOtherSelected.value
+  const current = props.modelValue.filter(v => presetValues.value.has(v))
 
   if (!isOtherSelected.value) {
-    // 取消选择"其他"，移除所有非预设值
-    const current = props.modelValue.filter(v => presetValues.value.has(v))
-    otherValue.value = ''
-    emit('update:modelValue', current)
+    otherValues.value = []
+    emitCombinedValues(current, [])
+    return
   }
+
+  otherValues.value = extractCustomValues(props.modelValue)
+  if (otherValues.value.length === 0) {
+    otherValues.value = ['']
+  }
+  emitCombinedValues(current, otherValues.value)
 }
 
-// 处理"其他"输入框变化
-function onOtherInput(event: Event) {
-  const target = event.target as HTMLInputElement
-  otherValue.value = target.value
+function addOtherInput() {
+  otherValues.value = [...otherValues.value, '']
+}
 
-  // 更新值：保留预设值 + 新的"其他"值
+function removeOtherInput(index: number) {
+  const nextValues = otherValues.value.filter((_, itemIndex) => itemIndex !== index)
+  otherValues.value = nextValues.length > 0 ? nextValues : ['']
   const current = props.modelValue.filter(v => presetValues.value.has(v))
-  if (target.value.trim()) {
-    emit('update:modelValue', [...current, target.value.trim()])
-  } else {
-    emit('update:modelValue', current)
-  }
+  emitCombinedValues(current, otherValues.value)
+}
+
+function onOtherInput(index: number, event: Event) {
+  const target = event.target as HTMLInputElement
+  const nextValues = [...otherValues.value]
+  nextValues[index] = target.value
+  otherValues.value = nextValues
+
+  const current = props.modelValue.filter(v => presetValues.value.has(v))
+  emitCombinedValues(current, nextValues)
+}
+
+function isSuggestedOption(value: string | number): boolean {
+  return recommendedValues.value.includes(String(value))
+}
+
+function getOptionReason(value: string | number): string {
+  return optionReasons.value[String(value)] || ''
 }
 </script>
 
 <template>
-  <div class="form-field multiselect-field">
+  <div
+    class="form-field multiselect-field"
+    :class="{ 'multiselect-field--dark': isDarkTheme }"
+  >
     <label class="field-label">
       {{ field.label }}
       <span
@@ -105,6 +189,22 @@ function onOtherInput(event: Event) {
         class="required-mark"
       >*</span>
     </label>
+    <div
+      v-if="suggestedLabel || field.suggestionReason"
+      class="field-recommendation"
+    >
+      <span class="field-recommendation__eyebrow">AI 建议</span>
+      <strong
+        v-if="suggestedLabel"
+        class="field-recommendation__value"
+      >{{ suggestedLabel }}</strong>
+      <span
+        v-if="field.suggestionReason"
+        class="field-recommendation__reason"
+      >
+        {{ field.suggestionReason }}
+      </span>
+    </div>
     <div class="options-grid">
       <label
         v-for="option in field.options"
@@ -121,13 +221,30 @@ function onOtherInput(event: Event) {
           class="option-checkbox"
           @change="toggleOption(option.value)"
         >
-        <span class="option-text">{{ option.label }}</span>
+        <span class="option-content">
+          <span class="option-header">
+            <span class="option-text">{{ option.label }}</span>
+            <span
+              v-if="isSuggestedOption(option.value)"
+              class="option-badge"
+            >推荐</span>
+          </span>
+          <span
+            v-if="getOptionReason(option.value)"
+            class="option-reason"
+          >
+            {{ getOptionReason(option.value) }}
+          </span>
+        </span>
       </label>
-      <!-- "其他"选项 -->
       <label
         v-if="field.allowOther && !hasExplicitOtherOption"
         class="option-label"
-        :class="{ selected: isOtherSelected }"
+        :class="{
+          selected: isOtherSelected,
+          'option-label--adder': true
+        }"
+        :title="`添加自定义${field.label}`"
       >
         <input
           type="checkbox"
@@ -138,19 +255,49 @@ function onOtherInput(event: Event) {
           class="option-checkbox"
           @change="toggleOther"
         >
-        <span class="option-text">{{ otherLabel }}</span>
+        <span class="option-content">
+          <span class="option-header option-header--adder">
+            <span class="option-text option-text--adder">+</span>
+          </span>
+        </span>
       </label>
     </div>
-    <!-- "其他"输入框 -->
-    <input
+    <div
       v-if="field.allowOther && isOtherSelected"
-      type="text"
-      class="other-input"
-      :value="otherValue"
-      :disabled="disabled"
-      :placeholder="`请输入${field.label}`"
-      @input="onOtherInput"
+      class="other-inputs"
     >
+      <div
+        v-for="(otherValue, index) in otherValues"
+        :key="`${field.name}-other-${index}`"
+        class="other-input-row"
+      >
+        <input
+          type="text"
+          class="other-input"
+          :value="otherValue"
+          :disabled="disabled"
+          :placeholder="`请输入${field.label}${otherValues.length > 1 ? ` ${index + 1}` : ''}`"
+          @input="onOtherInput(index, $event)"
+        >
+        <button
+          v-if="otherValues.length > 1"
+          type="button"
+          class="other-input-remove"
+          :disabled="disabled"
+          @click="removeOtherInput(index)"
+        >
+          -
+        </button>
+      </div>
+      <button
+        type="button"
+        class="other-input-add"
+        :disabled="disabled"
+        @click="addOtherInput"
+      >
+        +
+      </button>
+    </div>
     <span
       v-if="error"
       class="error-message"
@@ -176,19 +323,52 @@ function onOtherInput(event: Event) {
   margin-left: 0.15rem;
 }
 
-.options-grid {
+.field-recommendation {
+  margin-bottom: 0.42rem;
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: 0.16rem 0.42rem;
+  padding: 0.38rem 0.52rem;
+  border-radius: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--form-accent, #4f46e5) 16%, #cbd5e1);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(236, 254, 255, 0.72));
+}
+
+.field-recommendation__eyebrow {
+  display: inline-flex;
+  color: color-mix(in srgb, var(--form-accent, #4f46e5) 74%, #1d4ed8);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.field-recommendation__value {
+  display: inline-flex;
+  color: #0f172a;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.field-recommendation__reason {
+  margin: 0;
+  color: #475569;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.options-grid {
+  display: grid;
   gap: 0.35rem;
 }
 
 .option-label {
   display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.32rem 0.6rem;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.48rem 0.68rem;
   border: 1px solid color-mix(in srgb, var(--form-accent, #4f46e5) 28%, #cdd7e5);
-  border-radius: 999px;
+  border-radius: 0.82rem;
   background: linear-gradient(180deg, var(--color-surface, #ffffff), var(--color-bg-secondary, #f8fbff));
   color: var(--color-text-secondary, #475569);
   cursor: pointer;
@@ -198,9 +378,10 @@ function onOtherInput(event: Event) {
 
 .option-label::before {
   content: '';
-  width: 0.65rem;
-  height: 0.65rem;
-  border-radius: 3px;
+  width: 0.72rem;
+  height: 0.72rem;
+  margin-top: 0.14rem;
+  border-radius: 4px;
   border: 1.5px solid color-mix(in srgb, var(--form-accent, #4f46e5) 44%, #64748b);
   background: var(--color-surface, #ffffff);
   transition: inherit;
@@ -225,17 +406,79 @@ function onOtherInput(event: Event) {
   background: var(--form-accent, #4f46e5);
 }
 
+.option-label--adder {
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+}
+
+.option-label--adder::before {
+  display: none;
+}
+
 .option-checkbox {
   display: none;
 }
 
+.option-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.option-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.option-header--adder {
+  justify-content: center;
+}
+
 .option-text {
   font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.option-text--adder {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.option-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.38rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--form-accent, #4f46e5) 14%, #ffffff);
+  color: color-mix(in srgb, var(--form-accent, #4f46e5) 82%, #1d4ed8);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.option-reason {
+  display: block;
+  margin-top: 0.2rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.other-inputs {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+
+.other-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.34rem;
 }
 
 .other-input {
   width: 100%;
-  margin-top: 0.4rem;
   padding: 0.42rem 0.65rem;
   border: 1px solid color-mix(in srgb, var(--form-accent, #4f46e5) 22%, #ccd7e5);
   border-radius: 0.6rem;
@@ -243,6 +486,30 @@ function onOtherInput(event: Event) {
   color: var(--color-text-primary, #0f172a);
   font-size: 0.82rem;
   transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.other-input-add,
+.other-input-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px solid color-mix(in srgb, var(--form-accent, #4f46e5) 20%, #ccd7e5);
+  border-radius: 0.58rem;
+  background: color-mix(in srgb, var(--form-accent, #4f46e5) 5%, #ffffff);
+  color: color-mix(in srgb, var(--form-accent, #4f46e5) 76%, #334155);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+
+.other-input-add:hover,
+.other-input-remove:hover {
+  border-color: color-mix(in srgb, var(--form-accent, #4f46e5) 48%, #6366f1);
+  background: color-mix(in srgb, var(--form-accent, #4f46e5) 10%, #ffffff);
 }
 
 .other-input:focus {
@@ -260,5 +527,81 @@ function onOtherInput(event: Event) {
   margin-top: 0.2rem;
   font-size: 0.72rem;
   color: var(--error-color, #ef4444);
+}
+
+.multiselect-field--dark .field-recommendation {
+  border-color: rgba(71, 85, 105, 0.68) !important;
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.18), rgba(8, 145, 178, 0.14)) !important;
+}
+
+.multiselect-field--dark .field-recommendation__value,
+.multiselect-field--dark .field-label,
+.multiselect-field--dark .option-text {
+  color: #e2e8f0 !important;
+}
+
+.multiselect-field--dark .field-recommendation__reason,
+.multiselect-field--dark .option-reason {
+  color: #94a3b8 !important;
+}
+
+.multiselect-field--dark .option-label,
+.multiselect-field--dark .other-input,
+.multiselect-field--dark .other-input-add,
+.multiselect-field--dark .other-input-remove {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.92)) !important;
+  border-color: rgba(71, 85, 105, 0.76) !important;
+  color: #cbd5e1 !important;
+}
+
+.multiselect-field--dark .option-label:hover {
+  color: #f8fafc !important;
+}
+
+.multiselect-field--dark .option-label.selected {
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.34), rgba(8, 145, 178, 0.26)) !important;
+  color: #bfdbfe !important;
+}
+
+:global([data-theme='dark']) .field-recommendation,
+:global(.dark) .field-recommendation {
+  border-color: rgba(71, 85, 105, 0.68);
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.18), rgba(8, 145, 178, 0.14));
+}
+
+:global([data-theme='dark']) .field-recommendation__value,
+:global(.dark) .field-recommendation__value {
+  color: #e2e8f0;
+}
+
+:global([data-theme='dark']) .field-recommendation__reason,
+:global(.dark) .field-recommendation__reason,
+:global([data-theme='dark']) .option-reason,
+:global(.dark) .option-reason {
+  color: #94a3b8;
+}
+
+:global([data-theme='dark']) .option-label,
+:global(.dark) .option-label,
+:global([data-theme='dark']) .other-input,
+:global(.dark) .other-input,
+:global([data-theme='dark']) .other-input-add,
+:global(.dark) .other-input-add,
+:global([data-theme='dark']) .other-input-remove,
+:global(.dark) .other-input-remove {
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.92));
+  border-color: rgba(71, 85, 105, 0.76);
+  color: #cbd5e1;
+}
+
+:global([data-theme='dark']) .option-label:hover,
+:global(.dark) .option-label:hover {
+  color: #f8fafc;
+}
+
+:global([data-theme='dark']) .option-label.selected,
+:global(.dark) .option-label.selected {
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.34), rgba(8, 145, 178, 0.26));
+  color: #bfdbfe;
 }
 </style>

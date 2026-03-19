@@ -3,6 +3,7 @@ import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessageStore } from '@/stores/message'
 import { useSessionStore } from '@/stores/session'
+import { useSessionExecutionStore } from '@/stores/sessionExecution'
 import { EaIcon } from '@/components/common'
 import MessageBubble from './MessageBubble.vue'
 import type { Message } from '@/stores/message'
@@ -16,6 +17,7 @@ interface VirtualMessageItem {
 const { t } = useI18n()
 const messageStore = useMessageStore()
 const sessionStore = useSessionStore()
+const sessionExecutionStore = useSessionExecutionStore()
 
 const props = defineProps<{
   sessionId?: string
@@ -57,6 +59,12 @@ const currentMessages = computed(() => {
   return messageStore.messagesBySession(targetSessionId)
 })
 
+const currentIsSending = computed(() => {
+  const targetSessionId = props.sessionId || sessionStore.currentSessionId
+  if (!targetSessionId) return false
+  return sessionExecutionStore.getIsSending(targetSessionId)
+})
+
 const shouldVirtualize = computed(() => currentMessages.value.length > VIRTUALIZE_THRESHOLD)
 
 // 消息气泡包含 markdown、工具调用和文件追踪，直接 deep watch 整个数组会在流式输出时持续触发深层比较。
@@ -66,10 +74,17 @@ const currentMessageSignature = computed(() => currentMessages.value
     message.id,
     message.status,
     message.content.length,
-    message.toolCalls?.length ?? 0,
+    message.toolCalls?.map(toolCall => [
+      toolCall.id,
+      toolCall.status,
+      Object.keys(toolCall.arguments || {}).length,
+      toolCall.result?.length ?? 0,
+      toolCall.errorMessage?.length ?? 0
+    ].join(':')).join(',') ?? '',
     message.editTraces?.length ?? 0,
     message.attachments?.length ?? 0,
-    message.thinking?.length ?? 0
+    message.thinking?.length ?? 0,
+    message.runtimeNotices?.map(notice => `${notice.id}:${notice.title}:${notice.content.length}`).join(',') ?? ''
   ].join(':'))
   .join('|'))
 
@@ -275,6 +290,19 @@ watch(currentMessageSignature, async () => {
   }
 })
 
+watch(currentIsSending, async (sending, wasSending) => {
+  if (!sending || wasSending) {
+    return
+  }
+
+  isUserAtBottom.value = true
+  showScrollToBottom.value = false
+
+  await nextTick()
+  updateViewportMetrics()
+  scrollToBottom(false)
+})
+
 watch(currentMessages, (messages) => {
   const activeIds = new Set(messages.map(message => message.id))
   const nextHeights: Record<string, number> = {}
@@ -477,20 +505,22 @@ const handleOpenEditTrace = (messageId: string, traceId: string) => {
 
 /* 自定义滚动条样式 */
 .message-list::-webkit-scrollbar {
-  width: 8px;
+  width: var(--scrollbar-size);
 }
 
 .message-list::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track);
 }
 
 .message-list::-webkit-scrollbar-thumb {
-  background: var(--color-border-strong);
-  border-radius: 4px;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 .message-list::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-tertiary);
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* 加载更多提示样式 */

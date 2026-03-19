@@ -485,8 +485,48 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(() =>
   border-top: 1px solid var(--color-border, #e2e8f0);
 }
 
-.execution-mode-select {
+.execution-mode-select,
+.project-select {
   width: 100%;
+  padding: var(--spacing-2, 0.5rem) var(--spacing-8, 2rem) var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: var(--radius-md, 8px);
+  font-size: var(--font-size-sm, 13px);
+  color: var(--color-text-primary, #1e293b);
+  background-color: var(--color-surface, #fff);
+  cursor: pointer;
+  transition: all var(--transition-fast, 150ms);
+  appearance: none;
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-3, 0.75rem) center;
+}
+
+.execution-mode-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-size: 16px;
+}
+
+.project-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+.execution-mode-select:hover,
+.project-select:hover {
+  border-color: var(--color-primary, #60a5fa);
+}
+
+.execution-mode-select:focus,
+.project-select:focus {
+  outline: none;
+  border-color: var(--color-primary, #60a5fa);
+  box-shadow: 0 0 0 3px var(--color-primary-light, #dbeafe);
+}
+
+.project-select:disabled,
+.execution-mode-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: var(--color-bg-secondary, #f8fafc);
 }
 
 .schedule-datetime {

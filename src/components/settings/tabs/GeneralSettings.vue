@@ -5,11 +5,11 @@ import { useSettingsStore } from '@/stores/settings'
 import { EaSelect } from '@/components/common'
 import SettingsSectionCard from '@/components/settings/common/SettingsSectionCard.vue'
 import MiniPanelShortcutRecorder from '@/components/settings/general/MiniPanelShortcutRecorder.vue'
-import { IS_WINDOWS } from '@/utils/shortcut'
+import { SUPPORTS_NATIVE_SHORTCUT_OVERRIDE } from '@/utils/shortcut'
 
 const { t } = useI18n()
 const settingsStore = useSettingsStore()
-const isWindows = IS_WINDOWS
+const supportsNativeShortcutOverride = SUPPORTS_NATIVE_SHORTCUT_OVERRIDE
 
 // 语言选项
 const languageOptions = computed(() => [
@@ -164,11 +164,11 @@ const compressionThresholdOptions = computed(() => [
       </div>
 
       <div
-        v-if="isWindows"
+        v-if="supportsNativeShortcutOverride"
         class="settings-item"
       >
         <div class="settings-item__info">
-          <span class="settings-item__label">{{ t('settings.general.miniPanelShortcutOverride') }}</span>
+          <span class="settings-item__label">{{ t('settings.general.miniPanelShortcutForceOverride') }}</span>
           <span class="settings-item__desc">{{ t('settings.general.miniPanelShortcutOverrideDesc') }}</span>
         </div>
         <label class="settings-toggle">
@@ -182,11 +182,11 @@ const compressionThresholdOptions = computed(() => [
       </div>
 
       <div
-        v-if="isWindows && settingsStore.settings.miniPanelShortcutOverride"
+        v-if="supportsNativeShortcutOverride && settingsStore.settings.miniPanelShortcutOverride"
         class="settings-warning"
       >
         <span class="settings-warning__icon">⚠️</span>
-        <span class="settings-warning__text">{{ t('settings.general.miniPanelShortcutOverrideWarning') }}</span>
+        <span class="settings-warning__text">{{ t('settings.general.miniPanelShortcutForceOverrideWarning') }}</span>
       </div>
     </SettingsSectionCard>
 

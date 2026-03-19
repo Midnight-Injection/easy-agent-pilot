@@ -87,6 +87,9 @@ pub struct PlanSplitStreamPayload {
     pub tool_input: Option<String>,
     pub tool_result: Option<String>,
     pub error: Option<String>,
+    pub input_tokens: Option<u32>,
+    pub output_tokens: Option<u32>,
+    pub model: Option<String>,
     pub metadata: Option<String>,
     pub created_at: String,
 }
@@ -100,6 +103,9 @@ pub struct SplitStreamRecord {
     pub tool_input: Option<String>,
     pub tool_result: Option<String>,
     pub error: Option<String>,
+    pub input_tokens: Option<u32>,
+    pub output_tokens: Option<u32>,
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -865,6 +871,9 @@ pub fn record_plan_split_event(
         "toolInput": event.tool_input.clone(),
         "toolResult": event.tool_result.clone(),
         "error": event.error.clone(),
+        "inputTokens": event.input_tokens,
+        "outputTokens": event.output_tokens,
+        "model": event.model.clone(),
     }))
     .ok();
     let content = event
@@ -902,6 +911,9 @@ pub fn record_plan_split_event(
         tool_input: event.tool_input,
         tool_result: event.tool_result,
         error: event.error,
+        input_tokens: event.input_tokens,
+        output_tokens: event.output_tokens,
+        model: event.model,
         metadata,
         created_at: now,
     };

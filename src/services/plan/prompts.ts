@@ -25,6 +25,9 @@ export function buildPlanSplitSystemPrompt(): string {
 3. 表单字段类型只能使用 text、textarea、select、multiselect、number、checkbox、radio、date、slider
 4. select / radio / multiselect 的 options 必须输出为 [{ "label": "...", "value": "..." }]
 4.1 所有 select / radio / multiselect 字段都必须允许用户填写“其他”，即使已有固定 options 也要保留开放输入能力
+4.2 如果你对字段有明确建议，输出 suggestion，并用 suggestionReason 简要说明建议理由
+4.3 对 select / radio / multiselect 字段，尽量输出 optionReasons，key 必须是 option.value，value 是该选项适用场景或取舍理由
+4.4 select / radio 的 suggestion 必须是单个 option.value；multiselect 的 suggestion 必须是 option.value 数组；如果建议用户填写“其他”，suggestion 可以直接给出开放输入内容
 5. 如需条件显示，仅使用简单 condition: { field, value } 等值判断，保证前端会话面板可以动态渲染并收集数据
 6. 信息充分后输出 task_split（status=DONE）
 7. 任务需可执行、有明确边界、包含实现/测试步骤和验收标准
@@ -111,6 +114,28 @@ function buildPlanSplitFieldSchema() {
       },
       required: { type: 'boolean' },
       placeholder: { type: 'string' },
+      suggestion: {
+        anyOf: [
+          { type: 'string' },
+          { type: 'number' },
+          { type: 'boolean' },
+          {
+            type: 'array',
+            items: {
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' },
+                { type: 'boolean' }
+              ]
+            }
+          }
+        ]
+      },
+      suggestionReason: { type: 'string' },
+      optionReasons: {
+        type: 'object',
+        additionalProperties: { type: 'string' }
+      },
       options: {
         type: 'array',
         items: {
@@ -195,7 +220,19 @@ function buildPlanSplitTaskSchema() {
 function buildCodexPlanSplitFieldSchema() {
   return {
     type: 'object',
-    required: ['name', 'label', 'type', 'required', 'placeholder', 'options', 'allowOther', 'otherLabel'],
+    required: [
+      'name',
+      'label',
+      'type',
+      'required',
+      'placeholder',
+      'suggestion',
+      'suggestionReason',
+      'optionReasons',
+      'options',
+      'allowOther',
+      'otherLabel'
+    ],
     properties: {
       name: { type: 'string', minLength: 1 },
       label: { type: 'string', minLength: 1 },
@@ -205,6 +242,34 @@ function buildCodexPlanSplitFieldSchema() {
       },
       required: { type: 'boolean' },
       placeholder: { type: ['string', 'null'] },
+      suggestion: {
+        anyOf: [
+          { type: 'string' },
+          { type: 'number' },
+          { type: 'boolean' },
+          {
+            type: 'array',
+            items: {
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' },
+                { type: 'boolean' }
+              ]
+            }
+          },
+          { type: 'null' }
+        ]
+      },
+      suggestionReason: { type: ['string', 'null'] },
+      optionReasons: {
+        anyOf: [
+          {
+            type: 'object',
+            additionalProperties: { type: 'string' }
+          },
+          { type: 'null' }
+        ]
+      },
       options: {
         type: 'array',
         items: {

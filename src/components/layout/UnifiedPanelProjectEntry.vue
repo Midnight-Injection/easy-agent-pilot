@@ -643,24 +643,26 @@ function handleProjectCompactAction(action: 'edit' | 'delete', project: Project,
   overflow-y: auto;
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
+  scrollbar-color: var(--scrollbar-thumb, var(--color-border)) var(--scrollbar-track, transparent);
 }
 
 .tab-content::-webkit-scrollbar {
-  width: 6px;
+  width: var(--scrollbar-size, 6px);
 }
 
 .tab-content::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track, transparent);
 }
 
 .tab-content::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
-  border-radius: 3px;
+  background-color: var(--scrollbar-thumb, var(--color-border));
+  border-radius: var(--radius-full, 9999px);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 .tab-content::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-text-tertiary);
+  background-color: var(--scrollbar-thumb-hover, var(--color-text-tertiary));
 }
 
 .tab-content--files {

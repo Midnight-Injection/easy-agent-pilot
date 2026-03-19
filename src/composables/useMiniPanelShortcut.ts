@@ -3,7 +3,11 @@ import { invoke } from '@tauri-apps/api/core'
 import { isRegistered, register, unregister } from '@tauri-apps/plugin-global-shortcut'
 import { useSettingsStore } from '@/stores/settings'
 import { useWindowManagerStore } from '@/stores/windowManager'
-import { IS_WINDOWS, migrateMiniPanelShortcut, validateShortcutForCurrentPlatform } from '@/utils/shortcut'
+import {
+  SUPPORTS_NATIVE_SHORTCUT_OVERRIDE,
+  migrateMiniPanelShortcut,
+  validateShortcutForCurrentPlatform
+} from '@/utils/shortcut'
 
 type MiniPanelShortcutRegistrationState = 'idle' | 'disabled' | 'registering' | 'registered' | 'error'
 type MiniPanelShortcutRegistrationMode = 'standard' | 'windows-override' | null
@@ -15,29 +19,48 @@ const registrationMode = ref<MiniPanelShortcutRegistrationMode>(null)
 
 function normalizePermissionErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
+  const normalized = message.toLowerCase()
 
-  if (message.includes('global-shortcut.register not allowed')) {
+  if (normalized.includes('global-shortcut.register not allowed')) {
     return 'GLOBAL_SHORTCUT_PERMISSION_REQUIRED'
   }
 
-  if (message.includes('global-shortcut.is_registered not allowed')) {
+  if (normalized.includes('global-shortcut.is_registered not allowed')) {
     return 'GLOBAL_SHORTCUT_PERMISSION_REQUIRED'
   }
 
-  if (message.includes('global-shortcut.unregister not allowed')) {
+  if (normalized.includes('global-shortcut.unregister not allowed')) {
     return 'GLOBAL_SHORTCUT_PERMISSION_REQUIRED'
   }
 
-  if (message.includes('RegisterEventHotKey failed')) {
+  if (
+    normalized.includes('registereventhotkey failed')
+    || normalized.includes('already registered')
+    || normalized.includes('already in use')
+    || normalized.includes('in use by another application')
+    || normalized.includes('hotkey is already registered')
+    || normalized.includes('os error 1409')
+  ) {
     return 'GLOBAL_SHORTCUT_CONFLICT'
   }
 
-  if (message.includes('WINDOWS_SHORTCUT_OVERRIDE_UNSUPPORTED')) {
-    return 'WINDOWS_SHORTCUT_OVERRIDE_UNSUPPORTED'
+  if (
+    message.includes('WINDOWS_SHORTCUT_OVERRIDE_UNSUPPORTED')
+    || message.includes('NATIVE_SHORTCUT_OVERRIDE_UNSUPPORTED')
+  ) {
+    return 'NATIVE_SHORTCUT_OVERRIDE_UNSUPPORTED'
   }
 
-  if (message.includes('WINDOWS_SHORTCUT_OVERRIDE_FAILED')) {
-    return 'WINDOWS_SHORTCUT_OVERRIDE_FAILED'
+  if (
+    message.includes('WINDOWS_SHORTCUT_OVERRIDE_FAILED')
+    || message.includes('MACOS_SHORTCUT_OVERRIDE_FAILED')
+    || message.includes('NATIVE_SHORTCUT_OVERRIDE_FAILED')
+  ) {
+    return 'NATIVE_SHORTCUT_OVERRIDE_FAILED'
+  }
+
+  if (message.includes('MACOS_SHORTCUT_OVERRIDE_PERMISSION_REQUIRED')) {
+    return 'NATIVE_SHORTCUT_OVERRIDE_PERMISSION_REQUIRED'
   }
 
   return message
@@ -76,7 +99,7 @@ export function useMiniPanelShortcut() {
   }
 
   async function unregisterWindowsOverrideShortcut() {
-    if (!IS_WINDOWS) {
+    if (!SUPPORTS_NATIVE_SHORTCUT_OVERRIDE) {
       return
     }
 
@@ -109,7 +132,7 @@ export function useMiniPanelShortcut() {
 
     const enabled = settingsStore.settings.miniPanelEnabled
     const shortcut = migrateMiniPanelShortcut(settingsStore.settings.miniPanelShortcut)
-    const windowsOverrideEnabled = IS_WINDOWS && settingsStore.settings.miniPanelShortcutOverride
+    const windowsOverrideEnabled = SUPPORTS_NATIVE_SHORTCUT_OVERRIDE && settingsStore.settings.miniPanelShortcutOverride
 
     if (settingsStore.settings.miniPanelShortcut !== shortcut) {
       settingsStore.settings.miniPanelShortcut = shortcut
@@ -196,7 +219,8 @@ export function useMiniPanelShortcut() {
         windowManagerStore.windowType,
         settingsStore.hasLoaded,
         settingsStore.settings.miniPanelEnabled,
-        settingsStore.settings.miniPanelShortcut
+        settingsStore.settings.miniPanelShortcut,
+        settingsStore.settings.miniPanelShortcutOverride
       ] as const,
       () => {
         void syncShortcutRegistration()

@@ -12,6 +12,8 @@ import {
   buildTaskResplitKickoffPrompt
 } from '@/services/plan'
 import type { ExecutionRequest, MessageInput } from '@/services/conversation/strategies/types'
+import type { RuntimeNotice } from '@/utils/runtimeNotice'
+import { buildCliEnvironmentNotice } from '@/utils/runtimeNotice'
 import type {
   AITaskItem,
   DynamicFormSchema,
@@ -35,6 +37,7 @@ interface TaskSplitContext {
 interface SubmittedFormSnapshot {
   formId: string
   schema: DynamicFormSchema
+  promptText?: string
   values: Record<string, unknown>
   submittedAt: string
 }
@@ -142,6 +145,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
   const session = ref<PlanSplitSessionRecord | null>(null)
   const context = ref<TaskSplitContext | null>(null)
   const streamUnlisten = ref<UnlistenFn | null>(null)
+  const runtimeNotices = ref<RuntimeNotice[]>([])
 
   const subSplitMode = ref(false)
   const subSplitTargetIndex = ref<number | null>(null)
@@ -171,6 +175,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     currentFormIndex.value = 0
     session.value = null
     context.value = null
+    runtimeNotices.value = []
     subSplitMode.value = false
     subSplitTargetIndex.value = null
     subSplitOriginalTasks.value = []
@@ -267,13 +272,18 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     applySessionSnapshot(snapshot, true)
   }
 
-  function rememberSubmittedForm(schema: DynamicFormSchema, values: Record<string, unknown>) {
+  function rememberSubmittedForm(
+    schema: DynamicFormSchema,
+    values: Record<string, unknown>,
+    promptText?: string
+  ) {
     const submittedAt = new Date().toISOString()
     const snapshot: SubmittedFormSnapshot = {
       formId: schema.formId,
       schema: normalizeFormSchemaForRendering(
         JSON.parse(JSON.stringify(schema)) as DynamicFormSchema
       ),
+      promptText,
       values: JSON.parse(JSON.stringify(values)) as Record<string, unknown>,
       submittedAt
     }
@@ -290,6 +300,14 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     }
 
     context.value = nextContext
+    runtimeNotices.value = []
+    const selectedAgent = useAgentStore().agents.find(agent => agent.id === nextContext.agentId)
+    if (selectedAgent) {
+      const environmentNotice = await buildCliEnvironmentNotice(selectedAgent).catch(() => null)
+      if (environmentNotice) {
+        runtimeNotices.value = [environmentNotice]
+      }
+    }
     await subscribeToPlan(nextContext.planId)
     await loadSession(nextContext.planId)
 
@@ -330,6 +348,12 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     if (!context.value) return
     const schema = activeFormSchema.value
     if (!schema || schema.formId !== formId) return
+    const promptText = [...messages.value]
+      .slice()
+      .reverse()
+      .find(message => message.role === 'assistant' && message.content.trim())
+      ?.content
+      ?.trim()
 
     const snapshot = await invoke<PlanSplitSessionRecord>('submit_plan_split_form', {
       input: {
@@ -340,7 +364,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
       }
     })
     applySessionSnapshot(snapshot, true)
-    rememberSubmittedForm(schema, values)
+    rememberSubmittedForm(schema, values, promptText)
   }
 
   async function retry() {
@@ -508,6 +532,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     activeFormSchema,
     session,
     context,
+    runtimeNotices,
     subSplitMode,
     subSplitTargetIndex,
     subSplitOriginalTasks,

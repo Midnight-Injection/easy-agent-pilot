@@ -53,6 +53,23 @@ function normalizeStringArray(value: unknown): string[] {
     .filter(Boolean)
 }
 
+function normalizeStringMap(value: unknown): Record<string, string> | undefined {
+  if (!isRecord(value)) {
+    return undefined
+  }
+
+  const entries = Object.entries(value)
+    .filter(([, item]) => typeof item === 'string')
+    .map(([key, item]) => [String(key), String(item).trim()] as const)
+    .filter(([, item]) => Boolean(item))
+
+  if (entries.length === 0) {
+    return undefined
+  }
+
+  return Object.fromEntries(entries)
+}
+
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.map(item => item.trim()).filter(Boolean)))
 }
@@ -143,6 +160,9 @@ function normalizeFormField(value: unknown): FormField | null {
     placeholder: readString(value, 'placeholder'),
     required: readBoolean(value, 'required') ?? false,
     default: value.default,
+    suggestion: value.suggestion,
+    suggestionReason: readString(value, 'suggestionReason', 'suggestion_reason'),
+    optionReasons: normalizeStringMap(value.optionReasons ?? value.option_reasons),
     options: normalizeFieldOptions(value.options),
     validation: normalizeFieldValidation(value.validation),
     condition: normalizeFieldCondition(value.condition),

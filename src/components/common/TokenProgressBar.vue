@@ -3,37 +3,71 @@
  * TokenProgressBar - Token 使用进度条组件
  * 显示当前会话 token 使用情况，点击可打开压缩弹框
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useTokenStore, type TokenLevel, formatTokenCount } from '@/stores/token'
+import { useMessageStore } from '@/stores/message'
 import { useSessionStore } from '@/stores/session'
+
+const props = withDefaults(defineProps<{
+  sessionId?: string | null
+  showCompressButton?: boolean
+}>(), {
+  sessionId: null,
+  showCompressButton: true
+})
 
 const emit = defineEmits<{
   (e: 'compress'): void
 }>()
 
 const tokenStore = useTokenStore()
+const messageStore = useMessageStore()
 const sessionStore = useSessionStore()
 
 // 是否显示 tooltip
 const showTooltip = ref(false)
 // tooltip 位置
 const tooltipPosition = ref({ top: 0, left: 0 })
+const targetSessionId = computed(() => props.sessionId ?? sessionStore.currentSessionId ?? null)
 
 // 获取当前会话的 token 使用情况
 const tokenUsage = computed(() => {
-  if (!sessionStore.currentSessionId) {
+  if (!targetSessionId.value) {
     return { used: 0, limit: 128000, percentage: 0, level: 'safe' as TokenLevel }
   }
-  return tokenStore.getTokenUsage(sessionStore.currentSessionId)
+  return tokenStore.getTokenUsage(targetSessionId.value)
 })
 
 const realtimeUsage = computed(() => {
-  if (!sessionStore.currentSessionId) {
+  if (!targetSessionId.value) {
     return null
   }
 
-  return tokenStore.realtimeTokens.get(sessionStore.currentSessionId) ?? null
+  return tokenStore.realtimeTokens.get(targetSessionId.value) ?? null
 })
+
+const messageSignature = computed(() => {
+  if (!targetSessionId.value) {
+    return ''
+  }
+
+  const messages = messageStore.messagesBySession(targetSessionId.value)
+  return messages
+    .map(message => `${message.id}:${message.tokens ?? 0}:${message.content.length}`)
+    .join('|')
+})
+
+watch(
+  () => [targetSessionId.value, messageSignature.value] as const,
+  ([sessionId]) => {
+    if (!sessionId) {
+      return
+    }
+
+    tokenStore.updateSessionTokenCache(sessionId)
+  },
+  { immediate: true }
+)
 
 // 进度条样式
 const progressStyle = computed(() => ({

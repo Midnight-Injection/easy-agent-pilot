@@ -236,14 +236,21 @@ export const useTokenStore = defineStore('token', () => {
     const messageStore = useMessageStore()
     const messages = messageStore.messagesBySession(sessionId)
 
-    let totalTokens = 0
+    let estimatedTokens = 0
     for (const message of messages) {
       if (message.tokens) {
-        totalTokens += message.tokens
+        estimatedTokens += message.tokens
       } else {
-        totalTokens += Math.ceil(message.content.length / 4)
+        estimatedTokens += Math.ceil(message.content.length / 4)
       }
     }
+
+    const realtimeData = realtimeTokens.value.get(sessionId)
+    const realtimeTotal = hasMeaningfulRealtimeUsage(realtimeData)
+      ? (realtimeData?.inputTokens ?? 0) + (realtimeData?.outputTokens ?? 0)
+      : 0
+    const persistedTotal = sessionTokenCaches.value.get(sessionId)?.totalTokens ?? 0
+    const totalTokens = Math.max(estimatedTokens, realtimeTotal, persistedTotal)
 
     sessionTokenCaches.value.set(sessionId, {
       sessionId,

@@ -52,6 +52,12 @@
   --color-border-light: #f1f5f9;
   --color-border-dark: #cbd5e1;
   --color-border-focus: #60a5fa;
+  --scrollbar-size: 6px;
+  --scrollbar-size-thin: 4px;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in srgb, var(--color-border-dark) 58%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-text-secondary) 52%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--color-text-secondary) 68%, transparent);
 
   /* 状态色 */
   --color-success: #22c55e;
@@ -166,6 +172,79 @@
   --footer-height: 48px;
   --input-height: 40px;
   --button-height: 36px;
+
+  /* ========== 会话主题变量 ========== */
+  --conversation-workspace-bg:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.08), transparent 24%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.92));
+  --conversation-trace-pane-bg: rgba(255, 255, 255, 0.82);
+  --conversation-trace-pane-shadow: 18px 0 40px rgba(15, 23, 42, 0.08);
+  --conversation-trace-resizer-bg:
+    linear-gradient(180deg, rgba(148, 163, 184, 0.06), rgba(148, 163, 184, 0.14), rgba(148, 163, 184, 0.06));
+  --conversation-trace-resizer-line-bg:
+    linear-gradient(180deg, rgba(59, 130, 246, 0.15), rgba(15, 23, 42, 0.3), rgba(59, 130, 246, 0.15));
+  --conversation-trace-handle-bg:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(224, 242, 254, 0.9));
+  --conversation-trace-handle-border: rgba(14, 116, 144, 0.18);
+  --conversation-trace-handle-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+  --conversation-trace-handle-hover-border: rgba(14, 116, 144, 0.3);
+  --conversation-trace-handle-hover-shadow: 0 20px 34px rgba(14, 165, 233, 0.16);
+  --conversation-trace-badge-bg: rgba(14, 165, 233, 0.14);
+  --conversation-trace-badge-text: #0f766e;
+  --conversation-trace-drawer-backdrop: rgba(15, 23, 42, 0.28);
+  --conversation-trace-drawer-shadow: -18px 0 32px rgba(15, 23, 42, 0.18);
+
+  --tool-call-bg:
+    linear-gradient(180deg, rgba(255, 251, 235, 0.98), rgba(250, 245, 236, 0.96));
+  --tool-call-border: rgba(161, 98, 7, 0.2);
+  --tool-call-shadow: 0 10px 24px rgba(120, 53, 15, 0.08);
+  --tool-call-hover-border: rgba(146, 64, 14, 0.32);
+  --tool-call-hover-shadow: 0 14px 28px rgba(120, 53, 15, 0.12);
+  --tool-call-running-bg:
+    linear-gradient(180deg, rgba(255, 247, 237, 0.99), rgba(255, 251, 235, 0.97));
+  --tool-call-running-border: rgba(217, 119, 6, 0.34);
+  --tool-call-success-bg:
+    linear-gradient(180deg, rgba(250, 250, 249, 0.99), rgba(245, 245, 244, 0.96));
+  --tool-call-success-border: rgba(120, 113, 108, 0.28);
+  --tool-call-error-bg:
+    linear-gradient(180deg, rgba(254, 242, 242, 0.98), rgba(255, 247, 237, 0.96));
+  --tool-call-error-border: rgba(220, 38, 38, 0.34);
+  --tool-call-header-hover: rgba(180, 83, 9, 0.06);
+  --tool-call-running-hover: rgba(217, 119, 6, 0.09);
+  --tool-call-success-hover: rgba(120, 113, 108, 0.08);
+  --tool-call-error-hover: rgba(220, 38, 38, 0.08);
+  --tool-call-name: #292524;
+  --tool-call-summary: #78716c;
+  --tool-call-meta: #78716c;
+  --tool-call-content-border: rgba(161, 98, 7, 0.12);
+  --tool-call-running-content-border: rgba(217, 119, 6, 0.16);
+  --tool-call-success-content-border: rgba(120, 113, 108, 0.14);
+  --tool-call-error-content-border: rgba(220, 38, 38, 0.16);
+  --tool-call-section-hover: rgba(120, 53, 15, 0.06);
+  --tool-call-code-bg: rgba(28, 25, 23, 0.05);
+  --tool-call-error-panel-bg: rgba(239, 68, 68, 0.1);
+  --tool-call-running-status: #b45309;
+  --tool-call-success-status: #57534e;
+  --tool-call-error-status: #dc2626;
+  --tool-call-error-text: #dc2626;
+
+  --runtime-notice-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 0.94));
+  --runtime-notice-border: rgba(15, 23, 42, 0.08);
+  --runtime-notice-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  --runtime-notice-hover: rgba(14, 165, 233, 0.04);
+  --runtime-notice-chip-bg: rgba(15, 23, 42, 0.06);
+  --runtime-notice-chip-text: var(--color-text-secondary);
+  --runtime-notice-content-border: rgba(15, 23, 42, 0.06);
+  --runtime-notice-usage-bg:
+    linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(248, 250, 252, 0.98));
+  --runtime-notice-usage-border: rgba(59, 130, 246, 0.14);
+  --runtime-notice-usage-label: #64748b;
+  --runtime-notice-usage-model: #0f172a;
+  --runtime-notice-usage-input-bg: rgba(37, 99, 235, 0.1);
+  --runtime-notice-usage-input-text: #1d4ed8;
+  --runtime-notice-usage-output-bg: rgba(14, 165, 233, 0.12);
+  --runtime-notice-usage-output-text: #0369a1;
 }
 
 /* ========== 暗色主题 ========== */
@@ -223,6 +302,10 @@
   --color-border-light: #1e293b;
   --color-border-dark: #475569;
   --color-border-focus: #60a5fa;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in srgb, var(--color-border-dark) 72%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--color-text-secondary) 68%, transparent);
+  --scrollbar-thumb-active: color-mix(in srgb, var(--color-text-secondary) 82%, transparent);
 
   /* 状态色 - 暗色模式 */
   --color-success: #4ade80;
@@ -249,4 +332,76 @@
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.4), 0 8px 10px -6px rgb(0 0 0 / 0.4);
   --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.5);
   --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.3);
+
+  --conversation-workspace-bg:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.92));
+  --conversation-trace-pane-bg: rgba(15, 23, 42, 0.88);
+  --conversation-trace-pane-shadow: 18px 0 40px rgba(2, 6, 23, 0.3);
+  --conversation-trace-resizer-bg:
+    linear-gradient(180deg, rgba(71, 85, 105, 0.08), rgba(71, 85, 105, 0.2), rgba(71, 85, 105, 0.08));
+  --conversation-trace-resizer-line-bg:
+    linear-gradient(180deg, rgba(96, 165, 250, 0.2), rgba(148, 163, 184, 0.45), rgba(96, 165, 250, 0.2));
+  --conversation-trace-handle-bg:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.9));
+  --conversation-trace-handle-border: rgba(96, 165, 250, 0.24);
+  --conversation-trace-handle-shadow: 0 18px 32px rgba(2, 6, 23, 0.26);
+  --conversation-trace-handle-hover-border: rgba(96, 165, 250, 0.36);
+  --conversation-trace-handle-hover-shadow: 0 20px 34px rgba(2, 6, 23, 0.34);
+  --conversation-trace-badge-bg: rgba(96, 165, 250, 0.18);
+  --conversation-trace-badge-text: #bfdbfe;
+  --conversation-trace-drawer-backdrop: rgba(2, 6, 23, 0.54);
+  --conversation-trace-drawer-shadow: -18px 0 32px rgba(2, 6, 23, 0.34);
+
+  --tool-call-bg:
+    linear-gradient(180deg, rgba(28, 25, 23, 0.94), rgba(41, 37, 36, 0.9));
+  --tool-call-border: rgba(217, 119, 6, 0.22);
+  --tool-call-shadow: 0 14px 30px rgba(2, 6, 23, 0.24);
+  --tool-call-hover-border: rgba(245, 158, 11, 0.3);
+  --tool-call-hover-shadow: 0 16px 32px rgba(2, 6, 23, 0.28);
+  --tool-call-running-bg:
+    linear-gradient(180deg, rgba(69, 26, 3, 0.92), rgba(41, 37, 36, 0.92));
+  --tool-call-running-border: rgba(245, 158, 11, 0.28);
+  --tool-call-success-bg:
+    linear-gradient(180deg, rgba(28, 25, 23, 0.94), rgba(41, 37, 36, 0.88));
+  --tool-call-success-border: rgba(168, 162, 158, 0.2);
+  --tool-call-error-bg:
+    linear-gradient(180deg, rgba(69, 10, 10, 0.86), rgba(41, 37, 36, 0.92));
+  --tool-call-error-border: rgba(239, 68, 68, 0.4);
+  --tool-call-header-hover: rgba(120, 53, 15, 0.22);
+  --tool-call-running-hover: rgba(245, 158, 11, 0.14);
+  --tool-call-success-hover: rgba(168, 162, 158, 0.12);
+  --tool-call-error-hover: rgba(239, 68, 68, 0.14);
+  --tool-call-name: #f5f5f4;
+  --tool-call-summary: #d6d3d1;
+  --tool-call-meta: #a8a29e;
+  --tool-call-content-border: rgba(217, 119, 6, 0.18);
+  --tool-call-running-content-border: rgba(245, 158, 11, 0.2);
+  --tool-call-success-content-border: rgba(168, 162, 158, 0.18);
+  --tool-call-error-content-border: rgba(239, 68, 68, 0.22);
+  --tool-call-section-hover: rgba(245, 158, 11, 0.12);
+  --tool-call-code-bg: rgba(0, 0, 0, 0.2);
+  --tool-call-error-panel-bg: rgba(127, 29, 29, 0.24);
+  --tool-call-running-status: #fbbf24;
+  --tool-call-success-status: #d6d3d1;
+  --tool-call-error-status: #fca5a5;
+  --tool-call-error-text: #fecaca;
+
+  --runtime-notice-bg:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.78));
+  --runtime-notice-border: rgba(148, 163, 184, 0.16);
+  --runtime-notice-shadow: 0 14px 32px rgba(2, 6, 23, 0.28);
+  --runtime-notice-hover: rgba(148, 163, 184, 0.06);
+  --runtime-notice-chip-bg: rgba(148, 163, 184, 0.12);
+  --runtime-notice-chip-text: #cbd5e1;
+  --runtime-notice-content-border: rgba(148, 163, 184, 0.12);
+  --runtime-notice-usage-bg:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.86));
+  --runtime-notice-usage-border: rgba(96, 165, 250, 0.2);
+  --runtime-notice-usage-label: #94a3b8;
+  --runtime-notice-usage-model: #e2e8f0;
+  --runtime-notice-usage-input-bg: rgba(37, 99, 235, 0.18);
+  --runtime-notice-usage-input-text: #93c5fd;
+  --runtime-notice-usage-output-bg: rgba(8, 145, 178, 0.2);
+  --runtime-notice-usage-output-text: #67e8f9;
 }

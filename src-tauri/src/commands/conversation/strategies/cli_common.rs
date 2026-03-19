@@ -27,6 +27,9 @@ pub fn emit_cli_event(
                 tool_input: event.tool_input.clone(),
                 tool_result: event.tool_result.clone(),
                 error: event.error.clone(),
+                input_tokens: event.input_tokens,
+                output_tokens: event.output_tokens,
+                model: event.model.clone(),
             },
         );
     }
@@ -58,6 +61,22 @@ pub fn build_error_event(session_id: &str, error: String) -> CliStreamEvent {
         tool_input: None,
         tool_result: None,
         error: Some(error),
+        input_tokens: None,
+        output_tokens: None,
+        model: None,
+    }
+}
+
+pub fn build_system_event(session_id: &str, content: String) -> CliStreamEvent {
+    CliStreamEvent {
+        event_type: "system".to_string(),
+        session_id: session_id.to_string(),
+        content: Some(content),
+        tool_name: None,
+        tool_call_id: None,
+        tool_input: None,
+        tool_result: None,
+        error: None,
         input_tokens: None,
         output_tokens: None,
         model: None,
@@ -255,6 +274,11 @@ pub fn shell_escape(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
+pub fn extract_runtime_system_notice(json: &serde_json::Value) -> Option<String> {
+    let runtime_payload = find_runtime_notice_payload(json, 0)?;
+    render_runtime_notice_markdown(&runtime_payload)
+}
+
 pub fn preview_text(text: &str, max_chars: usize) -> String {
     let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if normalized.chars().count() <= max_chars {
@@ -262,6 +286,258 @@ pub fn preview_text(text: &str, max_chars: usize) -> String {
     }
 
     normalized.chars().take(max_chars).collect::<String>() + "..."
+}
+
+const MAX_RUNTIME_NOTICE_DEPTH: usize = 6;
+
+fn find_runtime_notice_payload(
+    value: &serde_json::Value,
+    depth: usize,
+) -> Option<serde_json::Value> {
+    if depth > MAX_RUNTIME_NOTICE_DEPTH {
+        return None;
+    }
+
+    if has_runtime_notice_keys(value) {
+        return Some(value.clone());
+    }
+
+    match value {
+        serde_json::Value::String(text) => parse_embedded_json_value(text)
+            .and_then(|parsed| find_runtime_notice_payload(&parsed, depth + 1)),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                if let Some(found) = find_runtime_notice_payload(item, depth + 1) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        serde_json::Value::Object(object) => {
+            for key in [
+                "output",
+                "stdout",
+                "payload",
+                "data",
+                "result",
+                "response",
+                "details",
+                "hookSpecificOutput",
+                "hook_output",
+            ] {
+                if let Some(candidate) = object.get(key) {
+                    if let Some(found) = find_runtime_notice_payload(candidate, depth + 1) {
+                        return Some(found);
+                    }
+                }
+            }
+
+            for candidate in object.values() {
+                if let Some(found) = find_runtime_notice_payload(candidate, depth + 1) {
+                    return Some(found);
+                }
+            }
+
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_embedded_json_value(text: &str) -> Option<serde_json::Value> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || (!trimmed.contains('{') && !trimmed.contains('[')) {
+        return None;
+    }
+
+    parse_json_blob_with_fallback(trimmed).ok()
+}
+
+fn has_runtime_notice_keys(value: &serde_json::Value) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+
+    [
+        "skills",
+        "plugins",
+        "mcp_servers",
+        "mcpServers",
+        "agents",
+        "slash_commands",
+        "slashCommands",
+        "commands",
+    ]
+    .iter()
+    .any(|key| object.contains_key(*key))
+}
+
+fn render_runtime_notice_markdown(value: &serde_json::Value) -> Option<String> {
+    let skill_names = extract_named_items(value.get("skills"));
+    let plugin_names = extract_named_items(value.get("plugins"));
+    let mcp_names = extract_mcp_items(value.get("mcp_servers").or_else(|| value.get("mcpServers")));
+    let agent_names = extract_named_items(value.get("agents"));
+    let command_names = extract_named_items(
+        value.get("slash_commands")
+            .or_else(|| value.get("slashCommands"))
+            .or_else(|| value.get("commands")),
+    );
+
+    let lines = [
+        format_notice_list("Skills", &skill_names),
+        format_notice_list("Plugins", &plugin_names),
+        format_notice_list("MCP", &mcp_names),
+        format_notice_list("Agents", &agent_names),
+        format_notice_list("Commands", &command_names),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    Some(format!("### 已加载运行扩展\n{}", lines.join("\n")))
+}
+
+fn extract_named_items(value: Option<&serde_json::Value>) -> Vec<String> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+
+    let mut items = Vec::new();
+    collect_named_items(value, &mut items);
+    dedupe_notice_items(items)
+}
+
+fn collect_named_items(value: &serde_json::Value, items: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(text) => {
+            if let Some(name) = normalize_notice_item(text) {
+                items.push(name);
+            }
+        }
+        serde_json::Value::Array(array) => {
+            for item in array {
+                collect_named_items(item, items);
+            }
+        }
+        serde_json::Value::Object(object) => {
+            if let Some(name) = object
+                .get("name")
+                .or_else(|| object.get("title"))
+                .or_else(|| object.get("id"))
+                .and_then(|value| value.as_str())
+                .and_then(normalize_notice_item)
+            {
+                items.push(name);
+                return;
+            }
+
+            for item in object.values() {
+                collect_named_items(item, items);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn extract_mcp_items(value: Option<&serde_json::Value>) -> Vec<String> {
+    let Some(value) = value else {
+        return Vec::new();
+    };
+
+    let mut items = Vec::new();
+
+    match value {
+        serde_json::Value::Array(array) => {
+            for item in array {
+                match item {
+                    serde_json::Value::String(text) => {
+                        if let Some(name) = normalize_notice_item(text) {
+                            items.push(name);
+                        }
+                    }
+                    serde_json::Value::Object(object) => {
+                        let Some(name) = object
+                            .get("name")
+                            .and_then(|value| value.as_str())
+                            .and_then(normalize_notice_item)
+                        else {
+                            continue;
+                        };
+
+                        let status = object.get("status").and_then(|value| value.as_str());
+                        if matches!(status, Some("connected") | Some("ready") | None) {
+                            items.push(name);
+                        } else {
+                            items.push(format!("{name}({})", status.unwrap_or_default()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        serde_json::Value::Object(object) => {
+            for (name, config) in object {
+                let Some(name) = normalize_notice_item(name) else {
+                    continue;
+                };
+                let status = config.get("status").and_then(|value| value.as_str());
+                if matches!(status, Some("connected") | Some("ready") | None) {
+                    items.push(name);
+                } else {
+                    items.push(format!("{name}({})", status.unwrap_or_default()));
+                }
+            }
+        }
+        _ => {}
+    }
+
+    dedupe_notice_items(items)
+}
+
+fn normalize_notice_item(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let single_line = trimmed.lines().next().unwrap_or(trimmed).trim();
+    if single_line.is_empty() {
+        return None;
+    }
+
+    Some(preview_text(single_line, 48))
+}
+
+fn dedupe_notice_items(items: Vec<String>) -> Vec<String> {
+    let mut deduped = Vec::new();
+
+    for item in items {
+        if !deduped.contains(&item) {
+            deduped.push(item);
+        }
+    }
+
+    deduped
+}
+
+fn format_notice_list(label: &str, items: &[String]) -> Option<String> {
+    if items.is_empty() {
+        return None;
+    }
+
+    let visible_count = items.len().min(5);
+    let visible_names = items[..visible_count].join("、");
+    let suffix = if items.len() > visible_count {
+        format!(" 等 {} 个", items.len())
+    } else {
+        format!(" ({})", items.len())
+    };
+
+    Some(format!("- {label}: {visible_names}{suffix}"))
 }
 
 pub fn parse_json_blob_with_fallback(
@@ -446,8 +722,8 @@ fn extract_tool_output_from_result(parsed: &serde_json::Value) -> Option<String>
 #[cfg(test)]
 mod tests {
     use super::{
-        build_timeout_error_message, detect_cli_timeout, CliExecutionSnapshot, CliTimeoutConfig,
-        CliTimeoutKind,
+        build_timeout_error_message, detect_cli_timeout, extract_runtime_system_notice,
+        CliExecutionSnapshot, CliTimeoutConfig, CliTimeoutKind,
     };
     use std::time::{Duration, Instant};
 
@@ -525,5 +801,21 @@ mod tests {
         assert!(message.contains("Codex CLI idle_timeout"));
         assert!(message.contains("stderr_warnings=3"));
         assert!(message.contains("first_meaningful=1.0s"));
+    }
+
+    #[test]
+    fn extracts_runtime_notice_from_embedded_system_payload() {
+        let payload = serde_json::json!({
+            "type": "system",
+            "subtype": "hook_response",
+            "output": "{\"skills\":[{\"name\":\"frontend-design\"}],\"plugins\":[{\"name\":\"context7\"}],\"mcp_servers\":[{\"name\":\"ops-automation\",\"status\":\"connected\"}]}"
+        });
+
+        let notice = extract_runtime_system_notice(&payload).expect("runtime notice");
+
+        assert!(notice.contains("### 已加载运行扩展"));
+        assert!(notice.contains("Skills: frontend-design"));
+        assert!(notice.contains("Plugins: context7"));
+        assert!(notice.contains("MCP: ops-automation"));
     }
 }

@@ -55,6 +55,7 @@ pub struct MessageExport {
     pub tool_calls: Option<String>,
     pub thinking: Option<String>,
     pub edit_traces: Option<String>,
+    pub runtime_notices: Option<String>,
     pub compression_metadata: Option<String>,
     pub created_at: String,
 }
@@ -235,6 +236,7 @@ pub fn get_data_management_stats() -> Result<DataManagementStats, String> {
             LENGTH(COALESCE(tool_calls, '')) +
             LENGTH(COALESCE(thinking, '')) +
             LENGTH(COALESCE(edit_traces, '')) +
+            LENGTH(COALESCE(runtime_notices, '')) +
             LENGTH(COALESCE(compression_metadata, '')) +
             LENGTH(COALESCE(created_at, ''))
         ), 0) FROM messages",
@@ -572,7 +574,7 @@ fn export_sessions(conn: &Connection) -> Result<Vec<SessionExport>, String> {
 
 fn export_messages(conn: &Connection) -> Result<Vec<MessageExport>, String> {
     let mut stmt = conn
-        .prepare("SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at FROM messages ORDER BY created_at ASC")
+        .prepare("SELECT id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, runtime_notices, compression_metadata, created_at FROM messages ORDER BY created_at ASC")
         .map_err(|e| e.to_string())?;
 
     let messages = stmt
@@ -589,8 +591,9 @@ fn export_messages(conn: &Connection) -> Result<Vec<MessageExport>, String> {
                 tool_calls: row.get(8)?,
                 thinking: row.get(9)?,
                 edit_traces: row.get(10)?,
-                compression_metadata: row.get(11)?,
-                created_at: row.get(12)?,
+                runtime_notices: row.get(11)?,
+                compression_metadata: row.get(12)?,
+                created_at: row.get(13)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -1018,8 +1021,8 @@ pub fn import_data_from_file(file_path: String) -> Result<ImportResult, String> 
     for message in &data.messages {
         let tokens = message.tokens.map(|t| t.to_string()).unwrap_or_default();
         let res = tx.execute(
-            "INSERT OR REPLACE INTO messages (id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, compression_metadata, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            "INSERT OR REPLACE INTO messages (id, session_id, role, content, attachments, status, tokens, error_message, tool_calls, thinking, edit_traces, runtime_notices, compression_metadata, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             [
                 &message.id,
                 &message.session_id,
@@ -1032,6 +1035,7 @@ pub fn import_data_from_file(file_path: String) -> Result<ImportResult, String> 
                 &message.tool_calls.clone().unwrap_or_default(),
                 &message.thinking.clone().unwrap_or_default(),
                 &message.edit_traces.clone().unwrap_or_default(),
+                &message.runtime_notices.clone().unwrap_or_default(),
                 &message.compression_metadata.clone().unwrap_or_default(),
                 &message.created_at,
             ],

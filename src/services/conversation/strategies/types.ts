@@ -76,7 +76,7 @@ export interface ConversationContext {
 /**
  * 流式事件类型
  */
-export type StreamEventType = 'content' | 'tool_use' | 'tool_result' | 'error' | 'done' | 'thinking' | 'file_edit' | 'usage'
+export type StreamEventType = 'content' | 'tool_use' | 'tool_result' | 'error' | 'done' | 'thinking' | 'file_edit' | 'usage' | 'system'
 
 /**
  * 流式事件
@@ -225,7 +225,7 @@ export interface MessageInput {
  */
 export interface BackendStreamEvent {
   /** 事件类型 */
-  type: 'content' | 'tool_use' | 'tool_input_delta' | 'tool_result' | 'error' | 'done' | 'thinking' | 'thinking_start' | 'file_edit' | 'usage' | 'message_start'
+  type: 'content' | 'tool_use' | 'tool_input_delta' | 'tool_result' | 'error' | 'done' | 'thinking' | 'thinking_start' | 'file_edit' | 'usage' | 'message_start' | 'system'
   /** 会话 ID */
   sessionId: string
   /** 内容 */

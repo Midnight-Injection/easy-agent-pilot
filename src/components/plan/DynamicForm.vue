@@ -2,6 +2,7 @@
 import { ref, computed, watch, type Component } from 'vue'
 import type { DynamicFormSchema, FieldType } from '@/types/plan'
 import { formEngine } from '@/services/plan'
+import { useThemeStore } from '@/stores/theme'
 import {
   TextField,
   TextareaField,
@@ -16,15 +17,19 @@ import {
 
 const props = defineProps<{
   schema: DynamicFormSchema
+  question?: string
   initialValues?: Record<string, any>
   disabled?: boolean
-  variant?: 'active' | 'submitted'
+  variant?: 'active' | 'submitted' | 'archived'
 }>()
 
 const emit = defineEmits<{
   (e: 'submit', values: Record<string, any>): void
   (e: 'cancel'): void
 }>()
+
+const themeStore = useThemeStore()
+const isDarkTheme = computed(() => themeStore.isDark)
 
 const fieldComponentMap: Record<FieldType, Component | null> = {
   text: TextField,
@@ -49,16 +54,61 @@ const formErrors = ref<Record<string, string>>({})
 // 是否已提交
 const isSubmitted = ref(false)
 
+function resolveOptionValue(
+  field: DynamicFormSchema['fields'][number],
+  value: unknown
+): unknown {
+  return field.options?.find(option => String(option.value) === String(value))?.value ?? value
+}
+
+function normalizeFieldValue(
+  field: DynamicFormSchema['fields'][number],
+  value: unknown
+): unknown {
+  if (value === undefined) {
+    return undefined
+  }
+
+  switch (field.type) {
+    case 'checkbox':
+      return Boolean(value)
+    case 'multiselect':
+      if (Array.isArray(value)) {
+        return value.map(item => resolveOptionValue(field, item))
+      }
+      return value === null || value === '' ? [] : [resolveOptionValue(field, value)]
+    case 'number':
+    case 'slider': {
+      const numericValue = typeof value === 'number' ? value : Number(value)
+      return Number.isFinite(numericValue) ? numericValue : (field.validation?.min ?? 0)
+    }
+    case 'select':
+    case 'radio':
+      if (Array.isArray(value)) {
+        return resolveOptionValue(field, value[0] ?? '')
+      }
+      return resolveOptionValue(field, value ?? '')
+    default:
+      return value ?? ''
+  }
+}
+
 // 初始化表单值
 function initFormValues() {
   const values: Record<string, any> = {}
 
   props.schema.fields.forEach(field => {
+    const hasSuggestion = field.suggestion !== undefined
+      && field.suggestion !== null
+      && (!Array.isArray(field.suggestion) || field.suggestion.length > 0)
+
     // 优先使用传入的初始值
     if (props.initialValues && props.initialValues[field.name] !== undefined) {
-      values[field.name] = props.initialValues[field.name]
+      values[field.name] = normalizeFieldValue(field, props.initialValues[field.name])
+    } else if (hasSuggestion) {
+      values[field.name] = normalizeFieldValue(field, field.suggestion)
     } else if (field.default !== undefined) {
-      values[field.name] = field.default
+      values[field.name] = normalizeFieldValue(field, field.default)
     } else {
       // 根据类型设置默认值
       switch (field.type) {
@@ -83,7 +133,7 @@ function initFormValues() {
 
 // 监听 schema 变化重新初始化
 watch(
-  () => props.schema,
+  () => [props.schema, props.initialValues],
   () => {
     initFormValues()
     formErrors.value = {}
@@ -103,6 +153,10 @@ const visibleFields = computed(() => {
 })
 
 const visibleFieldNames = computed(() => new Set(visibleFields.value.map(field => field.name)))
+const showActions = computed(() => {
+  const variant = props.variant || 'active'
+  return variant !== 'submitted' && variant !== 'archived'
+})
 
 // 获取字段组件
 function getFieldComponent(type: FieldType) {
@@ -182,12 +236,21 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
 <template>
   <div
     class="dynamic-form dynamic-form--compact"
-    :class="`dynamic-form--${props.variant || 'active'}`"
+    :class="[
+      `dynamic-form--${props.variant || 'active'}`,
+      { 'dynamic-form--dark': isDarkTheme }
+    ]"
   >
     <div class="form-header">
       <h3 class="form-title">
         {{ schema.title }}
       </h3>
+      <p
+        v-if="question"
+        class="form-question"
+      >
+        {{ question }}
+      </p>
       <span
         v-if="props.variant === 'submitted'"
         class="form-state-badge"
@@ -221,7 +284,10 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
       </template>
     </form>
 
-    <div class="form-footer">
+    <div
+      v-if="showActions"
+      class="form-footer"
+    >
       <button
         type="button"
         class="btn btn-secondary"
@@ -251,16 +317,41 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   --form-surface: var(--color-surface, #ffffff);
   --form-muted: var(--color-text-secondary, #64748b);
   --form-input-bg: color-mix(in srgb, var(--form-accent) 4%, #ffffff);
-  background:
+  --text-color: var(--color-text-primary, #0f172a);
+  --text-secondary: var(--color-text-secondary, #64748b);
+  --border-color: color-mix(in srgb, var(--form-accent) 20%, #ccd7e5);
+  --input-bg: var(--form-input-bg);
+  --primary-color: var(--form-accent);
+  --form-card-bg:
     radial-gradient(circle at 100% 0%, rgba(8, 145, 178, 0.08), transparent 40%),
     radial-gradient(circle at 0% 100%, rgba(37, 99, 235, 0.06), transparent 36%),
     linear-gradient(160deg, var(--form-surface), #f8fbff 72%);
+  --form-card-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+  --form-header-bg: linear-gradient(120deg, rgba(239, 246, 255, 0.92), rgba(236, 254, 255, 0.72));
+  --form-submit-header-bg: linear-gradient(120deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.92));
+  --form-archived-header-bg: linear-gradient(120deg, rgba(248, 250, 252, 0.94), rgba(241, 245, 249, 0.9));
+  --form-title-color: #0f172a;
+  --form-question-color: #1e3a8a;
+  --form-state-bg: rgba(15, 23, 42, 0.06);
+  --form-state-text: #475569;
+  --form-footer-bg: linear-gradient(180deg, #fbfdff, #f3f8fd);
+  --form-submit-footer-bg: linear-gradient(180deg, #fbfcfe, #f7f9fc);
+  --form-submitted-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.96));
+  --form-submitted-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+  --form-archived-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(248, 250, 252, 0.94));
+  --form-archived-shadow: 0 8px 20px rgba(15, 23, 42, 0.035);
+  --form-option-bg: linear-gradient(180deg, var(--color-surface, #ffffff), var(--color-bg-secondary, #f8fbff));
+  --form-option-hover-text: var(--color-text-primary, #1e293b);
+  --form-option-selected-bg: linear-gradient(135deg, rgba(219, 234, 254, 0.9), rgba(207, 250, 254, 0.76));
+  --form-option-selected-text: #1d4ed8;
+  --form-check-bg: linear-gradient(180deg, #ffffff, #f8fbff);
+  background: var(--form-card-bg);
   border-radius: 0.95rem;
   border: 1px solid var(--form-border);
   overflow: hidden;
   width: 100%;
   max-width: none;
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.05);
+  box-shadow: var(--form-card-shadow);
 }
 
 .dynamic-form--submitted {
@@ -268,27 +359,47 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   --form-accent-alt: #94a3b8;
   --form-border: rgba(148, 163, 184, 0.22);
   --form-input-bg: rgba(248, 250, 252, 0.92);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.96));
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+  background: var(--form-submitted-bg);
+  box-shadow: var(--form-submitted-shadow);
+}
+
+.dynamic-form--archived {
+  --form-accent: #64748b;
+  --form-accent-alt: #94a3b8;
+  --form-border: rgba(148, 163, 184, 0.2);
+  --form-input-bg: rgba(248, 250, 252, 0.9);
+  background: var(--form-archived-bg);
+  box-shadow: var(--form-archived-shadow);
 }
 
 .form-header {
   padding: 0.56rem 0.78rem 0.52rem;
   border-bottom: 1px solid color-mix(in srgb, var(--form-accent) 14%, #dbe3ee);
-  background: linear-gradient(120deg, rgba(239, 246, 255, 0.92), rgba(236, 254, 255, 0.72));
+  background: var(--form-header-bg);
 }
 
 .dynamic-form--submitted .form-header {
-  background: linear-gradient(120deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.92));
+  background: var(--form-submit-header-bg);
+}
+
+.dynamic-form--archived .form-header {
+  background: var(--form-archived-header-bg);
 }
 
 .form-title {
   margin: 0 0 0.2rem;
   font-size: 0.78rem;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--form-title-color);
   letter-spacing: 0.01em;
+}
+
+.form-question {
+  margin: 0 0 0.34rem;
+  font-size: 0.72rem;
+  line-height: 1.55;
+  color: var(--form-question-color);
+  font-weight: 500;
 }
 
 .form-state-badge {
@@ -297,8 +408,8 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   margin-bottom: 0.24rem;
   padding: 0.14rem 0.42rem;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  color: #475569;
+  background: var(--form-state-bg);
+  color: var(--form-state-text);
   font-size: 0.62rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -322,17 +433,21 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   max-height: 34vh;
 }
 
+.dynamic-form--archived .form-body {
+  max-height: 34vh;
+}
+
 .form-footer {
   display: flex;
   justify-content: flex-end;
   gap: 0.45rem;
   padding: 0.5rem 0.78rem;
   border-top: 1px solid color-mix(in srgb, var(--form-accent) 10%, #dbe3ee);
-  background: linear-gradient(180deg, #fbfdff, #f3f8fd);
+  background: var(--form-footer-bg);
 }
 
 .dynamic-form--submitted .form-footer {
-  background: linear-gradient(180deg, #fbfcfe, #f7f9fc);
+  background: var(--form-submit-footer-bg);
 }
 
 .btn {
@@ -398,7 +513,7 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
 
 .dynamic-form :deep(.input::placeholder),
 .dynamic-form :deep(.textarea::placeholder),
-.dynamic-form :deep(.select:invalid) {
+.dynamic-form :deep(select.select:invalid) {
   color: #94a3b8;
 }
 
@@ -406,8 +521,10 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   min-height: 3.8rem;
 }
 
-.dynamic-form :deep(.select) {
+.dynamic-form :deep(select.select) {
   appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   padding-right: 1.8rem;
   background-image:
     linear-gradient(45deg, transparent 50%, #64748b 50%),
@@ -450,7 +567,7 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   padding: 0.24rem 0.48rem;
   border: 1px solid color-mix(in srgb, var(--form-accent) 24%, #cdd7e5);
   border-radius: 999px;
-  background: linear-gradient(180deg, var(--color-surface, #ffffff), var(--color-bg-secondary, #f8fbff));
+  background: var(--form-option-bg);
   color: var(--color-text-secondary, #475569);
   transition: all 0.14s ease;
 }
@@ -467,14 +584,14 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
 
 .dynamic-form :deep(.option-label:hover) {
   border-color: color-mix(in srgb, var(--form-accent) 56%, #4338ca);
-  color: var(--color-text-primary, #1e293b);
+  color: var(--form-option-hover-text);
   transform: translateY(-1px);
 }
 
 .dynamic-form :deep(.option-label.selected) {
   border-color: color-mix(in srgb, var(--form-accent) 72%, #4338ca);
-  background: linear-gradient(135deg, rgba(219, 234, 254, 0.9), rgba(207, 250, 254, 0.76));
-  color: #1d4ed8;
+  background: var(--form-option-selected-bg);
+  color: var(--form-option-selected-text);
   font-weight: 500;
   box-shadow: 0 4px 10px rgba(37, 99, 235, 0.08);
 }
@@ -496,7 +613,7 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   padding: 0.26rem 0.48rem;
   border-radius: 0.7rem;
   border: 1px solid color-mix(in srgb, var(--form-accent) 18%, #d5deea);
-  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  background: var(--form-check-bg);
   transition: all 0.14s ease;
 }
 
@@ -516,5 +633,134 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
   margin-top: 0.2rem;
   font-size: 0.66rem;
   color: #dc2626;
+}
+
+:global([data-theme='dark']) .dynamic-form,
+:global(.dark) .dynamic-form {
+  --form-accent-soft: color-mix(in srgb, var(--form-accent) 18%, #0f172a);
+  --form-border: color-mix(in srgb, var(--form-accent) 24%, #334155);
+  --form-surface: #111827;
+  --form-muted: #94a3b8;
+  --form-input-bg: color-mix(in srgb, var(--form-accent) 10%, #0f172a);
+  --text-color: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --border-color: rgba(71, 85, 105, 0.76);
+  --input-bg: rgba(15, 23, 42, 0.92);
+  --primary-color: var(--form-accent);
+  --form-card-bg:
+    radial-gradient(circle at 100% 0%, rgba(8, 145, 178, 0.16), transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(37, 99, 235, 0.12), transparent 36%),
+    linear-gradient(160deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.98) 72%);
+  --form-card-shadow: 0 16px 36px rgba(2, 6, 23, 0.32);
+  --form-header-bg: linear-gradient(120deg, rgba(30, 64, 175, 0.2), rgba(8, 145, 178, 0.16));
+  --form-submit-header-bg: linear-gradient(120deg, rgba(30, 41, 59, 0.96), rgba(51, 65, 85, 0.78));
+  --form-archived-header-bg: linear-gradient(120deg, rgba(30, 41, 59, 0.94), rgba(51, 65, 85, 0.72));
+  --form-title-color: #f8fafc;
+  --form-question-color: #bfdbfe;
+  --form-state-bg: rgba(148, 163, 184, 0.12);
+  --form-state-text: #cbd5e1;
+  --form-footer-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.96));
+  --form-submit-footer-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.92));
+  --form-submitted-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.94));
+  --form-submitted-shadow: 0 14px 30px rgba(2, 6, 23, 0.24);
+  --form-archived-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(17, 24, 39, 0.9));
+  --form-archived-shadow: 0 14px 30px rgba(2, 6, 23, 0.2);
+  --form-option-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.92));
+  --form-option-hover-text: #f8fafc;
+  --form-option-selected-bg: linear-gradient(135deg, rgba(30, 64, 175, 0.34), rgba(8, 145, 178, 0.26));
+  --form-option-selected-text: #bfdbfe;
+  --form-check-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(15, 23, 42, 0.92));
+}
+
+:global([data-theme='dark']) .dynamic-form--dark,
+:global(.dark) .dynamic-form--dark,
+.dynamic-form--dark {
+  --form-accent-soft: color-mix(in srgb, var(--form-accent) 18%, #0f172a);
+  --form-border: color-mix(in srgb, var(--form-accent) 24%, #334155);
+  --form-surface: #111827;
+  --form-muted: #94a3b8;
+  --form-input-bg: color-mix(in srgb, var(--form-accent) 10%, #0f172a);
+  --text-color: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --border-color: rgba(71, 85, 105, 0.76);
+  --input-bg: rgba(15, 23, 42, 0.92);
+  --primary-color: var(--form-accent);
+  --form-card-bg:
+    radial-gradient(circle at 100% 0%, rgba(8, 145, 178, 0.16), transparent 40%),
+    radial-gradient(circle at 0% 100%, rgba(37, 99, 235, 0.12), transparent 36%),
+    linear-gradient(160deg, rgba(15, 23, 42, 0.96), rgba(17, 24, 39, 0.98) 72%);
+  --form-card-shadow: 0 16px 36px rgba(2, 6, 23, 0.32);
+  --form-header-bg: linear-gradient(120deg, rgba(30, 64, 175, 0.2), rgba(8, 145, 178, 0.16));
+  --form-submit-header-bg: linear-gradient(120deg, rgba(30, 41, 59, 0.96), rgba(51, 65, 85, 0.78));
+  --form-archived-header-bg: linear-gradient(120deg, rgba(30, 41, 59, 0.94), rgba(51, 65, 85, 0.72));
+  --form-title-color: #f8fafc;
+  --form-question-color: #bfdbfe;
+  --form-state-bg: rgba(148, 163, 184, 0.12);
+  --form-state-text: #cbd5e1;
+  --form-footer-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.98), rgba(15, 23, 42, 0.96));
+  --form-submit-footer-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.92));
+  --form-submitted-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.94));
+  --form-submitted-shadow: 0 14px 30px rgba(2, 6, 23, 0.24);
+  --form-archived-bg: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(17, 24, 39, 0.9));
+  --form-archived-shadow: 0 14px 30px rgba(2, 6, 23, 0.2);
+  --form-option-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.92), rgba(15, 23, 42, 0.92));
+  --form-option-hover-text: #f8fafc;
+  --form-option-selected-bg: linear-gradient(135deg, rgba(30, 64, 175, 0.34), rgba(8, 145, 178, 0.26));
+  --form-option-selected-text: #bfdbfe;
+  --form-check-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(15, 23, 42, 0.92));
+}
+
+:global([data-theme='dark']) .dynamic-form :deep(.input:focus),
+:global(.dark) .dynamic-form :deep(.input:focus),
+:global([data-theme='dark']) .dynamic-form :deep(.textarea:focus),
+:global(.dark) .dynamic-form :deep(.textarea:focus),
+:global([data-theme='dark']) .dynamic-form :deep(.select:focus),
+:global(.dark) .dynamic-form :deep(.select:focus) {
+  background-color: rgba(15, 23, 42, 0.98);
+}
+
+:global([data-theme='dark']) .dynamic-form--dark :deep(.field-recommendation),
+:global(.dark) .dynamic-form--dark :deep(.field-recommendation),
+.dynamic-form--dark :deep(.field-recommendation) {
+  border-color: rgba(71, 85, 105, 0.68);
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.18), rgba(8, 145, 178, 0.14));
+}
+
+:global([data-theme='dark']) .dynamic-form--dark :deep(.field-recommendation__value),
+:global(.dark) .dynamic-form--dark :deep(.field-recommendation__value),
+.dynamic-form--dark :deep(.field-recommendation__value) {
+  color: #e2e8f0;
+}
+
+:global([data-theme='dark']) .dynamic-form--dark :deep(.field-recommendation__reason),
+:global(.dark) .dynamic-form--dark :deep(.field-recommendation__reason),
+.dynamic-form--dark :deep(.field-recommendation__reason) {
+  color: #94a3b8;
+}
+
+:global([data-theme='dark']) .dynamic-form :deep(.input),
+:global(.dark) .dynamic-form :deep(.input),
+:global([data-theme='dark']) .dynamic-form :deep(.textarea),
+:global(.dark) .dynamic-form :deep(.textarea),
+:global([data-theme='dark']) .dynamic-form :deep(.other-input),
+:global(.dark) .dynamic-form :deep(.other-input),
+:global([data-theme='dark']) .dynamic-form :deep(input[type='date']),
+:global(.dark) .dynamic-form :deep(input[type='date']),
+:global([data-theme='dark']) .dynamic-form :deep(input[type='number']),
+:global(.dark) .dynamic-form :deep(input[type='number']),
+:global([data-theme='dark']) .dynamic-form :deep(input[type='text']),
+:global(.dark) .dynamic-form :deep(input[type='text']) {
+  background-color: rgba(15, 23, 42, 0.92);
+  border-color: rgba(71, 85, 105, 0.76);
+  color: #e2e8f0;
+}
+
+:global([data-theme='dark']) .dynamic-form :deep(.field-label),
+:global(.dark) .dynamic-form :deep(.field-label),
+:global([data-theme='dark']) .dynamic-form :deep(.label-text),
+:global(.dark) .dynamic-form :deep(.label-text),
+:global([data-theme='dark']) .dynamic-form :deep(.slider-labels),
+:global(.dark) .dynamic-form :deep(.slider-labels) {
+  color: #cbd5e1;
 }
 </style>

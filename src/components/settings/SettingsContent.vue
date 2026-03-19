@@ -63,19 +63,21 @@ const uiStore = useUIStore()
 
 /* 自定义滚动条 */
 .settings-content::-webkit-scrollbar {
-  width: 6px;
+  width: var(--scrollbar-size, 6px);
 }
 
 .settings-content::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track, transparent);
 }
 
 .settings-content::-webkit-scrollbar-thumb {
-  background-color: var(--color-border);
+  background-color: var(--scrollbar-thumb, var(--color-border));
   border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 .settings-content::-webkit-scrollbar-thumb:hover {
-  background-color: var(--color-border-dark);
+  background-color: var(--scrollbar-thumb-hover, var(--color-border-dark));
 }
 </style>

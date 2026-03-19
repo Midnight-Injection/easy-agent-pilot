@@ -1,45 +1,63 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import type { FormField } from '@/types/plan'
 import { useSafeOutsideClick } from '@/composables/useSafeOutsideClick'
+import { useThemeStore } from '@/stores/theme'
 
 const props = defineProps<{
   field: FormField
-  modelValue: string | number
+  modelValue: unknown
   error?: string
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'update:modelValue', value: string | number): void
+  (e: 'update:modelValue', value: unknown): void
 }>()
 
+const themeStore = useThemeStore()
+const isDarkTheme = computed(() => themeStore.isDark)
+
 const inputId = computed(() => `field-${props.field.name}`)
-
-// "其他"选项的值
 const OTHER_VALUE = '__other__'
-
-// 是否选择了"其他"
 const isOtherSelected = ref(false)
-
-// "其他"输入框的值
 const otherValue = ref('')
-
-// "其他"选项的标签
 const otherLabel = computed(() => props.field.otherLabel || '其他')
 const rootRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLElement | null>(null)
+const dropdownRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
+const dropdownPosition = ref({
+  top: 0,
+  left: 0,
+  width: 0,
+  maxHeight: 240
+})
 const hasExplicitOtherOption = computed(() =>
   props.field.options?.some(option => String(option.value) === OTHER_VALUE) ?? false
 )
+const optionReasons = computed(() => props.field.optionReasons ?? {})
+const recommendedValues = computed(() => {
+  if (Array.isArray(props.field.suggestion)) {
+    return props.field.suggestion.map(value => String(value))
+  }
 
-// 监听 modelValue 变化，同步 isOtherSelected 和 otherValue
-watch(() => props.modelValue, (newVal) => {
+  if (props.field.suggestion === undefined || props.field.suggestion === null || props.field.suggestion === '') {
+    return []
+  }
+
+  return [String(props.field.suggestion)]
+})
+
+function findMatchingOption(value: unknown) {
+  return props.field.options?.find(option => String(option.value) === String(value)) ?? null
+}
+
+watch(() => props.modelValue, newVal => {
   if (newVal === '' || newVal === null || newVal === undefined) {
     isOtherSelected.value = false
     otherValue.value = ''
-  } else if (props.field.allowOther && !props.field.options?.some(opt => opt.value === newVal)) {
-    // 如果当前值不在选项中，说明是"其他"值
+  } else if (props.field.allowOther && !findMatchingOption(newVal)) {
     isOtherSelected.value = true
     otherValue.value = String(newVal)
   } else if (newVal === OTHER_VALUE) {
@@ -50,7 +68,6 @@ watch(() => props.modelValue, (newVal) => {
   }
 }, { immediate: true })
 
-// 处理"其他"输入框变化
 function onOtherInput(event: Event) {
   const target = event.target as HTMLInputElement
   otherValue.value = target.value
@@ -58,7 +75,7 @@ function onOtherInput(event: Event) {
 }
 
 const selectedOption = computed(() =>
-  props.field.options?.find(option => option.value === props.modelValue) ?? null
+  findMatchingOption(props.modelValue)
 )
 
 const triggerLabel = computed(() => {
@@ -71,9 +88,81 @@ const triggerLabel = computed(() => {
   return props.field.placeholder || `请选择${props.field.label}`
 })
 
+const suggestedLabel = computed(() => {
+  if (recommendedValues.value.length === 0) {
+    return ''
+  }
+
+  return recommendedValues.value
+    .map(value => props.field.options?.find(option => String(option.value) === value)?.label || value)
+    .join('、')
+})
+
+const activeReason = computed(() => {
+  if (isOtherSelected.value) {
+    return props.field.suggestionReason || ''
+  }
+
+  if (props.modelValue === '' || props.modelValue === undefined || props.modelValue === null) {
+    return ''
+  }
+
+  return optionReasons.value[String(props.modelValue)] || ''
+})
+
+function isSuggestedOption(value: string | number): boolean {
+  return recommendedValues.value.includes(String(value))
+}
+
+function getOptionReason(value: string | number): string {
+  return optionReasons.value[String(value)] || ''
+}
+
+function isSelectedOption(value: unknown): boolean {
+  return String(props.modelValue) === String(value)
+}
+
+function updateDropdownPosition() {
+  if (!triggerRef.value) {
+    return
+  }
+
+  const rect = triggerRef.value.getBoundingClientRect()
+  const safeGap = 12
+  const estimatedHeight = dropdownRef.value?.offsetHeight ?? 240
+  const spaceBelow = Math.max(120, window.innerHeight - rect.bottom - safeGap)
+  const spaceAbove = Math.max(120, rect.top - safeGap)
+  const shouldOpenUpward = spaceBelow < Math.min(estimatedHeight, 220) && spaceAbove > spaceBelow
+  const maxHeight = Math.max(120, Math.floor(shouldOpenUpward ? spaceAbove : spaceBelow))
+  const top = shouldOpenUpward
+    ? Math.max(safeGap, rect.top - Math.min(estimatedHeight, maxHeight) - 6)
+    : Math.min(window.innerHeight - safeGap - Math.min(estimatedHeight, maxHeight), rect.bottom + 6)
+  const left = Math.min(rect.left, Math.max(safeGap, window.innerWidth - rect.width - safeGap))
+
+  dropdownPosition.value = {
+    top,
+    left,
+    width: rect.width,
+    maxHeight
+  }
+}
+
+async function openMenu() {
+  updateDropdownPosition()
+  isOpen.value = true
+  await nextTick()
+  updateDropdownPosition()
+}
+
 function toggleMenu() {
   if (props.disabled) return
-  isOpen.value = !isOpen.value
+
+  if (isOpen.value) {
+    closeMenu()
+    return
+  }
+
+  void openMenu()
 }
 
 function closeMenu() {
@@ -86,25 +175,52 @@ function selectOption(value: string | number) {
 
   if (value === OTHER_VALUE) {
     isOtherSelected.value = true
+    emit('update:modelValue', otherValue.value || OTHER_VALUE)
     return
   }
 
   isOtherSelected.value = false
   otherValue.value = ''
-  const numValue = Number(value)
-  emit('update:modelValue', isNaN(numValue) || value === '' ? value : numValue)
+  emit('update:modelValue', value)
 }
 
 useSafeOutsideClick(
-  () => [rootRef.value],
+  () => [rootRef.value, dropdownRef.value],
   closeMenu
 )
+
+function handleViewportChange() {
+  if (!isOpen.value) {
+    return
+  }
+
+  updateDropdownPosition()
+}
+
+function handleEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') {
+    closeMenu()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('resize', handleViewportChange)
+  window.addEventListener('scroll', handleViewportChange, true)
+  document.addEventListener('keydown', handleEscape)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleViewportChange)
+  window.removeEventListener('scroll', handleViewportChange, true)
+  document.removeEventListener('keydown', handleEscape)
+})
 </script>
 
 <template>
   <div
     ref="rootRef"
     class="form-field select-field"
+    :class="{ 'select-field--dark': isDarkTheme }"
   >
     <label
       :for="inputId"
@@ -116,8 +232,25 @@ useSafeOutsideClick(
         class="required-mark"
       >*</span>
     </label>
+    <div
+      v-if="suggestedLabel || field.suggestionReason"
+      class="field-recommendation"
+    >
+      <span class="field-recommendation__eyebrow">AI 建议</span>
+      <strong
+        v-if="suggestedLabel"
+        class="field-recommendation__value"
+      >{{ suggestedLabel }}</strong>
+      <span
+        v-if="field.suggestionReason"
+        class="field-recommendation__reason"
+      >
+        {{ field.suggestionReason }}
+      </span>
+    </div>
     <button
       :id="inputId"
+      ref="triggerRef"
       type="button"
       class="select select-trigger"
       :disabled="disabled"
@@ -130,44 +263,87 @@ useSafeOutsideClick(
     >
       <span class="select-trigger__label">{{ triggerLabel }}</span>
       <span
-        class="select-trigger__chevron"
-        :class="{ 'select-trigger__chevron--open': isOpen }"
-      >⌄</span>
+        v-if="!disabled"
+        class="select-trigger__chevron-wrap"
+      >
+        <svg
+          class="select-trigger__chevron"
+          :class="{ 'select-trigger__chevron--open': isOpen }"
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+        >
+          <path
+            d="M4 6.25 8 10l4-3.75"
+            fill="none"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="1.8"
+          />
+        </svg>
+      </span>
     </button>
-    <div
-      v-if="isOpen"
-      class="select-menu"
-    >
-      <button
-        v-if="field.placeholder"
-        type="button"
-        class="select-option"
-        :class="{ 'select-option--active': props.modelValue === '' }"
-        @click="selectOption('')"
+    <Teleport to="body">
+      <div
+        v-if="isOpen"
+        ref="dropdownRef"
+        class="select-menu"
+        :class="{ 'select-menu--dark': isDarkTheme }"
+        :style="{
+          top: `${dropdownPosition.top}px`,
+          left: `${dropdownPosition.left}px`,
+          minWidth: `${dropdownPosition.width}px`,
+          maxHeight: `${dropdownPosition.maxHeight}px`
+        }"
       >
-        {{ field.placeholder }}
-      </button>
-      <button
-        v-for="option in field.options"
-        :key="option.value"
-        type="button"
-        class="select-option"
-        :class="{ 'select-option--active': option.value === props.modelValue && !isOtherSelected }"
-        @click="selectOption(option.value)"
-      >
-        {{ option.label }}
-      </button>
-      <button
-        v-if="field.allowOther && !hasExplicitOtherOption"
-        type="button"
-        class="select-option"
-        :class="{ 'select-option--active': isOtherSelected }"
-        @click="selectOption(OTHER_VALUE)"
-      >
-        {{ otherLabel }}
-      </button>
-    </div>
-    <!-- "其他"输入框 -->
+        <button
+          v-if="field.placeholder"
+          type="button"
+          class="select-option"
+          :class="{ 'select-option--active': props.modelValue === '' }"
+          @click="selectOption('')"
+        >
+          <span class="select-option__label">{{ field.placeholder }}</span>
+        </button>
+        <button
+          v-for="option in field.options"
+          :key="option.value"
+          type="button"
+          class="select-option"
+          :class="{ 'select-option--active': isSelectedOption(option.value) && !isOtherSelected }"
+          @click="selectOption(option.value)"
+        >
+          <span class="select-option__header">
+            <span class="select-option__label">{{ option.label }}</span>
+            <span
+              v-if="isSuggestedOption(option.value)"
+              class="select-option__badge"
+            >推荐</span>
+          </span>
+          <span
+            v-if="getOptionReason(option.value)"
+            class="select-option__reason"
+          >
+            {{ getOptionReason(option.value) }}
+          </span>
+        </button>
+        <button
+          v-if="field.allowOther && !hasExplicitOtherOption"
+          type="button"
+          class="select-option"
+          :class="{ 'select-option--active': isOtherSelected }"
+          @click="selectOption(OTHER_VALUE)"
+        >
+          <span class="select-option__header">
+            <span class="select-option__label">{{ otherLabel }}</span>
+            <span
+              v-if="isSuggestedOption(OTHER_VALUE)"
+              class="select-option__badge"
+            >推荐</span>
+          </span>
+        </button>
+      </div>
+    </Teleport>
     <input
       v-if="field.allowOther && isOtherSelected"
       type="text"
@@ -177,6 +353,12 @@ useSafeOutsideClick(
       :placeholder="`请输入${field.label}`"
       @input="onOtherInput"
     >
+    <p
+      v-if="activeReason"
+      class="active-reason"
+    >
+      {{ activeReason }}
+    </p>
     <span
       v-if="error"
       class="error-message"
@@ -202,6 +384,41 @@ useSafeOutsideClick(
   margin-left: 0.15rem;
 }
 
+.field-recommendation {
+  margin-bottom: 0.42rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.16rem 0.42rem;
+  padding: 0.38rem 0.52rem;
+  border-radius: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--form-accent, #4f46e5) 16%, #cbd5e1);
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.94), rgba(236, 254, 255, 0.72));
+}
+
+.field-recommendation__eyebrow {
+  display: inline-flex;
+  color: color-mix(in srgb, var(--form-accent, #4f46e5) 74%, #1d4ed8);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.field-recommendation__value {
+  display: inline-flex;
+  color: #0f172a;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.field-recommendation__reason,
+.active-reason {
+  margin: 0;
+  color: #475569;
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
 .select {
   width: 100%;
   padding: 0.42rem 0.65rem;
@@ -218,15 +435,27 @@ useSafeOutsideClick(
   border-color: var(--error-color, #ef4444);
 }
 
+.select:disabled {
+  cursor: default;
+  color: var(--color-text-primary, #0f172a);
+  opacity: 1;
+}
+
 .select-field {
   position: relative;
 }
 
 .select-trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  min-height: 2.15rem;
+  padding-right: 0.65rem;
+  background-image: none;
   text-align: left;
 }
 
@@ -246,6 +475,10 @@ useSafeOutsideClick(
   color: #94a3b8;
 }
 
+.select-trigger:disabled {
+  background-color: color-mix(in srgb, var(--form-accent, #4f46e5) 3%, #f8fafc);
+}
+
 .select-trigger__label {
   min-width: 0;
   flex: 1;
@@ -254,11 +487,27 @@ useSafeOutsideClick(
   white-space: nowrap;
 }
 
+.select-trigger__chevron-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--form-accent, #4f46e5) 10%, #ffffff);
+  color: color-mix(in srgb, var(--form-accent, #4f46e5) 72%, #334155);
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.select-trigger--open .select-trigger__chevron-wrap {
+  background: color-mix(in srgb, var(--form-accent, #4f46e5) 16%, #ffffff);
+}
+
 .select-trigger__chevron {
+  width: 0.9rem;
+  height: 0.9rem;
   flex-shrink: 0;
   color: #64748b;
-  font-size: 0.95rem;
-  line-height: 1;
   transition: transform 0.16s ease;
 }
 
@@ -267,20 +516,17 @@ useSafeOutsideClick(
 }
 
 .select-menu {
-  position: absolute;
-  top: calc(100% + 0.35rem);
-  left: 0;
-  right: 0;
-  z-index: 40;
+  position: fixed;
+  z-index: var(--z-select-menu, 1200);
   display: grid;
   gap: 0.2rem;
   padding: 0.35rem;
   border-radius: 0.85rem;
   border: 1px solid color-mix(in srgb, var(--form-accent, #4f46e5) 20%, #d3dce8);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
   backdrop-filter: blur(10px);
+  overflow-y: auto;
 }
 
 .select-option {
@@ -305,6 +551,37 @@ useSafeOutsideClick(
   background: linear-gradient(135deg, rgba(219, 234, 254, 0.92), rgba(207, 250, 254, 0.78));
   color: color-mix(in srgb, var(--form-accent, #4f46e5) 78%, #1d4ed8);
   font-weight: 600;
+}
+
+.select-option__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.select-option__label {
+  min-width: 0;
+}
+
+.select-option__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.38rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--form-accent, #4f46e5) 18%, #ffffff);
+  color: color-mix(in srgb, var(--form-accent, #4f46e5) 80%, #1d4ed8);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.select-option__reason {
+  display: block;
+  margin-top: 0.18rem;
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.45;
 }
 
 .other-input {
@@ -336,26 +613,130 @@ useSafeOutsideClick(
   color: var(--error-color, #ef4444);
 }
 
+.select-field--dark .field-recommendation {
+  border-color: rgba(71, 85, 105, 0.68) !important;
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.18), rgba(8, 145, 178, 0.14)) !important;
+}
+
+.select-field--dark .field-recommendation__value {
+  color: #e2e8f0 !important;
+}
+
+.select-field--dark .field-recommendation__reason,
+.select-field--dark .active-reason,
+.select-field--dark .field-label,
+.select-field--dark .select-trigger__label {
+  color: #cbd5e1 !important;
+}
+
+.select-field--dark .select,
+.select-field--dark .other-input {
+  background-color: rgba(15, 23, 42, 0.92) !important;
+  border-color: rgba(71, 85, 105, 0.76) !important;
+  color: #e2e8f0 !important;
+}
+
+.select-field--dark .select-trigger__chevron-wrap {
+  background: rgba(51, 65, 85, 0.92) !important;
+  color: #cbd5e1 !important;
+}
+
+.select-menu--dark {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98)) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.42) !important;
+  color: #e2e8f0 !important;
+}
+
+.select-menu--dark .select-option {
+  color: #e2e8f0 !important;
+}
+
+.select-menu--dark .select-option__label {
+  color: #e2e8f0 !important;
+}
+
+.select-menu--dark .select-option__reason {
+  color: #94a3b8 !important;
+}
+
+.select-menu--dark .select-option:hover {
+  background: rgba(59, 130, 246, 0.14) !important;
+}
+
+.select-menu--dark .select-option--active {
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.34), rgba(8, 145, 178, 0.28)) !important;
+  color: #bfdbfe !important;
+}
+
 :global([data-theme='dark']) .select-menu,
 :global(.dark) .select-menu {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
-  border-color: rgba(148, 163, 184, 0.22);
-  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.42);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98)) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  box-shadow: 0 20px 40px rgba(2, 6, 23, 0.42) !important;
+  color: #e2e8f0 !important;
 }
 
 :global([data-theme='dark']) .select-option,
 :global(.dark) .select-option {
-  color: #e2e8f0;
+  color: #e2e8f0 !important;
+}
+
+:global([data-theme='dark']) .select-option__reason,
+:global(.dark) .select-option__reason {
+  color: #94a3b8 !important;
 }
 
 :global([data-theme='dark']) .select-option:hover,
 :global(.dark) .select-option:hover {
-  background: rgba(59, 130, 246, 0.14);
+  background: rgba(59, 130, 246, 0.14) !important;
 }
 
 :global([data-theme='dark']) .select-option--active,
 :global(.dark) .select-option--active {
-  background: linear-gradient(135deg, rgba(30, 64, 175, 0.34), rgba(8, 145, 178, 0.28));
-  color: #bfdbfe;
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.34), rgba(8, 145, 178, 0.28)) !important;
+  color: #bfdbfe !important;
+}
+
+:global([data-theme='dark']) .field-recommendation,
+:global(.dark) .field-recommendation {
+  border-color: rgba(71, 85, 105, 0.68);
+  background: linear-gradient(135deg, rgba(30, 64, 175, 0.18), rgba(8, 145, 178, 0.14));
+}
+
+:global([data-theme='dark']) .field-recommendation__value,
+:global(.dark) .field-recommendation__value {
+  color: #e2e8f0;
+}
+
+:global([data-theme='dark']) .field-recommendation__reason,
+:global(.dark) .field-recommendation__reason,
+:global([data-theme='dark']) .active-reason,
+:global(.dark) .active-reason {
+  color: #94a3b8;
+}
+
+:global([data-theme='dark']) .select,
+:global(.dark) .select,
+:global([data-theme='dark']) .other-input,
+:global(.dark) .other-input {
+  background-color: rgba(15, 23, 42, 0.92) !important;
+  border-color: rgba(71, 85, 105, 0.76) !important;
+  color: #e2e8f0 !important;
+}
+
+:global([data-theme='dark']) .select-trigger__chevron-wrap,
+:global(.dark) .select-trigger__chevron-wrap {
+  background: rgba(51, 65, 85, 0.92) !important;
+  color: #cbd5e1 !important;
+}
+
+:global([data-theme='dark']) .select-trigger__label,
+:global(.dark) .select-trigger__label,
+:global([data-theme='dark']) .select-option__label,
+:global(.dark) .select-option__label,
+:global([data-theme='dark']) .field-label,
+:global(.dark) .field-label {
+  color: #e2e8f0 !important;
 }
 </style>

@@ -14,6 +14,12 @@ import { buildConversationMessages } from './buildConversationMessages'
 import { buildProjectMemorySystemPrompt } from '@/services/memory'
 import type { FileEditTrace } from '@/types/fileTrace'
 import { FileTraceCollector } from './fileTraceCollector'
+import {
+  buildCliEnvironmentNotice,
+  buildRuntimeNoticeFromSystemContent,
+  buildUsageNotice,
+  upsertRuntimeNotice
+} from '@/utils/runtimeNotice'
 
 /**
  * 对话服务
@@ -111,6 +117,13 @@ export class ConversationService {
         content: '',
         status: 'streaming'
       })
+
+      const environmentNotice = await buildCliEnvironmentNotice(agent)
+      if (environmentNotice) {
+        await messageStore.updateMessage(aiMessage.id, {
+          runtimeNotices: [environmentNotice]
+        })
+      }
 
       // 保存当前流式消息 ID
       sessionExecutionStore.setCurrentStreamingMessageId(sessionId, aiMessage.id)
@@ -280,6 +293,7 @@ export class ConversationService {
     let accumulatedThinking = ''
     const toolCalls: ToolCall[] = []
     const editTraces: FileEditTrace[] = []
+    const usageState: { model?: string, inputTokens?: number, outputTokens?: number } = {}
     const fileTraceCollector = new FileTraceCollector({
       sessionId,
       messageId: aiMessage.id,
@@ -362,6 +376,51 @@ export class ConversationService {
               })())
             }
           },
+          onFileEdit: (trace) => {
+            const exists = editTraces.some(existingTrace => existingTrace.id === trace.id)
+            if (exists) {
+              return
+            }
+
+            editTraces.push(trace)
+            void messageStore.updateMessage(aiMessage.id, {
+              editTraces: [...editTraces]
+            })
+          },
+          onUsage: (usage) => {
+            if (usage.model) {
+              usageState.model = usage.model
+            }
+            if (usage.inputTokens !== undefined) {
+              usageState.inputTokens = usage.inputTokens
+            }
+            if (usage.outputTokens !== undefined) {
+              usageState.outputTokens = usage.outputTokens
+            }
+
+            const usageNotice = buildUsageNotice(usageState)
+            if (!usageNotice) {
+              return
+            }
+
+            const currentMessage = messageStore.messagesBySession(sessionId)
+              .find(message => message.id === aiMessage.id)
+            void messageStore.updateMessage(aiMessage.id, {
+              runtimeNotices: upsertRuntimeNotice(currentMessage?.runtimeNotices, usageNotice)
+            })
+          },
+          onSystem: (content) => {
+            const runtimeNotice = buildRuntimeNoticeFromSystemContent(content)
+            if (!runtimeNotice) {
+              return
+            }
+
+            const currentMessage = messageStore.messagesBySession(sessionId)
+              .find(message => message.id === aiMessage.id)
+            void messageStore.updateMessage(aiMessage.id, {
+              runtimeNotices: upsertRuntimeNotice(currentMessage?.runtimeNotices, runtimeNotice)
+            })
+          },
           onError: (error) => {
             hasError = true
             messageStore.updateMessage(aiMessage.id, {
@@ -428,11 +487,14 @@ export class ConversationService {
       onThinking: (thinking: string) => void
       onToolUse: (toolCall: ToolCall) => void
       onToolResult: (toolCallId: string, result: string, isError: boolean) => void
+      onFileEdit: (trace: FileEditTrace) => void
+      onUsage: (usage: { model?: string, inputTokens?: number, outputTokens?: number }) => void
+      onSystem: (content: string) => void
       onError: (error: string) => void
       onDone: () => void
     }
   ): void {
-    const { onContent, onThinking, onToolUse, onToolResult, onError, onDone } = handlers
+    const { onContent, onThinking, onToolUse, onToolResult, onFileEdit, onUsage, onSystem, onError, onDone } = handlers
     const tokenStore = useTokenStore()
 
     // 处理 token 事件 - 优先使用 CLI 返回的真实 token 数据
@@ -505,6 +567,26 @@ export class ConversationService {
       case 'error':
         if (event.error) {
           onError(event.error)
+        }
+        break
+
+      case 'usage':
+        onUsage({
+          model: event.model,
+          inputTokens: event.inputTokens,
+          outputTokens: event.outputTokens
+        })
+        break
+
+      case 'system':
+        if (event.content) {
+          onSystem(event.content)
+        }
+        break
+
+      case 'file_edit':
+        if (event.fileEdit) {
+          onFileEdit(event.fileEdit)
         }
         break
 

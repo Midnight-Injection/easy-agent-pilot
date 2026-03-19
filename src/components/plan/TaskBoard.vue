@@ -395,23 +395,6 @@ async function markPlanAsReady() {
         </h3>
       </div>
       <div class="header-right">
-        <!-- 添加任务按钮（所有模式和状态都可以添加） -->
-        <button
-          class="btn btn-primary btn-add-task"
-          @click="openCreateTaskModal"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          添加任务
-        </button>
         <!-- 手动模式+规划状态：显示标记就绪按钮 -->
         <button
           v-if="isManualMode && currentPlan?.status === 'planning' && tasks.length > 0"
@@ -548,16 +531,18 @@ async function markPlanAsReady() {
   padding: var(--spacing-3, 0.75rem);
   overflow-x: auto;
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border, #e2e8f0) transparent;
+  scrollbar-color: var(--scrollbar-thumb, var(--color-border, #e2e8f0)) var(--scrollbar-track, transparent);
 }
 .board-columns::-webkit-scrollbar {
-  height: 6px;
+  height: var(--scrollbar-size, 6px);
 }
 .board-columns::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track, transparent);
 }
 .board-columns::-webkit-scrollbar-thumb {
-  background-color: var(--color-border, #e2e8f0);
+  background-color: var(--scrollbar-thumb, var(--color-border, #e2e8f0));
   border-radius: var(--radius-full, 9999px);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 </style>

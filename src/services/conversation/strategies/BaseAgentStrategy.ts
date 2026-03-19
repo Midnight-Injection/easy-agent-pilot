@@ -117,14 +117,7 @@ export abstract class BaseAgentStrategy implements AgentStrategy {
         error: errorMessage
       })
 
-      if (eventState.sawDone || (eventState.sawMeaningfulOutput && !eventState.sawError)) {
-        if (!eventState.sawDone) {
-          onEvent({ type: 'done' })
-        }
-        return
-      }
-
-      if (eventState.sawError) {
+      if (eventState.sawDone || eventState.sawError) {
         return
       }
 
@@ -197,6 +190,12 @@ export abstract class BaseAgentStrategy implements AgentStrategy {
           type: 'usage',
           ...baseEvent
         }
+      case 'system':
+        return {
+          type: 'system',
+          content: event.content,
+          ...baseEvent
+        }
       case 'error':
         return {
           type: 'error',
@@ -239,6 +238,7 @@ export abstract class BaseAgentStrategy implements AgentStrategy {
     switch (event.type) {
       case 'content':
       case 'thinking':
+      case 'system':
       case 'tool_use':
       case 'tool_result':
       case 'file_edit':

@@ -443,20 +443,22 @@ function goToDependency(task: Task) {
   overflow-y: auto;
   padding: var(--spacing-4, 1rem);
   scrollbar-width: thin;
-  scrollbar-color: var(--color-border, #e2e8f0) transparent;
+  scrollbar-color: var(--scrollbar-thumb, var(--color-border, #e2e8f0)) var(--scrollbar-track, transparent);
 }
 
 .detail-body::-webkit-scrollbar {
-  width: 6px;
+  width: var(--scrollbar-size, 6px);
 }
 
 .detail-body::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--scrollbar-track, transparent);
 }
 
 .detail-body::-webkit-scrollbar-thumb {
-  background-color: var(--color-border, #e2e8f0);
+  background-color: var(--scrollbar-thumb, var(--color-border, #e2e8f0));
   border-radius: var(--radius-full, 9999px);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 .section {

@@ -169,13 +169,13 @@ onUnmounted(() => {
 .slash-command-dropdown {
   position: fixed;
   z-index: calc(var(--z-dropdown) + 2);
-  width: min(420px, calc(100vw - 32px));
-  border: 1px solid color-mix(in srgb, var(--color-border) 76%, rgba(15, 23, 42, 0.08));
-  border-radius: 18px;
+  width: min(380px, calc(100vw - 24px));
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, rgba(15, 23, 42, 0.08));
+  border-radius: 16px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(248, 250, 252, 0.95));
-  box-shadow: 0 24px 44px rgba(15, 23, 42, 0.16);
-  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(16px);
   overflow: hidden;
 }
 
@@ -184,47 +184,56 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-3);
-  padding: 14px 16px 10px;
+  padding: 12px 14px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
 }
 
 .slash-command__title {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-sm);
+  gap: 6px;
+  font-size: 12px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 }
 
 .slash-command__query {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: color-mix(in srgb, var(--color-warning) 78%, var(--color-text-primary));
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
 }
 
 .slash-command__list {
   display: flex;
   flex-direction: column;
-  max-height: 260px;
+  max-height: 236px;
   overflow-y: auto;
-  padding: 8px;
+  padding: 6px;
 }
 
 .slash-command__item {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 5px;
   width: 100%;
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
   text-align: left;
-  transition: background-color var(--transition-fast) var(--easing-default);
+  border: 1px solid transparent;
+  transition:
+    background-color var(--transition-fast) var(--easing-default),
+    border-color var(--transition-fast) var(--easing-default);
 }
 
 .slash-command__item:hover,
 .slash-command__item--selected {
-  background: color-mix(in srgb, var(--color-primary-light) 58%, white);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 24%, transparent);
 }
 
 .slash-command__item-main {
@@ -235,15 +244,21 @@ onUnmounted(() => {
 }
 
 .slash-command__item-name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: color-mix(in srgb, var(--color-warning) 76%, var(--color-text-primary));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--font-size-sm);
+  font-size: 12px;
   font-weight: 700;
-  color: var(--color-text-primary);
 }
 
 .slash-command__item-desc,
 .slash-command__item-usage {
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   color: var(--color-text-secondary);
 }
 
@@ -252,8 +267,38 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  min-height: 120px;
+  gap: 8px;
+  min-height: 104px;
+  padding: 12px;
+  font-size: 11px;
   color: var(--color-text-secondary);
+}
+
+:global([data-theme='dark']) .slash-command-dropdown,
+:global(.dark) .slash-command-dropdown {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.98));
+  border-color: rgba(148, 163, 184, 0.22);
+  box-shadow: 0 18px 36px rgba(2, 6, 23, 0.42);
+}
+
+:global([data-theme='dark']) .slash-command__title,
+:global(.dark) .slash-command__title {
+  color: #f8fafc;
+}
+
+:global([data-theme='dark']) .slash-command__query,
+:global(.dark) .slash-command__query,
+:global([data-theme='dark']) .slash-command__item-name,
+:global(.dark) .slash-command__item-name {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+}
+
+:global([data-theme='dark']) .slash-command__item:hover,
+:global(.dark) .slash-command__item:hover,
+:global([data-theme='dark']) .slash-command__item--selected,
+:global(.dark) .slash-command__item--selected {
+  background: rgba(245, 158, 11, 0.09);
+  border-color: rgba(245, 158, 11, 0.22);
 }
 </style>

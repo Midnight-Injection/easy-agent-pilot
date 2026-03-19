@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, toRef } from 'vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import { openUrl } from '@tauri-apps/plugin-opener'
+import { useTypewriterText } from '@/composables/useTypewriterText'
 
-const props = defineProps<{ content: string }>()
+const props = withDefaults(defineProps<{
+  content: string
+  animate?: boolean
+}>(), {
+  animate: false
+})
 
 const containerRef = ref<HTMLDivElement | null>(null)
 
@@ -98,7 +104,13 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self): string => {
   return defaultLinkOpenRender(tokens, idx, options, env, self)
 }
 
-const renderedContent = computed(() => md.render(props.content))
+const { displayedText } = useTypewriterText(
+  toRef(props, 'content'),
+  toRef(props, 'animate'),
+  { charsPerSecond: 140, maxChunkSize: 24 }
+)
+
+const renderedContent = computed(() => md.render(displayedText.value))
 
 // 处理链接点击，使用 Tauri opener
 const handleLinkClick = async (e: MouseEvent): Promise<void> => {
@@ -159,7 +171,7 @@ const clearCodeBlockContents = (): void => {
 }
 
 // 监听内容变化，清理旧的缓存
-watch(() => props.content, () => {
+watch(displayedText, () => {
   clearCodeBlockContents()
 })
 
@@ -193,6 +205,7 @@ onUnmounted(() => {
 
 .markdown-content {
   line-height: 1.6;
+  color: var(--color-text-primary);
 }
 
 .markdown-content h1,
@@ -215,6 +228,7 @@ onUnmounted(() => {
 
 .markdown-content p {
   margin: 0.5em 0;
+  color: inherit;
 }
 
 .markdown-content ul,
@@ -225,6 +239,7 @@ onUnmounted(() => {
 
 .markdown-content li {
   margin: 0.25em 0;
+  color: inherit;
 }
 
 /* 行内代码样式 */
@@ -382,6 +397,7 @@ onUnmounted(() => {
   padding: var(--spacing-2) var(--spacing-3);
   border: 1px solid var(--color-border);
   text-align: left;
+  color: inherit;
 }
 
 .markdown-content th {
@@ -406,5 +422,49 @@ onUnmounted(() => {
   height: auto;
   border-radius: var(--radius-md);
   margin: var(--spacing-2) 0;
+}
+
+:global([data-theme='dark']) .markdown-content,
+:global(.dark) .markdown-content {
+  color: #e5e7eb;
+}
+
+:global([data-theme='dark']) .markdown-content h1,
+:global(.dark) .markdown-content h1,
+:global([data-theme='dark']) .markdown-content h2,
+:global(.dark) .markdown-content h2,
+:global([data-theme='dark']) .markdown-content h3,
+:global(.dark) .markdown-content h3,
+:global([data-theme='dark']) .markdown-content h4,
+:global(.dark) .markdown-content h4,
+:global([data-theme='dark']) .markdown-content h5,
+:global(.dark) .markdown-content h5,
+:global([data-theme='dark']) .markdown-content h6,
+:global(.dark) .markdown-content h6,
+:global([data-theme='dark']) .markdown-content strong,
+:global(.dark) .markdown-content strong {
+  color: #f8fafc;
+}
+
+:global([data-theme='dark']) .markdown-content code,
+:global(.dark) .markdown-content code {
+  background-color: rgba(148, 163, 184, 0.14);
+}
+
+:global([data-theme='dark']) .markdown-content blockquote,
+:global(.dark) .markdown-content blockquote {
+  border-left-color: rgba(148, 163, 184, 0.3);
+  background-color: rgba(30, 41, 59, 0.72);
+  color: #cbd5e1;
+}
+
+:global([data-theme='dark']) .markdown-content th,
+:global(.dark) .markdown-content th {
+  background-color: rgba(30, 41, 59, 0.76);
+}
+
+:global([data-theme='dark']) .markdown-content tr:nth-child(even),
+:global(.dark) .markdown-content tr:nth-child(even) {
+  background-color: rgba(30, 41, 59, 0.42);
 }
 </style>

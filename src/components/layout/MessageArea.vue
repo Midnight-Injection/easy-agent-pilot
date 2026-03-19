@@ -501,6 +501,7 @@ onUnmounted(() => {
           <!-- Token 进度条 - 固定在会话面板顶部 -->
           <div class="message-area__token-bar">
             <TokenProgressBar
+              :session-id="sessionStore.currentSessionId"
               :show-compress-button="true"
               @compress="handleOpenCompress"
             />
@@ -606,9 +607,7 @@ onUnmounted(() => {
   min-width: 0;
   overflow: hidden;
   position: relative;
-  background:
-    radial-gradient(circle at top left, rgba(14, 165, 233, 0.08), transparent 24%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(255, 255, 255, 0.92));
+  background: var(--conversation-workspace-bg);
 }
 
 .message-area__workspace--trace-active {
@@ -619,13 +618,12 @@ onUnmounted(() => {
   flex: 0 0 auto;
   min-width: 0;
   min-height: 0;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 18px 0 40px rgba(15, 23, 42, 0.08);
+  background: var(--conversation-trace-pane-bg);
+  box-shadow: var(--conversation-trace-pane-shadow);
 }
 
 .message-area__trace-resizer {
-  background:
-    linear-gradient(180deg, rgba(148, 163, 184, 0.06), rgba(148, 163, 184, 0.14), rgba(148, 163, 184, 0.06));
+  background: var(--conversation-trace-resizer-bg);
 }
 
 .message-area__trace-resizer :deep(.panel-resizer) {
@@ -635,7 +633,7 @@ onUnmounted(() => {
 .message-area__trace-resizer :deep(.panel-resizer__line) {
   width: 2px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(59, 130, 246, 0.15), rgba(15, 23, 42, 0.3), rgba(59, 130, 246, 0.15));
+  background: var(--conversation-trace-resizer-line-bg);
   opacity: 0.35;
 }
 
@@ -670,12 +668,11 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 11px 15px;
-  border: 1px solid rgba(14, 116, 144, 0.18);
+  border: 1px solid var(--conversation-trace-handle-border);
   border-radius: 16px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(224, 242, 254, 0.9));
+  background: var(--conversation-trace-handle-bg);
   color: var(--color-text-primary);
-  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.1);
+  box-shadow: var(--conversation-trace-handle-shadow);
   backdrop-filter: blur(18px);
   cursor: pointer;
   transition:
@@ -686,16 +683,16 @@ onUnmounted(() => {
 
 .message-area__trace-handle:hover {
   transform: translateY(-1px);
-  border-color: rgba(14, 116, 144, 0.3);
-  box-shadow: 0 20px 34px rgba(14, 165, 233, 0.16);
+  border-color: var(--conversation-trace-handle-hover-border);
+  box-shadow: var(--conversation-trace-handle-hover-shadow);
 }
 
 .message-area__trace-handle-badge {
   min-width: 20px;
   padding: 2px 6px;
   border-radius: 999px;
-  background: rgba(14, 165, 233, 0.14);
-  color: #0f766e;
+  background: var(--conversation-trace-badge-bg);
+  color: var(--conversation-trace-badge-text);
   font-size: 11px;
   font-weight: 600;
 }
@@ -1303,7 +1300,7 @@ onUnmounted(() => {
   inset: 0;
   display: flex;
   justify-content: flex-end;
-  background: rgba(15, 23, 42, 0.28);
+  background: var(--conversation-trace-drawer-backdrop);
   z-index: 30;
 }
 
@@ -1311,7 +1308,7 @@ onUnmounted(() => {
   width: min(92vw, 720px);
   height: 100%;
   background: var(--color-surface);
-  box-shadow: -18px 0 32px rgba(15, 23, 42, 0.18);
+  box-shadow: var(--conversation-trace-drawer-shadow);
 }
 
 .message-area__trace-fab {
@@ -1338,6 +1335,7 @@ onUnmounted(() => {
   font-size: 11px;
   font-weight: 700;
 }
+
 
 .trace-pane-slide-enter-active,
 .trace-pane-slide-leave-active,

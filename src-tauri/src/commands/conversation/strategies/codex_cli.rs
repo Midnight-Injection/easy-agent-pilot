@@ -10,11 +10,11 @@ use tokio::time::sleep;
 use uuid::Uuid;
 
 use super::cli_common::{
-    build_content_event, build_error_event, build_execution_summary, build_timeout_error_message,
-    detect_cli_timeout, emit_cli_event, extract_error_from_json_blob,
-    extract_result_content_from_json_blob, extract_structured_output_from_json_blob,
-    parse_json_blob_with_fallback, preview_text, shell_escape, timeout_config_for_execution_mode,
-    CliExecutionMonitor,
+    build_content_event, build_error_event, build_execution_summary, build_system_event,
+    build_timeout_error_message, detect_cli_timeout, emit_cli_event, extract_error_from_json_blob,
+    extract_result_content_from_json_blob, extract_runtime_system_notice,
+    extract_structured_output_from_json_blob, parse_json_blob_with_fallback, preview_text,
+    shell_escape, timeout_config_for_execution_mode, CliExecutionMonitor,
 };
 use crate::commands::cli_support::build_tokio_cli_command;
 use crate::commands::conversation::abort::{
@@ -157,7 +157,7 @@ fn is_successful_event_type(event_type: &str) -> bool {
 fn is_meaningful_event_type(event_type: &str) -> bool {
     matches!(
         event_type,
-        "content" | "thinking" | "tool_use" | "tool_result" | "file_edit"
+        "content" | "thinking" | "tool_use" | "tool_result" | "file_edit" | "system"
     )
 }
 
@@ -629,7 +629,11 @@ impl AgentExecutionStrategy for CodexCliStrategy {
         let summary = build_execution_summary(&monitor.snapshot(), finished_at);
         log_info!("CLI 执行摘要: {}", summary);
 
-        if timeout_error_message.is_none() {
+        let should_treat_failure_as_success =
+            should_treat_process_failure_as_success(&stdout_outcome, &stderr_outcome);
+        let execution_succeeded = status.success() || should_treat_failure_as_success;
+
+        if timeout_error_message.is_none() && execution_succeeded {
             let done_event = CliStreamEvent {
                 event_type: "done".to_string(),
                 session_id: session_id.clone(),
@@ -659,7 +663,7 @@ impl AgentExecutionStrategy for CodexCliStrategy {
         }
 
         if !status.success() {
-            if should_treat_process_failure_as_success(&stdout_outcome, &stderr_outcome) {
+            if should_treat_failure_as_success {
                 log_info!(
                     "忽略 CLI 非零/空退出码：已收到有效输出，exit_code={:?}, {}",
                     status.code(),
@@ -729,6 +733,8 @@ fn parse_codex_json_output(session_id: &str, json: &serde_json::Value) -> Option
         .unwrap_or_default();
 
     match event_type {
+        "system" => extract_runtime_system_notice(json)
+            .map(|content| build_system_event(session_id, content)),
         // === Codex CLI 特有事件类型 ===
         "item.completed" => {
             let item = json.get("item")?;
@@ -1095,7 +1101,10 @@ fn parse_codex_json_output(session_id: &str, json: &serde_json::Value) -> Option
 
         // === 默认回退 ===
         _ => {
-            // 尝试提取结构化输出
+            if let Some(content) = extract_runtime_system_notice(json) {
+                return Some(build_system_event(session_id, content));
+            }
+
             extract_structured_payload(json)
                 .or_else(|| extract_turn_output(json))
                 .map(|content| build_content_event(session_id, content))
@@ -1204,6 +1213,10 @@ fn parse_codex_json_blob_output(session_id: &str, output: &str) -> Option<CliStr
 
     if let Ok(pretty) = serde_json::to_string_pretty(&parsed) {
         log_info!("CLI 返回完整内容:\n{}", pretty);
+    }
+
+    if let Some(content) = extract_runtime_system_notice(&parsed) {
+        return Some(build_system_event(session_id, content));
     }
 
     // 尝试提取结构化输出

@@ -11,6 +11,7 @@ import StructuredContentRenderer from './StructuredContentRenderer.vue'
 import ToolCallDisplay from './ToolCallDisplay.vue'
 import ThinkingDisplay from './ThinkingDisplay.vue'
 import CompressionMessageBubble from './CompressionMessageBubble.vue'
+import RuntimeNoticeList from './RuntimeNoticeList.vue'
 
 const { t, locale } = useI18n()
 const props = defineProps<{ message: Message; sessionId?: string }>()
@@ -240,7 +241,11 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
           v-if="isAssistant && message.thinking"
           class="message-bubble__thinking"
         >
-          <ThinkingDisplay :thinking="message.thinking" />
+          <ThinkingDisplay
+            :thinking="message.thinking"
+            :live="isStreaming"
+            :default-expanded="false"
+          />
         </div>
       </Transition>
 
@@ -249,6 +254,7 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
           v-if="!isUser"
           :content="message.content"
           :interactive-forms="isAssistant"
+          :animate="isAssistant && isStreaming"
           @form-submit="handleFormSubmit"
         />
         <div
@@ -288,6 +294,13 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
         />
       </div>
 
+      <div
+        v-if="isAssistant && message.runtimeNotices && message.runtimeNotices.length > 0"
+        class="message-bubble__runtime"
+      >
+        <RuntimeNoticeList :notices="message.runtimeNotices" />
+      </div>
+
       <!-- 工具调用显示 -->
       <TransitionGroup
         v-if="isAssistant && message.toolCalls && message.toolCalls.length > 0"
@@ -299,6 +312,9 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
           v-for="toolCall in message.toolCalls"
           :key="toolCall.id"
           :tool-call="toolCall"
+          :live="isStreaming || toolCall.status === 'running'"
+          :default-expanded="false"
+          :default-result-expanded="false"
         />
       </TransitionGroup>
 
@@ -454,12 +470,14 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
 
 <style scoped>
 .message-bubble {
-  --message-min-width: 18rem;
-  --message-max-width: 30rem;
+  --message-fixed-width: 27rem;
+  --message-min-width: var(--message-fixed-width);
+  --message-max-width: 35rem;
   --message-max-height: 30rem;
-  --message-compact-max-width: 24rem;
+  --message-compact-max-width: var(--message-fixed-width);
   --message-compact-max-height: 20rem;
-  --message-trace-max-width: 30rem;
+  --message-trace-max-width: 35rem;
+  --thinking-display-width: var(--message-fixed-width);
   display: flex;
   flex-direction: row;
   width: 100%;
@@ -538,21 +556,21 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
   font-size: var(--font-size-sm);
   line-height: 1.6;
   width: fit-content;
-  min-width: min(var(--message-min-width), var(--message-compact-max-width));
+  min-width: min(100%, var(--message-fixed-width));
   max-width: min(100%, var(--message-max-width));
   max-height: var(--message-max-height);
   box-sizing: border-box;
   animation: fadeIn 0.2s ease-out;
-  overflow-wrap: anywhere;
   overflow: auto;
 }
 
 /* AI 消息样式 */
 .message-bubble--assistant .message-bubble__content {
-  min-width: var(--message-compact-max-width);
+  min-width: min(100%, var(--message-fixed-width));
   background-color: var(--color-bg-tertiary);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
+  color: var(--color-text-primary);
 }
 
 /* 用户消息样式 */
@@ -567,6 +585,11 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
 :global(.dark) .message-bubble--user .message-bubble__content {
   background-color: rgba(96, 165, 250, 0.15);
   color: var(--color-primary);
+}
+
+:global([data-theme='dark']) .message-bubble--assistant .message-bubble__content,
+:global(.dark) .message-bubble--assistant .message-bubble__content {
+  color: #e5e7eb;
 }
 
 .message-bubble__text {
@@ -658,13 +681,18 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
 /* 工具调用显示 - 底部区域，橙色渐变边框 */
 .message-bubble__tool-calls {
   width: var(--message-compact-max-width);
-  min-width: min(var(--message-min-width), var(--message-compact-max-width));
+  min-width: min(100%, var(--message-fixed-width));
   max-width: 100%;
-  max-height: var(--message-compact-max-height);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
-  overflow: hidden;
+  overflow: visible;
+}
+
+.message-bubble__runtime {
+  width: var(--message-compact-max-width);
+  min-width: min(100%, var(--message-fixed-width));
+  max-width: 100%;
 }
 
 .message-bubble__trace-rail {
@@ -1120,12 +1148,13 @@ const getTraceChangeIcon = (changeType: 'create' | 'modify' | 'delete') => {
 
 @media (max-width: 768px) {
   .message-bubble {
-    --message-min-width: min(100%, 14rem);
-    --message-max-width: min(calc(100vw - 104px), 22.5rem);
+    --message-fixed-width: min(calc(100vw - 104px), 18.5rem);
+    --message-min-width: var(--message-fixed-width);
+    --message-max-width: min(calc(100vw - 104px), 24.5rem);
     --message-max-height: 24rem;
-    --message-compact-max-width: min(calc(100vw - 104px), 20rem);
+    --message-compact-max-width: var(--message-fixed-width);
     --message-compact-max-height: 16rem;
-    --message-trace-max-width: min(calc(100vw - 104px), 22rem);
+    --message-trace-max-width: min(calc(100vw - 104px), 24rem);
     gap: var(--spacing-2);
   }
 

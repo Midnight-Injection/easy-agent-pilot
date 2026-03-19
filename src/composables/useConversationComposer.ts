@@ -38,7 +38,7 @@ import { FILE_MENTION_PATTERN, getMentionDisplayText, getMentionTitle, isGlobalM
 import { resolveSessionAgent, resolveSessionAgentId } from '@/utils/sessionAgent'
 
 interface TextSegment {
-  type: 'text' | 'file'
+  type: 'text' | 'file' | 'slash'
   content: string
   displayContent?: string
   fullPath?: string
@@ -95,6 +95,22 @@ function formatMentionLiteral(path: string): string {
   return `@${path}`
 }
 
+function getLeadingSlashSegment(text: string): { content: string; length: number } | null {
+  if (!text.startsWith('/')) {
+    return null
+  }
+
+  const matched = text.match(/^\/[^\s\n]*/)
+  if (!matched || !matched[0]) {
+    return null
+  }
+
+  return {
+    content: matched[0],
+    length: matched[0].length
+  }
+}
+
 export function useConversationComposer(options: UseConversationComposerOptions) {
   const { t } = useI18n()
   const messageStore = useMessageStore()
@@ -124,6 +140,9 @@ export function useConversationComposer(options: UseConversationComposerOptions)
   const showSlashCommand = ref(false)
   const slashCommandPosition = ref({ x: 0, y: 0, width: 0, height: 0 })
   const slashCommandQuery = ref('')
+  const showCdPathSuggestions = ref(false)
+  const cdPathPosition = ref({ x: 0, y: 0, width: 0, height: 0 })
+  const cdPathQuery = ref('')
 
   const currentSessionId = computed(() => toValue(options.sessionId) || null)
   const currentSession = computed(() =>
@@ -303,12 +322,25 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     if (!text) return []
 
     const segments: TextSegment[] = []
+    const leadingSlash = getLeadingSlashSegment(text)
     let lastIndex = 0
     let match: RegExpExecArray | null
+
+    if (leadingSlash) {
+      segments.push({
+        type: 'slash',
+        content: leadingSlash.content
+      })
+      lastIndex = leadingSlash.length
+    }
 
     FILE_MENTION_PATTERN.lastIndex = 0
 
     while ((match = FILE_MENTION_PATTERN.exec(text)) !== null) {
+      if (match.index < lastIndex) {
+        continue
+      }
+
       if (match.index > lastIndex) {
         const content = text.slice(lastIndex, match.index)
         if (content) {
@@ -550,6 +582,12 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     slashCommandQuery.value = ''
   }
 
+  const closeCdPathSuggestions = () => {
+    showCdPathSuggestions.value = false
+    cdPathPosition.value = { x: 0, y: 0, width: 0, height: 0 }
+    cdPathQuery.value = ''
+  }
+
   const formatMentionInsertText = (path: string) => {
     return formatMentionLiteral(path)
   }
@@ -560,6 +598,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     }
 
     closeSlashCommand()
+    closeCdPathSuggestions()
     showFileMention.value = true
     fileMentionPosition.value = { x, y, width: 280, height: 0 }
     mentionStart.value = start
@@ -567,10 +606,19 @@ export function useConversationComposer(options: UseConversationComposerOptions)
   }
 
   const openSlashCommand = (x: number, y: number, query: string) => {
+    closeCdPathSuggestions()
     closeFileMention()
     showSlashCommand.value = true
     slashCommandPosition.value = { x, y, width: 320, height: 0 }
     slashCommandQuery.value = query
+  }
+
+  const openCdPathSuggestions = (x: number, y: number, query: string) => {
+    closeSlashCommand()
+    closeFileMention()
+    showCdPathSuggestions.value = true
+    cdPathPosition.value = { x, y, width: 360, height: 0 }
+    cdPathQuery.value = query
   }
 
   const handleFileSelect = (insertPath: string, mentionStartPos: number) => {
@@ -624,9 +672,56 @@ export function useConversationComposer(options: UseConversationComposerOptions)
       return
     }
 
-    inputText.value = command.insertText
+    const textarea = textareaRef.value
+    const nextText = command.insertText.endsWith(' ')
+      ? command.insertText
+      : `${command.insertText} `
+    const nextPosition = nextText.length
+
+    if (textarea) {
+      textarea.value = nextText
+    }
+
+    inputText.value = nextText
     closeSlashCommand()
-    focusInput()
+
+    requestAnimationFrame(() => {
+      if (textarea) {
+        textarea.focus()
+        textarea.setSelectionRange(nextPosition, nextPosition)
+        if (renderLayerRef.value) {
+          renderLayerRef.value.scrollTop = textarea.scrollTop
+        }
+        updateSlashCommandState(textarea, nextText, nextPosition)
+      } else {
+        focusInput()
+      }
+    })
+  }
+
+  const handleCdPathSelect = (insertPath: string) => {
+    const textarea = textareaRef.value
+    const newText = `/cd ${insertPath}`
+    const nextPosition = newText.length
+
+    if (textarea) {
+      textarea.value = newText
+    }
+
+    inputText.value = newText
+
+    requestAnimationFrame(() => {
+      if (textarea) {
+        textarea.focus()
+        textarea.setSelectionRange(nextPosition, nextPosition)
+        if (renderLayerRef.value) {
+          renderLayerRef.value.scrollTop = textarea.scrollTop
+        }
+        updateSlashCommandState(textarea, newText, nextPosition)
+      } else {
+        closeCdPathSuggestions()
+      }
+    })
   }
 
   const getCaretCoordinates = (textarea: HTMLTextAreaElement, position: number) => {
@@ -660,11 +755,28 @@ export function useConversationComposer(options: UseConversationComposerOptions)
   const updateSlashCommandState = (target: HTMLTextAreaElement, value: string, cursorPosition: number) => {
     if (!value.startsWith('/')) {
       closeSlashCommand()
+      closeCdPathSuggestions()
       return
     }
 
+    const currentLineValue = value.slice(0, cursorPosition)
+    if (currentLineValue.includes('\n')) {
+      closeSlashCommand()
+      closeCdPathSuggestions()
+      return
+    }
+
+    if (options.panelType === 'mini' && currentLineValue.startsWith('/cd ')) {
+      const rect = target.getBoundingClientRect()
+      const caretPos = getCaretCoordinates(target, cursorPosition)
+      openCdPathSuggestions(rect.left + caretPos.x, rect.top + caretPos.y + 18, currentLineValue.slice(4))
+      return
+    }
+
+    closeCdPathSuggestions()
+
     const body = value.slice(1, cursorPosition)
-    if (!body || /\s/.test(body) || value.slice(0, cursorPosition).includes('\n')) {
+    if (!body || /\s/.test(body)) {
       if (value === '/') {
         const rect = target.getBoundingClientRect()
         const caretPos = getCaretCoordinates(target, cursorPosition)
@@ -854,6 +966,29 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     }
   }
 
+  const validateCurrentAgentAvailability = () => {
+    if (!currentAgent.value) {
+      notificationStore.smartError('发送消息', new Error('请先选择一个智能体'))
+      return false
+    }
+
+    const availability = conversationService.isAgentAvailable(currentAgent.value)
+    if (!availability.available) {
+      notificationStore.smartError('发送消息', new Error(availability.reason || '智能体不可用'))
+      return false
+    }
+
+    return true
+  }
+
+  const clearComposerDraft = (sessionId: string) => {
+    inputText.value = ''
+    sessionExecutionStore.clearPendingImages(sessionId)
+    closeFileMention()
+    closeSlashCommand()
+    closeCdPathSuggestions()
+  }
+
   const sendWithCurrentAgent = async (
     userInput: string,
     attachments: MessageAttachment[]
@@ -924,6 +1059,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
 
     if (result.handled) {
       closeSlashCommand()
+      closeCdPathSuggestions()
       if (result.clearInput) {
         inputText.value = ''
       }
@@ -956,14 +1092,12 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     }
 
     if (isSending.value) {
-      if (!currentAgent.value) {
-        notificationStore.smartError('发送消息', new Error('请先选择一个智能体'))
+      if (!validateCurrentAgentAvailability()) {
         return
       }
 
-      const availability = conversationService.isAgentAvailable(currentAgent.value)
-      if (!availability.available) {
-        notificationStore.smartError('发送消息', new Error(availability.reason || '智能体不可用'))
+      const queuedAgent = currentAgent.value
+      if (!queuedAgent) {
         return
       }
 
@@ -971,22 +1105,27 @@ export function useConversationComposer(options: UseConversationComposerOptions)
         content: userInput,
         displayContent: rawInput,
         attachments,
-        agentId: currentAgent.value.id
+        agentId: queuedAgent.id
       })
-      inputText.value = ''
-      sessionExecutionStore.clearPendingImages(sessionId)
-      closeFileMention()
-      closeSlashCommand()
+      clearComposerDraft(sessionId)
+      focusInput()
       return
     }
 
+    if (!validateCurrentAgentAvailability()) {
+      return
+    }
+
+    clearComposerDraft(sessionId)
+    await nextTick()
+
     const success = await sendWithCurrentAgent(userInput, attachments)
     if (success) {
-      inputText.value = ''
-      sessionExecutionStore.clearPendingImages(sessionId)
-      closeSlashCommand()
+      focusInput()
     } else {
       inputText.value = rawInput
+      restorePendingImages(attachments)
+      focusInput()
     }
   }
 
@@ -1005,7 +1144,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (showFileMention.value || showSlashCommand.value) {
+    if (showFileMention.value || showSlashCommand.value || showCdPathSuggestions.value) {
       return
     }
 
@@ -1080,7 +1219,10 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     agentDropdownRef,
     agentOptions,
     buildQueuedMessagePreview,
+    cdPathPosition,
+    cdPathQuery,
     closeFileMention,
+    closeCdPathSuggestions,
     closeSlashCommand,
     currentAgent,
     currentAgentId,
@@ -1093,6 +1235,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     focusInput,
     getModelLabel,
     handleCancelCompress,
+    handleCdPathSelect,
     handleConfirmCompress,
     handleFileSelect,
     handleImageFileChange,
@@ -1130,6 +1273,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     selectModel,
     shouldShowCompressButton,
     showCompressionDialog,
+    showCdPathSuggestions,
     showFileMention,
     showSlashCommand,
     slashCommandPosition,
