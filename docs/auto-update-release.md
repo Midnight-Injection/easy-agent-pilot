@@ -5,7 +5,7 @@
 ## 当前方案
 
 - 应用内更新源：`https://github.com/hyqf98/easy-agent-pilot/releases/latest/download/latest.json`
-- 发布工作流：[`.github/workflows/release.yml`](D:/dev/front/easy-agent-pilot/.github/workflows/release.yml)
+- 发布工作流：[`../.github/workflows/release.yml`](../.github/workflows/release.yml)
 - GitHub 密钥位置：`Settings -> Secrets and variables -> Actions -> Repository secrets`
 - 使用同一把 Tauri updater 私钥对所有后续版本签名
 
@@ -14,14 +14,14 @@
 发布自动更新前，确认以下事项已经完成：
 
 - 已在 GitHub 仓库中配置 `TAURI_SIGNING_PRIVATE_KEY`
-- 如果私钥生成时设置了密码，则同时配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+- 当前这把 updater 私钥无密码，不需要配置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 - 本地已安全备份同一把私钥
 - 该私钥不要提交到 Git
 
 当前本地建议备份位置：
 
-- 私钥：`D:\dev\front\easy-agent-pilot\.local\signing\tauri-updater-private.key`
-- 公钥：`D:\dev\front\easy-agent-pilot\.local\signing\tauri-updater-public.key`
+- 私钥：`../.local/signing/tauri-updater-private.key`
+- 公钥：`../.local/signing/tauri-updater-public.key`
 
 ## 每次发布的标准流程
 
@@ -31,9 +31,9 @@
 
 需要同时更新以下三个文件中的版本：
 
-- [`package.json`](D:/dev/front/easy-agent-pilot/package.json)
-- [`src-tauri/tauri.conf.json`](D:/dev/front/easy-agent-pilot/src-tauri/tauri.conf.json)
-- [`src-tauri/Cargo.toml`](D:/dev/front/easy-agent-pilot/src-tauri/Cargo.toml)
+- [`../package.json`](../package.json)
+- [`../src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json)
+- [`../src-tauri/Cargo.toml`](../src-tauri/Cargo.toml)
 
 示例：
 
@@ -67,7 +67,7 @@ git push origin v1.0.1
 
 ### 4. 等待 GitHub Actions 构建
 
-GitHub Actions 会基于 tag 运行 [`release.yml`](D:/dev/front/easy-agent-pilot/.github/workflows/release.yml)，构建各平台安装包并创建 draft release。
+GitHub Actions 会基于 tag 运行 [`../.github/workflows/release.yml`](../.github/workflows/release.yml)，构建各平台安装包并创建 draft release。
 
 ### 5. 检查 Release 资产
 
@@ -147,7 +147,7 @@ GitHub Actions 会基于 tag 运行 [`release.yml`](D:/dev/front/easy-agent-pilo
 
 - `TAURI_SIGNING_PRIVATE_KEY` 是否仍存在
 - 私钥内容是否完整，多行内容是否被截断
-- 如配置了 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，其值是否正确
+- 是否误配置了 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
 ## 密钥管理建议
 
