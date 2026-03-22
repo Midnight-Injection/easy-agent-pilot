@@ -20,8 +20,6 @@ jobs:
             args: '--target x86_64-apple-darwin'
           - platform: 'ubuntu-22.04'
             args: ''
-          - platform: 'ubuntu-22.04-arm'
-            args: ''
           - platform: 'windows-latest'
             args: ''
 
@@ -33,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04' || matrix.platform == 'ubuntu-22.04-arm'
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
@@ -144,8 +142,8 @@ jobs:
 
             ### Downloads
             - **macOS**: Use the `.dmg` installer. Choose `aarch64` for Apple Silicon and `x64` for Intel.
-            - **Windows**: Use the `.msi` or `-setup.exe` installer.
-            - **Linux**: Use `.AppImage`, `.deb`, or `.rpm`.
+            - **Windows**: Use the `-setup.exe` installer.
+            - **Linux**: Use `.deb` for Ubuntu/Debian, or `.AppImage` for Arch Linux and other portable distributions.
 
             ### Supported Platforms
             - macOS 10.13+

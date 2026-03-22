@@ -32,7 +32,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["nsis", "msi", "dmg", "app", "deb", "rpm", "appimage"],
+    "targets": ["nsis", "dmg", "app", "deb", "appimage"],
     "resources": {
       "../scripts/mcpmarket-fetcher.mjs": "scripts/mcpmarket-fetcher.mjs",
       "../node_modules/.pnpm/playwright-core@1.58.2/node_modules/playwright-core/": "playwright-core/"
@@ -61,9 +61,6 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": "",
       "tsp": false,
-      "wix": {
-        "language": ["zh-CN", "en-US"]
-      },
       "nsis": {
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true
@@ -72,9 +69,6 @@
     "linux": {
       "deb": {
         "depends": ["libwebkit2gtk-4.1-0"]
-      },
-      "rpm": {
-        "depends": ["webkit2gtk4.1"]
       },
       "appimage": {
         "bundleMediaFramework": false

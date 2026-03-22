@@ -24,7 +24,7 @@
 
 - 私钥：`../.local/signing/tauri-updater-private.key`
 - 公钥：`../.local/signing/tauri-updater-public.key`
-- 旧密钥归档：`../.local/signing/tauri-updater-private-old.key`、`../.local/signing/tauri-updater-public-old.key`
+- 密码：`../.local/signing/tauri-updater-password.txt`
 
 ## 每次发布的标准流程
 
@@ -76,8 +76,10 @@ GitHub Actions 会基于 tag 运行 [`../.github/workflows/release.yml`](../.git
 
 进入 GitHub Releases，确认本次 draft release 中至少包含：
 
-- Windows 安装包
-- macOS 安装包
+- Windows `-setup.exe` 安装包
+- macOS `.dmg` 安装包
+- Linux `.deb` 安装包
+- Linux `.AppImage` 便携包
 - `latest.json`
 
 如果没有 `latest.json`，应用内自动更新不会生效。
