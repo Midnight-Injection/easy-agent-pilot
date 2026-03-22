@@ -111,6 +111,10 @@ jobs:
               print("::error::Decoded updater key does not start with the expected Tauri key header")
               print("::error::Make sure you pasted the private key, not the public key")
               sys.exit(1)
+
+          if "encrypted secret key" in decoded and not os.environ.get("TAURI_SIGNING_PRIVATE_KEY_PASSWORD_SECRET"):
+              print("::error::Encrypted updater private key requires TAURI_SIGNING_PRIVATE_KEY_PASSWORD")
+              sys.exit(1)
           PY
 
           {
@@ -126,6 +130,8 @@ jobs:
               echo "EOF"
             } >> "$GITHUB_ENV"
           fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD_SECRET: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - uses: tauri-apps/tauri-action@v0.6.2
         env:

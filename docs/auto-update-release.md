@@ -24,6 +24,7 @@
 
 - 私钥：`../.local/signing/tauri-updater-private.key`
 - 公钥：`../.local/signing/tauri-updater-public.key`
+- 旧密钥归档：`../.local/signing/tauri-updater-private-old.key`、`../.local/signing/tauri-updater-public-old.key`
 
 ## 每次发布的标准流程
 
