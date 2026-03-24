@@ -1,16 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAgentStore } from '@/stores/agent'
-import { useMarketplaceStore, type SkillInstallInput } from '@/stores/marketplace'
-import { EaButton, EaIcon, EaModal, EaSelect } from '@/components/common'
-import type { SkillMarketItem } from '@/types/marketplace'
-
-interface Props {
-  skillItem: SkillMarketItem
-}
-
-const props = defineProps<Props>()
+import { EaButton, EaIcon, EaInput, EaModal, EaSelect } from '@/components/common'
+import { inferAgentProvider, useAgentStore } from '@/stores/agent'
+import { useMarketplaceStore, type GitSkillInstallInput } from '@/stores/marketplace'
 
 const emit = defineEmits<{
   close: []
@@ -22,24 +15,33 @@ const agentStore = useAgentStore()
 const marketplaceStore = useMarketplaceStore()
 
 const selectedAgentId = ref('')
+const repositoryUrl = ref('')
+const gitRef = ref('')
+const skillName = ref('')
 const isInstalling = ref(false)
 const installError = ref<string | null>(null)
 const installSuccess = ref(false)
 
 const cliAgents = computed(() =>
-  agentStore.agents.filter(
-    agent => agent.type === 'cli' && (agent.provider === 'claude' || agent.provider === 'codex')
-  )
+  agentStore.agents.filter(agent => agent.type === 'cli' && Boolean(inferAgentProvider(agent)))
 )
 
 const selectedAgent = computed(() =>
   cliAgents.value.find(agent => agent.id === selectedAgentId.value)
 )
 
-const canInstall = computed(() => Boolean(selectedAgentId.value) && !isInstalling.value)
+const selectedCliType = computed(() => inferAgentProvider(selectedAgent.value))
+
+const canInstall = computed(() =>
+  Boolean(selectedAgent.value)
+    && Boolean(selectedCliType.value)
+    && Boolean(repositoryUrl.value.trim())
+    && Boolean(skillName.value.trim())
+    && !isInstalling.value
+)
 
 async function handleInstall() {
-  if (!selectedAgent.value || !canInstall.value) {
+  if (!selectedCliType.value || !canInstall.value) {
     return
   }
 
@@ -48,19 +50,17 @@ async function handleInstall() {
   installSuccess.value = false
 
   try {
-    const input: SkillInstallInput = {
-      skill_id: props.skillItem.slug,
-      skill_name: props.skillItem.name,
-      cli_type: (selectedAgent.value.provider || 'claude') as 'claude' | 'codex',
-      scope: 'global',
-      project_path: null,
-      source_market: marketplaceStore.activeMarketSource
+    const input: GitSkillInstallInput = {
+      repository_url: repositoryUrl.value.trim(),
+      git_ref: gitRef.value.trim() || null,
+      skill_name: skillName.value.trim(),
+      cli_type: selectedCliType.value
     }
 
-    const result = await marketplaceStore.installSkill(input)
+    const result = await marketplaceStore.installSkillFromGit(input)
     if (result.success) {
       installSuccess.value = true
-      setTimeout(() => emit('complete'), 1200)
+      window.setTimeout(() => emit('complete'), 1200)
       return
     }
 
@@ -89,60 +89,75 @@ onMounted(async () => {
 <template>
   <EaModal
     :visible="true"
-    :title="t('marketplace.installSkill')"
+    :title="t('marketplace.installSkillFromGit')"
     size="md"
     @close="handleClose"
   >
-    <div class="skill-install-modal">
+    <div class="skill-git-install-modal">
       <div
         v-if="installSuccess"
-        class="skill-install-modal__success"
+        class="skill-git-install-modal__success"
       >
         <EaIcon
           name="check-circle"
           :size="48"
-          class="skill-install-modal__success-icon"
+          class="skill-git-install-modal__success-icon"
         />
         <p>{{ t('marketplace.installSuccess') }}</p>
       </div>
 
       <template v-else>
-        <div class="skill-install-modal__info">
-          <h4>{{ skillItem.name }}</h4>
-          <p>{{ skillItem.description }}</p>
-          <div class="skill-install-modal__meta">
-            <span v-if="skillItem.author">{{ skillItem.author }}</span>
-            <span v-if="skillItem.stars">{{ skillItem.stars.toLocaleString() }} ★</span>
-          </div>
-        </div>
-
-        <div class="skill-install-modal__field">
+        <div class="skill-git-install-modal__field">
           <label>{{ t('marketplace.selectAgent') }}</label>
           <EaSelect
             v-model="selectedAgentId"
             :options="cliAgents.map(agent => ({
               value: agent.id,
-              label: `${agent.name} · ${(agent.provider || 'claude').toUpperCase()}`
+              label: `${agent.name} · ${String(inferAgentProvider(agent) || '').toUpperCase()}`
             }))"
             :placeholder="t('marketplace.selectAgentPlaceholder')"
           />
           <p
             v-if="cliAgents.length === 0"
-            class="skill-install-modal__hint"
+            class="skill-git-install-modal__hint"
           >
             {{ t('marketplace.noCliAgent') }}
           </p>
           <p
             v-else
-            class="skill-install-modal__hint"
+            class="skill-git-install-modal__hint"
           >
-            {{ t('marketplace.globalSkillInstall') }}
+            {{ t('marketplace.gitSkillInstallHint') }}
           </p>
+        </div>
+
+        <div class="skill-git-install-modal__field">
+          <label>{{ t('marketplace.gitRepository') }}</label>
+          <EaInput
+            v-model="repositoryUrl"
+            :placeholder="t('marketplace.gitRepositoryPlaceholder')"
+          />
+        </div>
+
+        <div class="skill-git-install-modal__field">
+          <label>{{ t('marketplace.gitReference') }}</label>
+          <EaInput
+            v-model="gitRef"
+            :placeholder="t('marketplace.gitReferencePlaceholder')"
+          />
+        </div>
+
+        <div class="skill-git-install-modal__field">
+          <label>{{ t('marketplace.skillNameLabel') }}</label>
+          <EaInput
+            v-model="skillName"
+            :placeholder="t('marketplace.skillNamePlaceholder')"
+          />
         </div>
 
         <div
           v-if="installError"
-          class="skill-install-modal__error"
+          class="skill-git-install-modal__error"
         >
           <EaIcon
             name="alert-circle"
@@ -154,7 +169,7 @@ onMounted(async () => {
     </div>
 
     <template #footer>
-      <div class="skill-install-modal__footer">
+      <div class="skill-git-install-modal__footer">
         <EaButton
           type="ghost"
           @click="handleClose"
@@ -176,13 +191,13 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.skill-install-modal {
+.skill-git-install-modal {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
 }
 
-.skill-install-modal__success {
+.skill-git-install-modal__success {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -191,55 +206,30 @@ onMounted(async () => {
   text-align: center;
 }
 
-.skill-install-modal__success-icon {
+.skill-git-install-modal__success-icon {
   margin-bottom: var(--spacing-4);
   color: var(--color-success);
 }
 
-.skill-install-modal__info {
-  padding: var(--spacing-3);
-  background: var(--color-bg-secondary);
-  border-radius: var(--radius-md);
-}
-
-.skill-install-modal__info h4 {
-  margin: 0 0 var(--spacing-1);
-  font-size: var(--font-size-base);
-}
-
-.skill-install-modal__info p {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-}
-
-.skill-install-modal__meta {
-  display: flex;
-  gap: var(--spacing-3);
-  margin-top: var(--spacing-2);
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-.skill-install-modal__field {
+.skill-git-install-modal__field {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-2);
 }
 
-.skill-install-modal__field label {
+.skill-git-install-modal__field label {
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
 }
 
-.skill-install-modal__hint {
+.skill-git-install-modal__hint {
   margin: 0;
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
 }
 
-.skill-install-modal__error {
+.skill-git-install-modal__error {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
@@ -250,7 +240,7 @@ onMounted(async () => {
   font-size: var(--font-size-sm);
 }
 
-.skill-install-modal__footer {
+.skill-git-install-modal__footer {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-2);

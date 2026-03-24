@@ -9,6 +9,7 @@ pub(crate) mod cli_support;
 pub mod conversation;
 pub mod data;
 pub mod file_editor;
+pub(crate) mod git_install;
 pub mod install;
 pub mod lsp;
 pub mod market_source_support;
