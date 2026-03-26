@@ -208,7 +208,7 @@ const zhCN = {
     retry: '重试',
     loadingMore: '加载更多历史消息...',
     scrollUpLoadMore: '向上滚动加载更多消息',
-    composerHint: '支持图片、@文件、/命令',
+    composerHint: "支持图片、{'@'}文件、/命令",
     dropImages: '拖拽图片到这里上传',
     clearMessages: '清空消息',
     clearMessagesConfirm: '确定清空当前会话的全部消息吗？此操作无法撤销。',

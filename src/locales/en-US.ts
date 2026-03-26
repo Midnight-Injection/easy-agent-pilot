@@ -296,7 +296,7 @@ export default {
     retry: 'Retry',
     loadingMore: 'Loading history...',
     scrollUpLoadMore: 'Scroll up to load more messages',
-    composerHint: 'Supports images, @files, /commands',
+    composerHint: "Supports images, {'@'}files, /commands",
     dropImages: 'Drop images here to upload',
     clearMessages: 'Clear Messages',
     clearMessagesConfirm: 'Are you sure you want to clear all messages in this session? This action cannot be undone.',
