@@ -21,13 +21,15 @@
 - `src/components/layout/`
   主工作区骨架。负责顶部栏、侧边导航、项目区、会话区、消息区、统一面板、文件编辑器切换。
 - `src/components/settings/`
-  设置中心。当前菜单包括：通用设置、智能体设置、Agent 配置、Marketplace、Provider Switch、会话管理、主题、LSP、数据管理、日志管理。
+  设置中心。当前菜单包括：通用设置、智能体设置、Agent 配置、无人值守、Marketplace、Provider Switch、会话管理、主题、LSP、数据管理、日志管理、软件更新、Token 统计。
 - `src/components/plan/`
   计划模式核心模块。负责计划列表、计划新建/编辑、任务拆分、拆分预览、任务看板、任务详情、计划进度、执行日志、继续拆分等流程。
 - `src/components/memory/`
   记忆模式模块。负责记忆库、原始记忆池、AI 合并、批量删除、Markdown 记忆维护。
 - `src/components/message/`
   会话消息渲染模块。负责消息气泡、Markdown 渲染、Thinking 展示、工具调用展示、执行时间线、结构化结果渲染。
+- `src/components/unattended/`
+  无人值守渠道模块。负责微信渠道创建、扫码登录、监听状态管理、默认项目 / Agent / 模型绑定、远程线程日志回看。
 - `src/components/marketplace/`
   市场模块。负责 MCP、Skill、Plugin 的列表、详情、安装、启停、更新入口。
 - `src/components/skill-config/`
@@ -43,7 +45,9 @@
 - `src/modules/file-editor/`
   文件编辑子系统。基于 Monaco，负责编辑器工作区、语言策略、文件编辑服务、LSP 接入。
 - `src/stores/`
-  Pinia 状态管理层。覆盖项目、会话、消息、计划、任务、任务执行、设置、主题、窗口状态、记忆、Marketplace、Agent 配置等状态。
+  Pinia 状态管理层。覆盖项目、会话、消息、计划、任务、任务执行、设置、主题、窗口状态、记忆、Marketplace、Agent 配置、Provider Profile、应用更新、无人值守渠道、CLI 用量统计等状态。
+- `src/services/appUpdate/`
+  应用更新服务层。负责版本读取、更新检查、下载进度、安装与重启策略适配。
 - `src/services/conversation/`
   会话执行服务层。统一封装 Claude/Codex 的 CLI 与 SDK 执行策略、消息构建、执行器、文件追踪。
 - `src/services/plan/`
@@ -52,6 +56,10 @@
   记忆合并服务层，负责原始记忆压缩、项目记忆提示词、记忆库合成逻辑。
 - `src/services/compression/`
   会话压缩能力，负责长上下文压缩与压缩结果组织。
+- `src/services/unattended/`
+  无人值守服务层。负责渠道 CRUD、微信登录、运行时状态查询、线程上下文更新、消息事件记录与远程发送。
+- `src/services/usage/`
+  CLI 用量服务层。负责从会话、任务拆分、任务执行流程中提取 token 使用数据并异步入库。
 - `src/composables/`
   组合式逻辑封装，如消息编辑、会话视图、快捷键、异步操作、对话框、外部点击处理等。
 - `src/router/`
@@ -69,13 +77,19 @@
 - 主会话
   位于主页工作台，核心由 `MainLayout`、`PanelContainer`、`SessionTabs`、`MessageArea` 组成，用于项目上下文下的多会话对话、消息展示和文件编辑切换。
 - 菜单设置
-  入口在顶部 `AppHeader` 设置按钮，进入 `SettingsView`。设置导航由 `SettingsNav` 和 `settingsTabs.ts` 管理。
+  入口在顶部 `AppHeader` 设置按钮，进入 `SettingsView`。设置导航由 `SettingsNav` 和 `settingsTabs.ts` 管理，当前覆盖通用设置、Agent 配置、无人值守、技能市场、Provider Switch、会话管理、主题、LSP、数据管理、日志管理、软件更新、Token 统计等页签。
 - 计划拆分
   从计划列表进入，核心弹窗为 `TaskSplitDialog`。该流程负责 AI 拆分、表单补充、拆分预览、二次拆分、确认生成任务。
 - 计划执行
   由 `TaskBoard`、`KanbanColumn`、`TaskExecutionLog`、`PlanProgressDetail` 组成。支持待办执行、一键执行、暂停、恢复、失败重试、日志查看。
 - 记忆管理
   由 `MemoryModePanel` 负责，支持记忆库维护、原始记忆筛选、批量删除、AI 合并入库。
+- 无人值守
+  入口在设置中心 `UnattendedSettings`。核心由 `UnattendedPanel` 组成，负责微信渠道创建、扫码登录、默认项目 / Agent / 模型绑定、监听状态控制、线程日志回看。
+- 软件更新
+  入口在设置中心 `AppUpdateSettings`。负责读取当前版本、检查 GitHub Release 更新、展示下载进度并触发安装。
+- Token 统计
+  入口在设置中心 `AgentCliUsageSettings`。负责聚合 Claude CLI / Codex CLI 的调用次数、输入输出 Token、费用估算与趋势排行。
 
 ### 后端模块
 `src-tauri/src/` 为 Tauri 2 Rust 后端。
@@ -124,6 +138,8 @@
   消息 CRUD、清空、图片上传命令。
 - `src-tauri/src/commands/mini_panel.rs`
   Mini Panel 显示、隐藏、目录、快捷键等命令。
+- `src-tauri/src/commands/mini_panel_windows_shortcut.rs`
+  Mini Panel 在 Windows 下的快捷键注册与原生钩子处理命令。
 - `src-tauri/src/commands/plan.rs`
   计划 CRUD、计划状态、计划调度命令。
 - `src-tauri/src/commands/plan_split.rs`
@@ -140,6 +156,10 @@
   运行日志摘要、文件列表、内容读取、清理命令。
 - `src-tauri/src/commands/scan.rs`
   CLI 配置、MCP、会话扫描命令。
+- `src-tauri/src/commands/scan_session_shared.rs`
+  会话扫描复用查询与结构转换逻辑。
+- `src-tauri/src/commands/scan_shared.rs`
+  扫描链路通用结构、路径与排序辅助逻辑。
 - `src-tauri/src/commands/session.rs`
   会话 CRUD、置顶命令。
 - `src-tauri/src/commands/settings.rs`
@@ -152,6 +172,8 @@
   任务 CRUD、排序、重试、批量更新、拆分会话存储命令。
 - `src-tauri/src/commands/task_execution.rs`
   任务执行日志、执行结果、计划执行进度命令。
+- `src-tauri/src/commands/unattended.rs`
+  无人值守渠道、账号、线程、事件、运行时管理与远程消息发送命令。
 - `src-tauri/src/commands/window.rs`
   多窗口与会话锁定相关命令。
 

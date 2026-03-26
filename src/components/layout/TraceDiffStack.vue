@@ -612,6 +612,13 @@ const diffStats = computed(() => diffOps.value.reduce((stats, op) => {
   border-color: rgba(71, 85, 105, 0.55);
 }
 
+:global([data-theme='dark']) .trace-diff-stack__summary-action,
+:global(.dark) .trace-diff-stack__summary-action {
+  border-color: rgba(71, 85, 105, 0.52);
+  background: rgba(30, 41, 59, 0.92);
+  color: #cbd5e1;
+}
+
 :global([data-theme='dark']) .trace-diff-stack__summary-chip--removed,
 :global(.dark) .trace-diff-stack__summary-chip--removed {
   color: #fecaca;

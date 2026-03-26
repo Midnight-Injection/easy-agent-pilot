@@ -865,6 +865,18 @@ const isAssistantFormOnly = computed(() => {
 }
 
 .message-bubble__trace-rail {
+  --trace-tile-count-bg: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --trace-tile-count-text: color-mix(in srgb, var(--color-primary) 72%, var(--color-text-primary) 28%);
+  --trace-tile-glow: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  --trace-tile-surface-top: color-mix(in srgb, var(--color-bg-elevated) 82%, white 18%);
+  --trace-tile-surface-bottom: color-mix(in srgb, var(--color-bg-secondary) 94%, var(--color-bg-elevated) 6%);
+  --trace-tile-border: color-mix(in srgb, var(--color-border) 58%, transparent);
+  --trace-tile-shadow: var(--shadow-md);
+  --trace-tile-hover-border: color-mix(in srgb, var(--color-primary) 42%, var(--color-border) 58%);
+  --trace-tile-hover-shadow: var(--shadow-lg);
+  --trace-tile-icon-bg: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  --trace-tile-icon-color: color-mix(in srgb, var(--color-primary) 84%, #1d4ed8 16%);
+  --trace-tile-meta-border: color-mix(in srgb, var(--color-border) 44%, transparent);
   width: fit-content;
   min-width: var(--message-min-width);
   max-width: min(100%, var(--message-trace-max-width));
@@ -900,8 +912,8 @@ const isAssistantFormOnly = computed(() => {
   height: 22px;
   padding: 0 7px;
   border-radius: 999px;
-  background: rgba(59, 130, 246, 0.1);
-  color: #1d4ed8;
+  background: var(--trace-tile-count-bg);
+  color: var(--trace-tile-count-text);
   font-size: 11px;
   font-weight: 700;
 }
@@ -918,27 +930,6 @@ const isAssistantFormOnly = computed(() => {
 .message-bubble__trace-strip-wrap {
   position: relative;
   width: 100%;
-}
-
-.message-bubble__trace-strip-wrap::before,
-.message-bubble__trace-strip-wrap::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 6px;
-  width: 18px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.message-bubble__trace-strip-wrap::before {
-  left: 0;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
-}
-
-.message-bubble__trace-strip-wrap::after {
-  right: 0;
-  background: linear-gradient(270deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
 }
 
 .message-bubble__trace-strip::-webkit-scrollbar {
@@ -964,15 +955,15 @@ const isAssistantFormOnly = computed(() => {
   padding: 10px 10px 12px;
   gap: 8px;
   background:
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 42%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.92)),
-    var(--color-bg-secondary);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+    radial-gradient(circle at top right, var(--trace-tile-glow), transparent 44%),
+    linear-gradient(180deg, var(--trace-tile-surface-top), var(--trace-tile-surface-bottom));
+  border: 1px solid var(--trace-tile-border);
   border-radius: 18px;
   text-align: left;
   cursor: pointer;
   scroll-snap-align: start;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  box-shadow: var(--trace-tile-shadow);
+  overflow: hidden;
   transition: transform var(--transition-fast) var(--easing-default), border-color var(--transition-fast) var(--easing-default), box-shadow var(--transition-fast) var(--easing-default), background var(--transition-fast) var(--easing-default);
 }
 
@@ -1001,8 +992,8 @@ const isAssistantFormOnly = computed(() => {
 
 .message-bubble__trace-tile:hover {
   transform: translateY(-2px);
-  border-color: rgba(59, 130, 246, 0.28);
-  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.1);
+  border-color: var(--trace-tile-hover-border);
+  box-shadow: var(--trace-tile-hover-shadow);
 }
 
 .message-bubble__trace-tile-top {
@@ -1019,8 +1010,8 @@ const isAssistantFormOnly = computed(() => {
   width: 28px;
   height: 28px;
   border-radius: 10px;
-  background: rgba(59, 130, 246, 0.1);
-  color: #2563eb;
+  background: var(--trace-tile-icon-bg);
+  color: var(--trace-tile-icon-color);
 }
 
 .message-bubble__trace-tile-name {
@@ -1029,10 +1020,11 @@ const isAssistantFormOnly = computed(() => {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  font-family: var(--font-family-mono);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.4;
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
   color: var(--color-text-primary);
   word-break: break-word;
 }
@@ -1044,8 +1036,9 @@ const isAssistantFormOnly = computed(() => {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   font-size: 10px;
-  line-height: 1.4;
-  color: var(--color-text-tertiary);
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
   word-break: break-word;
 }
 
@@ -1055,10 +1048,13 @@ const isAssistantFormOnly = computed(() => {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  font-size: 10px;
+  font-family: var(--font-family-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--color-text-tertiary);
   padding-top: 6px;
-  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  border-top: 1px solid var(--trace-tile-meta-border);
 }
 
 .message-bubble__trace-tile-tag {
@@ -1069,66 +1065,24 @@ const isAssistantFormOnly = computed(() => {
   padding: 2px 6px;
   border-radius: var(--radius-full);
   font-size: 9px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 .message-bubble__trace-tile-tag--create {
-  color: #047857;
-  background: rgba(16, 185, 129, 0.14);
+  color: color-mix(in srgb, var(--color-success) 88%, var(--color-text-primary) 12%);
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
 }
 
 .message-bubble__trace-tile-tag--modify {
-  color: #1d4ed8;
-  background: rgba(59, 130, 246, 0.14);
+  color: color-mix(in srgb, var(--color-primary) 84%, var(--color-text-primary) 16%);
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
 }
 
 .message-bubble__trace-tile-tag--delete {
-  color: #b91c1c;
-  background: rgba(239, 68, 68, 0.14);
-}
-
-:global([data-theme='dark']) .message-bubble__trace-rail-count,
-:global(.dark) .message-bubble__trace-rail-count {
-  background: rgba(59, 130, 246, 0.18);
-  color: #bfdbfe;
-}
-
-:global([data-theme='dark']) .message-bubble__trace-tile,
-:global(.dark) .message-bubble__trace-tile {
-  background:
-    radial-gradient(circle at top right, rgba(96, 165, 250, 0.12), transparent 42%),
-    linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.92));
-  border-color: rgba(71, 85, 105, 0.64);
-  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.24);
-}
-
-:global([data-theme='dark']) .message-bubble__trace-strip-wrap::before,
-:global(.dark) .message-bubble__trace-strip-wrap::before {
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0));
-}
-
-:global([data-theme='dark']) .message-bubble__trace-strip-wrap::after,
-:global(.dark) .message-bubble__trace-strip-wrap::after {
-  background: linear-gradient(270deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0));
-}
-
-:global([data-theme='dark']) .message-bubble__trace-tile:hover,
-:global(.dark) .message-bubble__trace-tile:hover {
-  border-color: rgba(96, 165, 250, 0.4);
-  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.34);
-}
-
-:global([data-theme='dark']) .message-bubble__trace-tile-icon,
-:global(.dark) .message-bubble__trace-tile-icon {
-  background: rgba(59, 130, 246, 0.18);
-  color: #bfdbfe;
-}
-
-:global([data-theme='dark']) .message-bubble__trace-tile-meta,
-:global(.dark) .message-bubble__trace-tile-meta {
-  border-top-color: rgba(71, 85, 105, 0.48);
+  color: color-mix(in srgb, var(--color-error) 82%, var(--color-text-primary) 18%);
+  background: color-mix(in srgb, var(--color-error) 15%, transparent);
 }
 
 /* 元信息（时间戳和状态） */
