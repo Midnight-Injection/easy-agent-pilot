@@ -1,14 +1,17 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
-use qrcode::render::svg;
 use qrcode::QrCode;
+use qrcode::render::svg;
 use reqwest::{Client, RequestBuilder};
 use serde_json::json;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::logging::write_log;
 use crate::unattended::types::{WeixinLoginQrCode, WeixinLoginStatus, WeixinMessage};
+
+const API_LOG_TARGET: &str = "unattended.weixin.api";
 
 #[derive(Debug, Error)]
 pub enum WeixinApiError {
@@ -43,12 +46,39 @@ impl WeixinClient {
 
     pub async fn get_bot_qrcode(&self) -> Result<WeixinLoginQrCode, WeixinApiError> {
         let url = format!("{}/ilink/bot/get_bot_qrcode?bot_type=3", self.base_url);
-        let response = self.client.get(url).send().await?;
-        let body = response.text().await?;
+        write_log(
+            "INFO",
+            API_LOG_TARGET,
+            &format!("request get_bot_qrcode: url={url}"),
+        );
+        let response = self.client.get(&url).send().await.map_err(|error| {
+            write_log(
+                "ERROR",
+                API_LOG_TARGET,
+                &format!("get_bot_qrcode request failed: {error}"),
+            );
+            error
+        })?;
+        let body = response.text().await.map_err(|error| {
+            write_log(
+                "ERROR",
+                API_LOG_TARGET,
+                &format!("get_bot_qrcode response read failed: {error}"),
+            );
+            error
+        })?;
+        write_log(
+            "INFO",
+            API_LOG_TARGET,
+            &format!(
+                "get_bot_qrcode raw response: {}",
+                truncate_for_log(&body, 1600)
+            ),
+        );
         let json: serde_json::Value = serde_json::from_str(&body)?;
         let data = json.get("data").unwrap_or(&json);
 
-        Self::ensure_success(&json)?;
+        Self::ensure_success("get_bot_qrcode", &json)?;
 
         let qrcode = data
             .get("qrcode")
@@ -60,8 +90,8 @@ impl WeixinClient {
             .and_then(|value| value.as_str())
             .ok_or_else(|| WeixinApiError::Api("missing qrcode_img_content".to_string()))?;
 
-        let code = QrCode::new(qrcode_content)
-            .map_err(|error| WeixinApiError::Api(error.to_string()))?;
+        let code =
+            QrCode::new(qrcode_content).map_err(|error| WeixinApiError::Api(error.to_string()))?;
         let svg_string = code
             .render::<svg::Color>()
             .min_dimensions(256, 256)
@@ -73,33 +103,118 @@ impl WeixinClient {
             base64::engine::general_purpose::STANDARD.encode(svg_string)
         );
 
+        write_log(
+            "INFO",
+            API_LOG_TARGET,
+            &format!(
+                "get_bot_qrcode parsed success: qrcode={}, content_len={}, svg_len={}",
+                mask_secret(&qrcode),
+                qrcode_content.len(),
+                qrcode_img.len()
+            ),
+        );
+
         Ok(WeixinLoginQrCode { qrcode, qrcode_img })
     }
 
-    pub async fn get_qrcode_status(&self, qrcode: &str) -> Result<WeixinLoginStatus, WeixinApiError> {
-        let url = format!("{}/ilink/bot/get_qrcode_status?qrcode={}", self.base_url, qrcode);
+    pub async fn get_qrcode_status(
+        &self,
+        qrcode: &str,
+    ) -> Result<WeixinLoginStatus, WeixinApiError> {
+        let url = format!(
+            "{}/ilink/bot/get_qrcode_status?qrcode={}",
+            self.base_url, qrcode
+        );
+        write_log(
+            "INFO",
+            API_LOG_TARGET,
+            &format!(
+                "request get_qrcode_status: qrcode={}, url={}",
+                mask_secret(qrcode),
+                url
+            ),
+        );
         let response = self
             .client
-            .get(url)
+            .get(&url)
             .header("iLink-App-ClientVersion", "1")
             .send()
-            .await?;
-        let body = response.text().await?;
+            .await
+            .map_err(|error| {
+                write_log(
+                    "ERROR",
+                    API_LOG_TARGET,
+                    &format!(
+                        "get_qrcode_status request failed: qrcode={}, error={error}",
+                        mask_secret(qrcode)
+                    ),
+                );
+                error
+            })?;
+        let body = response.text().await.map_err(|error| {
+            write_log(
+                "ERROR",
+                API_LOG_TARGET,
+                &format!(
+                    "get_qrcode_status response read failed: qrcode={}, error={error}",
+                    mask_secret(qrcode)
+                ),
+            );
+            error
+        })?;
+        write_log(
+            "INFO",
+            API_LOG_TARGET,
+            &format!(
+                "get_qrcode_status raw response: qrcode={}, body={}",
+                mask_secret(qrcode),
+                truncate_for_log(&body, 1600)
+            ),
+        );
         let json: serde_json::Value = serde_json::from_str(&body)?;
         let data = json.get("data").unwrap_or(&json);
 
-        Self::ensure_success(&json)?;
+        Self::ensure_success("get_qrcode_status", &json)?;
 
-        Ok(WeixinLoginStatus {
-            status: Self::normalize_login_status(data
-                .get("status")
+        let status = WeixinLoginStatus {
+            status: Self::normalize_login_status(
+                data.get("status")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("waiting"),
+            ),
+            bot_token: data
+                .get("bot_token")
                 .and_then(|value| value.as_str())
-                .unwrap_or("waiting")),
-            bot_token: data.get("bot_token").and_then(|value| value.as_str()).map(str::to_string),
-            base_url: data.get("baseurl").and_then(|value| value.as_str()).map(str::to_string),
-            account_id: data.get("ilink_bot_id").and_then(|value| value.as_str()).map(str::to_string),
-            user_id: data.get("ilink_user_id").and_then(|value| value.as_str()).map(str::to_string),
-        })
+                .map(str::to_string),
+            base_url: data
+                .get("baseurl")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
+            account_id: data
+                .get("ilink_bot_id")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
+            user_id: data
+                .get("ilink_user_id")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
+        };
+
+        write_log(
+            "INFO",
+            API_LOG_TARGET,
+            &format!(
+                "get_qrcode_status normalized: qrcode={}, status={}, has_bot_token={}, has_base_url={}, account_id={}, user_id={}",
+                mask_secret(qrcode),
+                status.status,
+                status.bot_token.is_some(),
+                status.base_url.is_some(),
+                status.account_id.as_deref().unwrap_or(""),
+                status.user_id.as_deref().unwrap_or("")
+            ),
+        );
+
+        Ok(status)
     }
 
     pub async fn get_updates(
@@ -122,7 +237,7 @@ impl WeixinClient {
 
         let body = response.text().await?;
         let json: serde_json::Value = serde_json::from_str(&body)?;
-        Self::ensure_success(&json)?;
+        Self::ensure_success("get_updates", &json)?;
 
         let cursor = json
             .get("get_updates_buf")
@@ -131,7 +246,12 @@ impl WeixinClient {
         let messages = json
             .get("msgs")
             .and_then(|value| value.as_array())
-            .map(|items| items.iter().filter_map(Self::parse_update_message).collect::<Vec<_>>())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(Self::parse_update_message)
+                    .collect::<Vec<_>>()
+            })
             .unwrap_or_default();
 
         Ok((cursor, messages))
@@ -174,7 +294,7 @@ impl WeixinClient {
             .await?;
         let body = response.text().await?;
         let json: serde_json::Value = serde_json::from_str(&body)?;
-        Self::ensure_success(&json)?;
+        Self::ensure_success("send_text_message", &json)?;
 
         Ok(WeixinMessage {
             id: client_id,
@@ -187,7 +307,8 @@ impl WeixinClient {
     }
 
     fn authorized_request(&self, request: RequestBuilder, bot_token: &str) -> RequestBuilder {
-        let pseudo_uin = base64::engine::general_purpose::STANDARD.encode(Uuid::new_v4().as_bytes());
+        let pseudo_uin =
+            base64::engine::general_purpose::STANDARD.encode(Uuid::new_v4().as_bytes());
         request
             .header("Content-Type", "application/json")
             .header("AuthorizationType", "ilink_bot_token")
@@ -195,22 +316,35 @@ impl WeixinClient {
             .header("X-WECHAT-UIN", pseudo_uin)
     }
 
-    fn ensure_success(json: &serde_json::Value) -> Result<(), WeixinApiError> {
-        let ret = json.get("ret").and_then(|value| value.as_i64()).unwrap_or(0);
+    fn ensure_success(scene: &str, json: &serde_json::Value) -> Result<(), WeixinApiError> {
+        let ret = json
+            .get("ret")
+            .and_then(|value| value.as_i64())
+            .unwrap_or(0);
         if ret == 0 {
             return Ok(());
         }
 
+        let error_message = json
+            .get("errmsg")
+            .or_else(|| json.get("errMsg"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("request failed")
+            .to_string();
+        write_log(
+            "ERROR",
+            API_LOG_TARGET,
+            &format!(
+                "{scene} returned error: ret={ret}, message={}, payload={}",
+                error_message,
+                truncate_for_log(&json.to_string(), 1600)
+            ),
+        );
+
         match ret {
             -14 => Err(WeixinApiError::SessionExpired),
             -1 | -2 => Err(WeixinApiError::InvalidToken),
-            _ => Err(WeixinApiError::Api(
-                json.get("errmsg")
-                    .or_else(|| json.get("errMsg"))
-                    .and_then(|value| value.as_str())
-                    .unwrap_or("request failed")
-                    .to_string(),
-            )),
+            _ => Err(WeixinApiError::Api(error_message)),
         }
     }
 
@@ -266,4 +400,30 @@ impl WeixinClient {
             is_outgoing: false,
         })
     }
+}
+
+fn mask_secret(value: &str) -> String {
+    let char_count = value.chars().count();
+    if char_count <= 12 {
+        return "***".to_string();
+    }
+
+    let prefix: String = value.chars().take(8).collect();
+    let suffix: String = value
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}...{suffix}")
+}
+
+fn truncate_for_log(value: &str, max_chars: usize) -> String {
+    let mut truncated = value.chars().take(max_chars).collect::<String>();
+    if value.chars().count() > max_chars {
+        truncated.push_str("...(truncated)");
+    }
+    truncated
 }

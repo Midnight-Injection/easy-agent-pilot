@@ -278,10 +278,30 @@ export const useUnattendedStore = defineStore('unattended', () => {
   }
 
   async function createWeixinChannel(): Promise<void> {
+    const agentStore = useAgentStore()
+    const agentConfigStore = useAgentConfigStore()
+    if (agentStore.agents.length === 0) {
+      await agentStore.loadAgents()
+    }
+
+    const defaultAgent = agentStore.agents[0]
+    let defaultModelId: string | undefined
+    if (defaultAgent) {
+      const models = await agentConfigStore.ensureModelsConfigs(
+        defaultAgent.id,
+        inferAgentProvider(defaultAgent)
+      )
+      const enabledModels = models.filter(model => model.enabled)
+      const preferredModel = enabledModels.find(model => model.isDefault) || enabledModels[0]
+      defaultModelId = preferredModel?.modelId
+    }
+
     await unattendedService.createChannel({
       channelType: 'weixin',
       name: `微信监听 ${channels.value.filter(item => item.channelType === 'weixin').length + 1}`,
       enabled: true,
+      defaultAgentId: defaultAgent?.id,
+      defaultModelId,
       replyStyle: 'final_only',
       allowAllSenders: true
     })

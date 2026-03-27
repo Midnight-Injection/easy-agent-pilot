@@ -27,6 +27,7 @@ const { t } = useI18n()
 const modelOptionsByAgentId = ref<Record<string, SelectOption[]>>({})
 const logViewportRef = ref<HTMLElement | null>(null)
 const selectedChannelId = ref('')
+const syncingChannelAgentIds = ref<Set<string>>(new Set())
 
 const weixinChannels = computed(() =>
   unattendedStore.channels.filter(channel => channel.channelType === 'weixin')
@@ -52,13 +53,12 @@ const projectOptions = computed<SelectOption[]>(() => [
   }))
 ])
 
-const agentOptions = computed<SelectOption[]>(() => [
-  { value: '', label: t('settings.unattended.unboundAgent') },
-  ...agentStore.agents.map(agent => ({
+const agentOptions = computed<SelectOption[]>(() =>
+  agentStore.agents.map(agent => ({
     value: agent.id,
     label: `${agent.name} (${agent.type.toUpperCase()}${agent.provider ? ` / ${agent.provider}` : ''})`
   }))
-])
+)
 
 const selectedChannel = computed(() =>
   weixinChannels.value.find(channel => channel.id === selectedChannelId.value) || weixinChannels.value[0]
@@ -346,6 +346,59 @@ function getModelOptions(agentId?: string): SelectOption[] {
   ]
 }
 
+function resolvePreferredAgentId(agentId?: string): string {
+  if (agentId && agentStore.agents.some(item => item.id === agentId)) {
+    return agentId
+  }
+  return agentStore.agents[0]?.id || ''
+}
+
+function resolveSelectedAgentId(channel: UnattendedChannel): string {
+  return resolvePreferredAgentId(channel.defaultAgentId)
+}
+
+async function resolvePreferredModelId(agentId?: string): Promise<string> {
+  if (!agentId) {
+    return ''
+  }
+
+  await ensureAgentModelOptions(agentId)
+  const configuredModels = agentConfigStore.getModelsConfigs(agentId).filter(model => model.enabled)
+  const preferredModel = configuredModels.find(model => model.isDefault) || configuredModels[0]
+  return preferredModel?.modelId || ''
+}
+
+async function syncChannelDefaultAgents(): Promise<void> {
+  const preferredAgentId = agentStore.agents[0]?.id
+  if (!preferredAgentId) {
+    return
+  }
+
+  const channelsNeedingSync = weixinChannels.value.filter(channel =>
+    !channel.defaultAgentId
+    || !agentStore.agents.some(item => item.id === channel.defaultAgentId)
+  )
+
+  for (const channel of channelsNeedingSync) {
+    if (syncingChannelAgentIds.value.has(channel.id)) {
+      continue
+    }
+
+    syncingChannelAgentIds.value = new Set(syncingChannelAgentIds.value).add(channel.id)
+    try {
+      const preferredModelId = await resolvePreferredModelId(preferredAgentId)
+      await unattendedStore.updateChannel(channel.id, {
+        defaultAgentId: preferredAgentId,
+        defaultModelId: preferredModelId
+      })
+    } finally {
+      const nextSyncingIds = new Set(syncingChannelAgentIds.value)
+      nextSyncingIds.delete(channel.id)
+      syncingChannelAgentIds.value = nextSyncingIds
+    }
+  }
+}
+
 async function ensureAgentModelOptions(agentId?: string): Promise<void> {
   if (!agentId || modelOptionsByAgentId.value[agentId]) {
     return
@@ -403,12 +456,7 @@ async function handleDeleteChannel(channel: UnattendedChannel): Promise<void> {
 
 async function handleAgentChange(channel: UnattendedChannel, nextAgentId: string | number): Promise<void> {
   const agentId = String(nextAgentId)
-  await ensureAgentModelOptions(agentId || undefined)
-  const configuredModels = agentId
-    ? agentConfigStore.getModelsConfigs(agentId).filter(model => model.enabled)
-    : []
-  const defaultModel = configuredModels.find(model => model.isDefault)
-  const nextModelId = agentId ? defaultModel?.modelId || configuredModels[0]?.modelId || '' : ''
+  const nextModelId = await resolvePreferredModelId(agentId)
   await unattendedStore.updateChannel(channel.id, {
     defaultAgentId: agentId,
     defaultModelId: nextModelId
@@ -447,6 +495,7 @@ onMounted(async () => {
   }
   await unattendedStore.initialize()
   await preloadChannelModels()
+  await syncChannelDefaultAgents()
   await scrollLogsToLatest()
 })
 
@@ -466,6 +515,14 @@ watch(
   () => weixinChannels.value.map(channel => `${channel.id}:${channel.defaultAgentId || ''}`),
   () => {
     void preloadChannelModels()
+    void syncChannelDefaultAgents()
+  }
+)
+
+watch(
+  () => agentStore.agents.map(agent => agent.id).join('|'),
+  () => {
+    void syncChannelDefaultAgents()
   }
 )
 
@@ -557,7 +614,7 @@ watch(
               <p class="channel-card__summary">
                 {{ t('settings.unattended.channelSummary', {
                   project: resolveProjectName(channel.defaultProjectId),
-                  agent: resolveAgentName(channel.defaultAgentId)
+                  agent: resolveAgentName(resolveSelectedAgentId(channel) || undefined)
                 }) }}
               </p>
             </div>
@@ -613,8 +670,9 @@ watch(
               <label class="control-card">
                 <span class="control-card__label">{{ t('settings.unattended.defaultAgent') }}</span>
                 <EaSelect
-                  :model-value="channel.defaultAgentId || ''"
+                  :model-value="resolveSelectedAgentId(channel)"
                   :options="agentOptions"
+                  :disabled="agentOptions.length === 0"
                   @update:model-value="handleAgentChange(channel, $event)"
                 />
                 <small class="control-card__hint">
@@ -626,8 +684,8 @@ watch(
                 <span class="control-card__label">{{ t('settings.unattended.defaultModel') }}</span>
                 <EaSelect
                   :model-value="channel.defaultModelId || ''"
-                  :options="getModelOptions(channel.defaultAgentId)"
-                  :disabled="!channel.defaultAgentId"
+                  :options="getModelOptions(resolveSelectedAgentId(channel))"
+                  :disabled="!resolveSelectedAgentId(channel)"
                   @update:model-value="handleModelChange(channel.id, $event)"
                 />
                 <small class="control-card__hint">
@@ -787,6 +845,7 @@ watch(
 .channels-section,
 .log-panel {
   position: relative;
+  flex-shrink: 0;
   border: 1px solid var(--panel-line);
   border-radius: 26px;
   background: var(--panel-strong);
@@ -917,6 +976,7 @@ watch(
 
 .channels-section {
   padding: 18px;
+  height: auto;
   min-height: 308px;
 }
 
@@ -952,6 +1012,7 @@ watch(
 .channel-grid {
   display: grid;
   gap: 14px;
+  align-content: start;
 }
 
 .channel-card {
