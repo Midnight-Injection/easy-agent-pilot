@@ -43,6 +43,7 @@ pub mod skills_market;
 pub mod support;
 pub mod task;
 pub mod task_execution;
+pub mod terminal;
 pub mod unattended;
 pub mod window;
 

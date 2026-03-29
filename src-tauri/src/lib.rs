@@ -42,6 +42,7 @@ pub fn run() {
 
     builder
         .manage(unattended::runtime::UnattendedRuntimeState::default())
+        .manage(commands::terminal::TerminalState::default())
         .setup(|app| {
             // 初始化持久化目录
             if let Err(e) = commands::init_persistence_dirs() {
@@ -200,6 +201,11 @@ pub fn run() {
             commands::message::upload_session_images,
             commands::message::resolve_uploaded_image_preview,
             commands::message::delete_uploaded_image,
+            commands::terminal::create_terminal_session,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_change_directory,
+            commands::terminal::close_terminal_session,
             commands::mini_panel::ensure_mini_panel_state,
             commands::mini_panel::set_mini_panel_working_directory,
             commands::mini_panel::get_mini_panel_default_shortcut,

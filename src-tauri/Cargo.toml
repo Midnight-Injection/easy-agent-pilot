@@ -1,6 +1,6 @@
 [package]
 name = "easy-agent-pilot"
-version = "1.2.0"
+version = "1.2.1"
 description = "Easy Agent Pilot - AI Agent 管理工具"
 authors = ["you"]
 edition = "2021"
@@ -87,6 +87,7 @@ rmcp = { version = "0.17", features = [
 ] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+portable-pty = "0.9.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.59", features = [

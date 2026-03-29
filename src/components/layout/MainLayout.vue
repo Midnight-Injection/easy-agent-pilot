@@ -4,7 +4,7 @@ import { useLayoutStore, PANEL_LIMITS } from '@/stores/layout'
 import { useUIStore } from '@/stores/ui'
 import { useProjectStore } from '@/stores/project'
 import AppHeader from './AppHeader.vue'
-import AppFooter from './AppFooter.vue'
+import BottomTerminalPanel from './BottomTerminalPanel.vue'
 import SideNavRail from './SideNavRail.vue'
 import PanelContainer from './PanelContainer.vue'
 import SessionTabs from './SessionTabs.vue'
@@ -127,8 +127,7 @@ onUnmounted(() => {
         </template>
       </div>
 
-      <!-- 底部状态栏 -->
-      <AppFooter />
+      <BottomTerminalPanel />
     </template>
   </div>
 </template>

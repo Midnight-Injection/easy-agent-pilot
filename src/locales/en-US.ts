@@ -131,6 +131,22 @@ export default {
     pleaseWait: 'Please wait...',
     cancelling: 'Cancelling...'
   },
+  terminal: {
+    title: 'Terminal',
+    tabTitle: 'Terminal {count}',
+    newTab: 'New terminal',
+    collapse: 'Collapse terminal',
+    expand: 'Expand terminal',
+    projectLabel: 'Project',
+    pathLabel: 'Path',
+    unboundProject: 'No project bound',
+    noProjectPath: 'No working directory is bound yet',
+    emptyTitle: 'No terminal tabs yet',
+    emptyDescription: 'Open a terminal tab to run commands in the current project directory.',
+    suggestionHint: 'Tab to accept',
+    closedTitle: 'Terminal session ended',
+    closedHint: 'Close this tab or create a new one to continue.'
+  },
 
   // Token usage
   token: {
@@ -321,6 +337,9 @@ export default {
     memoryDismiss: 'Dismiss',
     memorySourceLibrary: 'Library',
     memorySourceRaw: 'Raw',
+    ghostHintImages: 'Images',
+    ghostHintFiles: '@ files',
+    ghostHintSend: '{shortcut} to send',
     queueImages: '{count} images',
     slash: {
       title: 'Slash Commands',

@@ -6,6 +6,7 @@ import { EaIcon } from '@/components/common'
 import CompressionConfirmDialog from '@/components/common/CompressionConfirmDialog.vue'
 import { useConversationComposer } from '@/composables/useConversationComposer'
 import { ConversationTodoPanel } from '@/components/message'
+import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
 import type { SlashCommandPanelType } from '@/services/slashCommands'
 import CdPathDropdown from './CdPathDropdown.vue'
@@ -36,6 +37,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const settingsStore = useSettingsStore()
 const themeStore = useThemeStore()
 const rootRef = ref<HTMLElement | null>(null)
 const isDragOver = ref(false)
@@ -142,6 +144,12 @@ const {
 
 const shouldUseRichTextOverlay = computed(() => (
   !inputText.value || parsedInputText.value.some(segment => segment.type !== 'text')
+))
+
+const composerSendShortcutHint = computed(() => (
+  settingsStore.settings.sendOnEnter
+    ? t('message.shortcutEnter')
+    : t('message.shortcutModifierEnter')
 ))
 
 function isWithinComposer(position: { x: number, y: number }) {
@@ -955,12 +963,32 @@ defineExpose({
           >
             {{ inputPlaceholder || t('message.inputPlaceholder', { shortcut: t('message.shortcutEnter') }) }}
           </span>
-          <span
+          <div
             v-if="isMainPanel && !inputText"
-            class="conversation-composer__hint"
+            class="conversation-composer__ghost-hints"
           >
-            {{ t('message.composerHint') }}
-          </span>
+            <span class="conversation-composer__ghost-hint-pill">
+              <EaIcon
+                name="image-up"
+                :size="11"
+              />
+              <span>{{ t('message.ghostHintImages') }}</span>
+            </span>
+            <span class="conversation-composer__ghost-hint-pill">
+              <EaIcon
+                name="at-sign"
+                :size="11"
+              />
+              <span>{{ t('message.ghostHintFiles') }}</span>
+            </span>
+            <span class="conversation-composer__ghost-hint-pill">
+              <EaIcon
+                name="corner-down-left"
+                :size="11"
+              />
+              <span>{{ t('message.ghostHintSend', { shortcut: composerSendShortcutHint }) }}</span>
+            </span>
+          </div>
         </div>
 
         <textarea
@@ -1522,7 +1550,7 @@ defineExpose({
 .conversation-composer--main .conversation-composer__render,
 .conversation-composer--main .conversation-composer__textarea {
   min-height: 160px;
-  padding: 14px 16px 10px;
+  padding: 14px 16px 48px;
   font-family: inherit;
   line-height: 1.6;
 }
@@ -1583,13 +1611,31 @@ defineExpose({
   color: var(--color-text-tertiary);
 }
 
-.conversation-composer__hint {
+.conversation-composer__ghost-hints {
   position: absolute;
-  bottom: 8px;
+  left: 14px;
   right: 14px;
-  font-size: 10px;
-  color: var(--color-text-quaternary);
+  bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   pointer-events: none;
+}
+
+.conversation-composer__ghost-hint-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  background: color-mix(in srgb, var(--color-bg-secondary) 84%, white);
+  color: var(--color-text-tertiary);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .conversation-composer__inline-note {
@@ -2244,6 +2290,14 @@ defineExpose({
 :global([data-theme='dark']) .conversation-composer__memory-empty-hint,
 :global(.dark) .conversation-composer__memory-empty-hint,
 .conversation-composer--dark .conversation-composer__memory-empty-hint {
+  color: #94a3b8;
+}
+
+:global([data-theme='dark']) .conversation-composer__ghost-hint-pill,
+:global(.dark) .conversation-composer__ghost-hint-pill,
+.conversation-composer--dark .conversation-composer__ghost-hint-pill {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.58);
   color: #94a3b8;
 }
 

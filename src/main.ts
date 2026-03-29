@@ -6,6 +6,7 @@ import i18n from './i18n'
 
 // 导入全局样式
 import './styles/base.css'
+import '@xterm/xterm/css/xterm.css'
 
 // 初始化日志过滤器，过滤掉第三方库的警告
 import { initLogger } from './utils/logger'

@@ -118,7 +118,7 @@ describe('useAppUpdateStore', () => {
     await appUpdateStore.__setAdapterFactoryForTesting(() => createMockUpdaterAdapter({
       currentVersion: '1.1.0',
       availableUpdate: {
-        version: '1.2.0',
+        version: '1.2.1',
         publishedAt: '2026-03-22T12:00:00Z',
         notes: 'Regression update'
       }
@@ -127,7 +127,7 @@ describe('useAppUpdateStore', () => {
     await appUpdateStore.checkForUpdates()
 
     expect(appUpdateStore.status).toBe('available')
-    expect(appUpdateStore.availableUpdate?.version).toBe('1.2.0')
+    expect(appUpdateStore.availableUpdate?.version).toBe('1.2.1')
     expect(appUpdateStore.availableUpdate?.notes).toBe('Regression update')
   })
 
@@ -138,7 +138,7 @@ describe('useAppUpdateStore', () => {
     await appUpdateStore.__setAdapterFactoryForTesting(() => createMockUpdaterAdapter({
       currentVersion: '1.1.0',
       availableUpdate: {
-        version: '1.2.0'
+        version: '1.2.1'
       },
       relaunchAfterInstall: true
     }))
@@ -174,7 +174,7 @@ describe('useAppUpdateStore', () => {
     await appUpdateStore.__setAdapterFactoryForTesting(() => createMockUpdaterAdapter({
       currentVersion: '1.1.0',
       availableUpdate: {
-        version: '1.2.0'
+        version: '1.2.1'
       },
       installError: 'Mock install failure'
     }))

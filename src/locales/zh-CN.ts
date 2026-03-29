@@ -64,6 +64,23 @@ const zhCN = {
     hoursAgo: '{n} 小时前',
     daysAgo: '{n} 天前'
   },
+  terminal: {
+    ...enUS.terminal,
+    title: '终端',
+    tabTitle: '终端 {count}',
+    newTab: '新建终端',
+    collapse: '收起终端',
+    expand: '展开终端',
+    projectLabel: '项目',
+    pathLabel: '路径',
+    unboundProject: '未绑定项目',
+    noProjectPath: '当前还没有绑定工作目录',
+    emptyTitle: '还没有终端标签',
+    emptyDescription: '打开一个终端标签后，就可以直接在当前项目目录下执行命令。',
+    suggestionHint: '按 Tab 采纳建议',
+    closedTitle: '终端会话已结束',
+    closedHint: '关闭当前标签，或新建一个终端继续使用。'
+  },
   token: {
     ...enUS.token,
     used: '已用',
@@ -233,6 +250,9 @@ const zhCN = {
     memoryDismiss: '忽略',
     memorySourceLibrary: '记忆库',
     memorySourceRaw: '原始记忆',
+    ghostHintImages: '图片',
+    ghostHintFiles: '@ 引用文件',
+    ghostHintSend: '{shortcut} 发送',
     queueImages: '{count} 张图片',
     slash: {
       title: '斜杠命令',

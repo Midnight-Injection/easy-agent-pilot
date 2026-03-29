@@ -1,7 +1,7 @@
 // 布局组件导出
 export { default as MainLayout } from './MainLayout.vue'
 export { default as AppHeader } from './AppHeader.vue'
-export { default as AppFooter } from './AppFooter.vue'
+export { default as BottomTerminalPanel } from './BottomTerminalPanel.vue'
 export { default as PanelHeader } from './PanelHeader.vue'
 export { default as PanelResizer } from './PanelResizer.vue'
 export { default as ProjectPanel } from './ProjectPanel.vue'

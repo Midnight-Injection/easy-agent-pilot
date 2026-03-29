@@ -39,8 +39,6 @@ export const PANEL_LIMITS = {
 export const RESIZER_WIDTH = 4 // 拖拽器宽度
 export const MESSAGE_AREA_MIN_WIDTH = 400 // 消息区域最小宽度
 export const HEADER_HEIGHT = 56
-export const FOOTER_HEIGHT = 48
-
 // 项目 Tab 状态存储 key
 const PROJECT_TAB_STATES_KEY = 'ea-project-tab-states'
 // 智能体类型筛选存储 key
