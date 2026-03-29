@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { EaButton, EaIcon } from '@/components/common'
+import { useSessionFileReference } from '@/composables'
+import { createFileLineRangeMention } from '@/utils/composerFileMention'
 import { useFileEditorStore } from '../stores/fileEditor'
 import { useSettingsStore } from '@/stores/settings'
 import MonacoCodeEditor from './MonacoCodeEditor.vue'
 
 const fileEditorStore = useFileEditorStore()
 const settingsStore = useSettingsStore()
+const { sendFileReferencesToSession } = useSessionFileReference()
 
 const languageNameMap: Record<string, string> = {
   plaintext: 'Plain Text',
@@ -48,6 +51,25 @@ const handleSave = async (): Promise<void> => {
 
 const handleBack = (): void => {
   fileEditorStore.switchBackToChat()
+}
+
+const handleSendSelectionToSession = async (payload: { startLine: number; endLine: number }): Promise<void> => {
+  if (
+    !fileEditorStore.activeProjectId
+    || !fileEditorStore.activeFilePath
+  ) {
+    return
+  }
+
+  await sendFileReferencesToSession({
+    sourceProjectId: fileEditorStore.activeProjectId,
+    mentions: [createFileLineRangeMention({
+      fullPath: fileEditorStore.activeFilePath,
+      fileName: fileEditorStore.fileName,
+      startLine: payload.startLine,
+      endLine: payload.endLine
+    })]
+  })
 }
 </script>
 
@@ -131,6 +153,8 @@ const handleBack = (): void => {
         :performance-mode="fileEditorStore.isLargeFile ? 'large' : 'default'"
         :read-only="fileEditorStore.isLoading"
         @update:model-value="fileEditorStore.updateContent"
+        @selection-change="fileEditorStore.updateSelection"
+        @send-selection="handleSendSelectionToSession"
         @save-shortcut="handleSave"
       />
     </div>

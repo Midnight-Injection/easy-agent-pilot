@@ -1,25 +1,31 @@
 <script setup lang="ts">
 /**
- * 文件树核心组件
- * 支持拖拽移动、复选框多选、右键菜单、懒加载、重命名
+ * 文件树核心组件。
+ * 负责懒加载、右键菜单、新建/重命名/删除、Shift 范围选择、多文件拖拽移动，以及把文件引用发送到会话输入框。
  */
 
-import { ref, h, watch, onMounted, onUnmounted } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NTree, TreeOption } from 'naive-ui'
+import { NTree, type TreeOption } from 'naive-ui'
 import { invoke } from '@tauri-apps/api/core'
 import type { UnwatchFn } from '@tauri-apps/plugin-fs'
-import { EaIcon, EaButton } from '@/components/common'
+import { EaButton, EaIcon } from '@/components/common'
 import type { FileTreeNode } from '@/stores/project'
+import { useSessionFileReference } from '@/composables'
+import { createComposerFileMention } from '@/utils/composerFileMention'
 import { resolveFileIcon } from '@/utils/fileIcon'
 import { startFsWatcher } from '@/utils/fsWatcher'
 import { useFileOperations } from './composables/useFileOperations'
 import FileTreeContextMenu from './FileTreeContextMenu.vue'
+import FileTreeCreateDialog from './FileTreeCreateDialog.vue'
 import FileTreeRenameDialog from './FileTreeRenameDialog.vue'
-import type { FileTreeNodeData, ContextMenuContext } from './types'
+import type { ContextMenuContext, CreateEntryType, FileTreeNodeData } from './types'
+
+const DRAG_AUTO_EXPAND_DELAY_MS = 420
 
 const { t } = useI18n()
-const { renameFile, deleteFile, batchDeleteFiles, moveFile, loading } = useFileOperations()
+const { createEntry, renameFile, deleteFile, batchDeleteFiles, moveFile, loading } = useFileOperations()
+const { sendFileReferencesToSession } = useSessionFileReference()
 
 interface Props {
   projectId: string
@@ -32,41 +38,174 @@ const emit = defineEmits<{
   fileSelect: [path: string]
 }>()
 
-/// 树数据
+const rootRef = ref<HTMLElement | null>(null)
 const treeData = ref<TreeOption[]>([])
-
-/// 展开的节点 keys
 const expandedKeys = ref<string[]>([])
-
-/// 选中的节点 keys（复选框）
-const checkedKeys = ref<string[]>([])
-
-/// 当前选中的节点（单选）
-const selectedKey = ref<string | null>(null)
-
-/// 右键菜单上下文
+const selectedPaths = ref<string[]>([])
+const activePath = ref<string | null>(null)
+const anchorPath = ref<string | null>(null)
 const contextMenuContext = ref<ContextMenuContext | null>(null)
-
-/// 重命名对话框
 const renameDialogVisible = ref(false)
 const renameNode = ref<FileTreeNodeData | null>(null)
-
-/// 删除确认对话框
+const createDialogVisible = ref(false)
+const createTargetNode = ref<FileTreeNodeData | null>(null)
+const createEntryType = ref<CreateEntryType>('file')
 const deleteConfirmVisible = ref(false)
 const deleteNode = ref<FileTreeNodeData | null>(null)
-
-/// 批量删除确认对话框
 const batchDeleteConfirmVisible = ref(false)
-
-/// 加载状态
 const isLoading = ref(false)
 const pendingReload = ref(false)
 const unwatchFileTree = ref<UnwatchFn | null>(null)
 const reloadTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const directoryChildrenCache = ref<Map<string, FileTreeNode[]>>(new Map())
+const dragPaths = ref<string[]>([])
+const dragOverKey = ref<string | null>(null)
+const dragExpandTargetKey = ref<string | null>(null)
+const dragExpandTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
-/// 加载根目录文件树
-const loadTreeData = async () => {
+const rootContextNode = computed<FileTreeNodeData>(() => ({
+  key: props.projectPath,
+  label: extractProjectLabel(props.projectPath),
+  nodeType: 'directory',
+  projectId: props.projectId,
+  isLeaf: false,
+  isRoot: true
+}))
+
+const selectedActionPaths = computed(() => dedupePaths(selectedPaths.value))
+const selectedPathSet = computed(() => new Set(selectedPaths.value))
+
+function extractProjectLabel(projectPath: string): string {
+  const normalized = projectPath.replace(/[\\/]+$/, '').replace(/\\/g, '/')
+  const segments = normalized.split('/').filter(Boolean)
+  return segments[segments.length - 1] || normalized || projectPath
+}
+
+function normalizeComparablePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+function isAncestorPath(ancestor: string, candidate: string): boolean {
+  const normalizedAncestor = normalizeComparablePath(ancestor)
+  const normalizedCandidate = normalizeComparablePath(candidate)
+  return normalizedCandidate.startsWith(`${normalizedAncestor}/`)
+}
+
+function dedupePaths(paths: string[]): string[] {
+  const uniquePaths = Array.from(new Set(paths))
+    .filter(Boolean)
+    .sort((left, right) => normalizeComparablePath(left).length - normalizeComparablePath(right).length)
+
+  return uniquePaths.filter((path, index) =>
+    !uniquePaths.slice(0, index).some(existing => isAncestorPath(existing, path))
+  )
+}
+
+function buildNodeData(node: TreeOption, extra: Partial<FileTreeNodeData> = {}): FileTreeNodeData {
+  return {
+    key: node.key as string,
+    label: node.label as string,
+    nodeType: (node as { nodeType?: 'file' | 'directory' }).nodeType ?? 'file',
+    extension: (node as { extension?: string }).extension,
+    projectId: props.projectId,
+    isLeaf: Boolean(node.isLeaf),
+    ...extra
+  }
+}
+
+function resolveParentPath(node: FileTreeNodeData): string {
+  if (node.isRoot || node.nodeType === 'directory') {
+    return node.key
+  }
+
+  const normalized = node.key.replace(/[\\/]+$/, '')
+  const separatorIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  return separatorIndex >= 0 ? normalized.slice(0, separatorIndex) : props.projectPath
+}
+
+function resolveActionPaths(node: FileTreeNodeData): string[] {
+  if (selectedActionPaths.value.length > 1 && selectedPathSet.value.has(node.key)) {
+    return selectedActionPaths.value
+  }
+
+  return dedupePaths([node.key])
+}
+
+function clearDragState(): void {
+  dragPaths.value = []
+  dragOverKey.value = null
+  dragExpandTargetKey.value = null
+
+  if (dragExpandTimer.value) {
+    clearTimeout(dragExpandTimer.value)
+    dragExpandTimer.value = null
+  }
+}
+
+function clearSelectionState(): void {
+  selectedPaths.value = []
+  activePath.value = null
+  anchorPath.value = null
+}
+
+function setSingleSelection(path: string): void {
+  selectedPaths.value = [path]
+  activePath.value = path
+  anchorPath.value = path
+}
+
+function flattenVisiblePaths(nodes: TreeOption[]): string[] {
+  const expandedSet = new Set(expandedKeys.value)
+  const visiblePaths: string[] = []
+
+  const walk = (items: TreeOption[]) => {
+    items.forEach((item) => {
+      const path = String(item.key)
+      visiblePaths.push(path)
+
+      if (item.children?.length && expandedSet.has(path)) {
+        walk(item.children as TreeOption[])
+      }
+    })
+  }
+
+  walk(nodes)
+  return visiblePaths
+}
+
+function applyRangeSelection(targetPath: string): void {
+  const currentAnchor = anchorPath.value
+  if (!currentAnchor) {
+    setSingleSelection(targetPath)
+    return
+  }
+
+  const visiblePaths = flattenVisiblePaths(treeData.value)
+  const anchorIndex = visiblePaths.indexOf(currentAnchor)
+  const targetIndex = visiblePaths.indexOf(targetPath)
+
+  if (anchorIndex === -1 || targetIndex === -1) {
+    setSingleSelection(targetPath)
+    return
+  }
+
+  const [start, end] = anchorIndex <= targetIndex
+    ? [anchorIndex, targetIndex]
+    : [targetIndex, anchorIndex]
+
+  selectedPaths.value = visiblePaths.slice(start, end + 1)
+  activePath.value = targetPath
+}
+
+function openFileIfNeeded(node: FileTreeNodeData): void {
+  if (node.nodeType !== 'file') {
+    return
+  }
+
+  emit('fileSelect', node.key)
+}
+
+async function loadTreeData() {
   if (isLoading.value) {
     pendingReload.value = true
     return
@@ -77,8 +216,18 @@ const loadTreeData = async () => {
     const result = await invoke<FileTreeNode[]>('list_project_files', {
       projectPath: props.projectPath
     })
-    treeData.value = convertToTreeOptions(result, props.projectId)
+    treeData.value = convertToTreeOptions(result)
     await restoreExpandedDirectories()
+
+    selectedPaths.value = selectedPaths.value.filter(path => !!findTreeNodeByKey(treeData.value, path))
+
+    if (activePath.value && !findTreeNodeByKey(treeData.value, activePath.value)) {
+      activePath.value = null
+    }
+
+    if (anchorPath.value && !findTreeNodeByKey(treeData.value, anchorPath.value)) {
+      anchorPath.value = null
+    }
   } catch (error) {
     console.error('Failed to load file tree:', error)
   } finally {
@@ -91,14 +240,15 @@ const loadTreeData = async () => {
   }
 }
 
-const getPathDepth = (path: string): number => path.split(/[\\/]/).filter(Boolean).length
+function getPathDepth(path: string): number {
+  return path.split(/[\\/]/).filter(Boolean).length
+}
 
-const restoreExpandedDirectories = async () => {
+async function restoreExpandedDirectories() {
   if (expandedKeys.value.length === 0) {
     return
   }
 
-  // 文件树重载后需要恢复用户已展开的目录，否则大项目里每次刷新都会丢失上下文。
   const sortedExpandedKeys = [...expandedKeys.value].sort((left, right) => getPathDepth(left) - getPathDepth(right))
 
   for (const key of sortedExpandedKeys) {
@@ -115,7 +265,7 @@ const restoreExpandedDirectories = async () => {
   }
 }
 
-const scheduleTreeReload = () => {
+function scheduleTreeReload() {
   if (reloadTimer.value) {
     clearTimeout(reloadTimer.value)
   }
@@ -126,12 +276,14 @@ const scheduleTreeReload = () => {
   }, 250)
 }
 
-const cloneTreeNodes = (nodes: FileTreeNode[]): FileTreeNode[] => nodes.map(node => ({
-  ...node,
-  children: node.children ? cloneTreeNodes(node.children) : undefined
-}))
+function cloneTreeNodes(nodes: FileTreeNode[]): FileTreeNode[] {
+  return nodes.map(node => ({
+    ...node,
+    children: node.children ? cloneTreeNodes(node.children) : undefined
+  }))
+}
 
-const stopFileWatcher = () => {
+function stopFileWatcher() {
   if (reloadTimer.value) {
     clearTimeout(reloadTimer.value)
     reloadTimer.value = null
@@ -143,7 +295,7 @@ const stopFileWatcher = () => {
   }
 }
 
-const startFileWatcher = async (projectPath: string) => {
+async function startFileWatcher(projectPath: string) {
   stopFileWatcher()
 
   try {
@@ -162,8 +314,7 @@ const startFileWatcher = async (projectPath: string) => {
   }
 }
 
-/// 将 FileTreeNode 转换为 Naive UI TreeOption
-const convertToTreeOptions = (nodes: FileTreeNode[], projectId: string): TreeOption[] => {
+function convertToTreeOptions(nodes: FileTreeNode[]): TreeOption[] {
   return nodes.map(node => {
     const isFile = node.nodeType === 'file'
     const option: TreeOption = {
@@ -172,23 +323,22 @@ const convertToTreeOptions = (nodes: FileTreeNode[], projectId: string): TreeOpt
       isLeaf: isFile,
       nodeType: node.nodeType,
       extension: node.extension,
-      projectId
+      projectId: props.projectId
     }
+
     if (!isFile) {
-      // 先复用缓存子树，让监听刷新时的展开目录不至于闪回空数组。
       const cachedChildren = directoryChildrenCache.value.get(node.path)
-      option.children = cachedChildren
-        ? convertToTreeOptions(cachedChildren, projectId)
-        : []
+      option.children = cachedChildren ? convertToTreeOptions(cachedChildren) : []
     }
-    return option as TreeOption
+
+    return option
   })
 }
 
-const findTreeNodeByKey = (nodes: TreeOption[], key: string): (TreeOption & { nodeType?: string }) | null => {
+function findTreeNodeByKey(nodes: TreeOption[], key: string): (TreeOption & { nodeType?: string }) | null {
   for (const node of nodes) {
     if (String(node.key) === key) {
-      return node as (TreeOption & { nodeType?: string })
+      return node as TreeOption & { nodeType?: string }
     }
     if (node.children?.length) {
       const matched = findTreeNodeByKey(node.children as TreeOption[], key)
@@ -197,17 +347,16 @@ const findTreeNodeByKey = (nodes: TreeOption[], key: string): (TreeOption & { no
       }
     }
   }
+
   return null
 }
 
-const loadChildrenForNode = async (node: TreeOption, forceRefresh = true): Promise<void> => {
+async function loadChildrenForNode(node: TreeOption, forceRefresh = true): Promise<void> {
   const nodePath = node.key as string
   const cachedChildren = directoryChildrenCache.value.get(nodePath)
   const children = !forceRefresh && cachedChildren
     ? cachedChildren
-    : await invoke<FileTreeNode[]>('load_directory_children', {
-        dirPath: nodePath
-      })
+    : await invoke<FileTreeNode[]>('load_directory_children', { dirPath: nodePath })
 
   if (forceRefresh || !cachedChildren) {
     const nextCache = new Map(directoryChildrenCache.value)
@@ -215,7 +364,7 @@ const loadChildrenForNode = async (node: TreeOption, forceRefresh = true): Promi
     directoryChildrenCache.value = nextCache
   }
 
-  const newChildren = children.map(child => {
+  node.children = children.map(child => {
     const isFile = child.nodeType === 'file'
     const option: TreeOption = {
       key: child.path,
@@ -230,12 +379,27 @@ const loadChildrenForNode = async (node: TreeOption, forceRefresh = true): Promi
     }
     return option
   })
-
-  node.children = newChildren
 }
 
-/// 处理展开状态变化
-const handleExpandChange = async (keys: string[]) => {
+async function ensureExpanded(path: string): Promise<void> {
+  if (expandedKeys.value.includes(path)) {
+    return
+  }
+
+  expandedKeys.value = [...expandedKeys.value, path]
+  const node = findTreeNodeByKey(treeData.value, path)
+  if (!node || node.nodeType !== 'directory') {
+    return
+  }
+
+  try {
+    await loadChildrenForNode(node)
+  } catch (error) {
+    console.error('Failed to load node children on auto expand:', error)
+  }
+}
+
+async function handleExpandChange(keys: string[]) {
   const previousKeys = new Set(expandedKeys.value)
   expandedKeys.value = keys
 
@@ -251,7 +415,6 @@ const handleExpandChange = async (keys: string[]) => {
 
   await Promise.all(targetNodes.map(async node => {
     try {
-      // 每次展开目录都实时查询，避免懒加载结果缓存
       await loadChildrenForNode(node)
     } catch (error) {
       console.error('Failed to refresh node children on expand:', error)
@@ -259,144 +422,323 @@ const handleExpandChange = async (keys: string[]) => {
   }))
 }
 
-/// 处理复选框变化
-const handleCheckChange = (keys: string[]) => {
-  checkedKeys.value = keys
-}
+function handleNodeClick(event: MouseEvent, node: TreeOption) {
+  rootRef.value?.focus()
+  const nodeData = buildNodeData(node)
 
-/// 处理选中变化
-const handleSelectChange = (keys: Array<string | number>, options: Array<TreeOption | null>) => {
-  if (keys.length === 0) {
-    selectedKey.value = null
-    return
+  if (event.shiftKey) {
+    applyRangeSelection(nodeData.key)
+  } else {
+    if (selectedPaths.value.length === 1 && activePath.value === nodeData.key) {
+      clearSelectionState()
+      return
+    }
+
+    setSingleSelection(nodeData.key)
   }
 
-  const selectedPath = String(keys[0])
-  selectedKey.value = selectedPath
-
-  const selectedNode = (options[0] ?? null) as (TreeOption & { nodeType?: string }) | null
-  if (selectedNode?.nodeType !== 'file' && selectedNode?.isLeaf === false) {
-    return
-  }
-
-  emit('fileSelect', selectedPath)
+  openFileIfNeeded(nodeData)
 }
 
-/// 处理右键菜单
-const handleContextMenu = (e: MouseEvent, node: TreeOption) => {
-  e.preventDefault()
-  e.stopPropagation()
+function handleContextMenu(event: MouseEvent, node: TreeOption) {
+  event.preventDefault()
+  event.stopPropagation()
+  rootRef.value?.focus()
 
-  const nodeData: FileTreeNodeData = {
-    key: node.key as string,
-    label: node.label as string,
-    nodeType: (node as any).nodeType as 'file' | 'directory',
-    extension: (node as any).extension,
-    projectId: props.projectId,
-    isLeaf: node.isLeaf || false
+  const nodePath = String(node.key)
+  if (!selectedPathSet.value.has(nodePath)) {
+    setSingleSelection(nodePath)
+  } else {
+    activePath.value = nodePath
   }
 
   contextMenuContext.value = {
-    node: nodeData,
-    position: { x: e.clientX, y: e.clientY }
+    node: buildNodeData(node),
+    position: { x: event.clientX, y: event.clientY }
   }
 }
 
-/// 关闭右键菜单
-const closeContextMenu = () => {
+function handleTreeRootContextMenu(event: MouseEvent) {
+  const target = event.target
+  if (target instanceof Element && target.closest('.n-tree-node')) {
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  rootRef.value?.focus()
+  contextMenuContext.value = {
+    node: rootContextNode.value,
+    position: { x: event.clientX, y: event.clientY }
+  }
+}
+
+function handleRootClick(event: MouseEvent) {
+  rootRef.value?.focus()
+
+  const target = event.target
+  if (target instanceof Element && target.closest('.n-tree-node')) {
+    return
+  }
+
+  clearSelectionState()
+  closeContextMenu()
+}
+
+function closeContextMenu() {
   contextMenuContext.value = null
 }
 
-/// 处理重命名（从右键菜单触发）
-const handleRename = (node: FileTreeNodeData) => {
+function handleRename(node: FileTreeNodeData) {
   renameNode.value = node
   renameDialogVisible.value = true
 }
 
-/// 确认重命名
-const confirmRename = async (oldPath: string, newName: string) => {
+async function confirmRename(oldPath: string, newName: string) {
   const result = await renameFile(oldPath, newName)
   if (result?.success) {
     await loadTreeData()
   }
 }
 
-/// 处理删除（从右键菜单触发）
-const handleDelete = (node: FileTreeNodeData) => {
+function handleCreateFile(node: FileTreeNodeData) {
+  createTargetNode.value = node
+  createEntryType.value = 'file'
+  createDialogVisible.value = true
+}
+
+function handleCreateFolder(node: FileTreeNodeData) {
+  createTargetNode.value = node
+  createEntryType.value = 'directory'
+  createDialogVisible.value = true
+}
+
+async function confirmCreate(node: FileTreeNodeData, name: string, entryType: CreateEntryType) {
+  const parentPath = resolveParentPath(node)
+  const result = await createEntry({
+    parentPath,
+    name,
+    entryType
+  })
+
+  if (result?.success) {
+    if (!node.isRoot && node.nodeType === 'directory') {
+      await ensureExpanded(node.key)
+    }
+    await loadTreeData()
+  }
+}
+
+function handleDelete(node: FileTreeNodeData) {
+  const actionPaths = resolveActionPaths(node)
+  if (actionPaths.length > 1) {
+    batchDeleteConfirmVisible.value = true
+    return
+  }
+
   deleteNode.value = node
   deleteConfirmVisible.value = true
 }
 
-/// 确认删除单个文件
-const confirmDelete = async () => {
-  if (!deleteNode.value) return
+function handleDeleteSelection() {
+  const actionPaths = selectedActionPaths.value
+  if (actionPaths.length === 0) {
+    return
+  }
+
+  if (actionPaths.length > 1) {
+    batchDeleteConfirmVisible.value = true
+    return
+  }
+
+  const targetNode = findTreeNodeByKey(treeData.value, actionPaths[0])
+  if (!targetNode) {
+    return
+  }
+
+  deleteNode.value = buildNodeData(targetNode)
+  deleteConfirmVisible.value = true
+}
+
+async function confirmDelete() {
+  if (!deleteNode.value) {
+    return
+  }
 
   const result = await deleteFile(deleteNode.value.key)
   if (result?.success) {
+    selectedPaths.value = selectedPaths.value.filter(path => path !== deleteNode.value?.key)
+    if (activePath.value === deleteNode.value.key) {
+      activePath.value = null
+    }
+    if (anchorPath.value === deleteNode.value.key) {
+      anchorPath.value = null
+    }
     await loadTreeData()
   }
+
   deleteConfirmVisible.value = false
   deleteNode.value = null
 }
 
-/// 处理批量删除
-const handleBatchDelete = () => {
-  if (checkedKeys.value.length === 0) return
-  batchDeleteConfirmVisible.value = true
-}
-
-/// 确认批量删除
-const confirmBatchDelete = async () => {
-  const result = await batchDeleteFiles(checkedKeys.value)
+async function confirmBatchDelete() {
+  const paths = selectedActionPaths.value
+  const result = await batchDeleteFiles(paths)
   if (result?.success) {
-    checkedKeys.value = []
+    clearSelectionState()
     await loadTreeData()
   }
+
   batchDeleteConfirmVisible.value = false
 }
 
-/// 清空选择
-const clearSelection = () => {
-  checkedKeys.value = []
+function canDropIntoTarget(targetPath: string): boolean {
+  const sourcePaths = dragPaths.value.length > 0 ? dragPaths.value : selectedActionPaths.value
+  if (sourcePaths.length === 0) {
+    return true
+  }
+
+  return sourcePaths.every(path => path !== targetPath && !isAncestorPath(path, targetPath))
 }
 
-/// 拖拽允许放置判断
-const allowDrop = (info: { dropPosition: 'inside' | 'before' | 'after'; node: TreeOption; phase: 'drag' | 'drop' }) => {
-  // 只允许放入目录内部
+function allowDrop(info: { dropPosition: 'inside' | 'before' | 'after'; node: TreeOption }) {
   if (info.dropPosition !== 'inside') {
     return false
   }
-  // 只允许放入目录节点
-  const nodeType = (info.node as any).nodeType as string
-  return nodeType === 'directory'
+
+  const nodeType = (info.node as { nodeType?: string }).nodeType
+  if (nodeType !== 'directory') {
+    return false
+  }
+
+  return canDropIntoTarget(String(info.node.key))
 }
 
-/// 处理拖拽放置
-const handleDrop = async (info: { node: TreeOption; dragNode: TreeOption; dropPosition: 'inside' | 'before' | 'after' }) => {
+function scheduleDragAutoExpand(node: TreeOption): void {
+  const nodePath = String(node.key)
+  if (
+    dragExpandTargetKey.value === nodePath
+    || expandedKeys.value.includes(nodePath)
+    || (node as { nodeType?: string }).nodeType !== 'directory'
+  ) {
+    return
+  }
+
+  if (dragExpandTimer.value) {
+    clearTimeout(dragExpandTimer.value)
+  }
+
+  dragExpandTargetKey.value = nodePath
+  dragExpandTimer.value = setTimeout(() => {
+    dragExpandTimer.value = null
+    void ensureExpanded(nodePath)
+  }, DRAG_AUTO_EXPAND_DELAY_MS)
+}
+
+function handleTreeDragStart(info: { event: DragEvent; node: TreeOption }) {
+  const draggedPath = String(info.node.key)
+  if (selectedPathSet.value.has(draggedPath)) {
+    dragPaths.value = selectedActionPaths.value
+  } else {
+    setSingleSelection(draggedPath)
+    dragPaths.value = [draggedPath]
+  }
+
+  if (info.event.dataTransfer) {
+    info.event.dataTransfer.effectAllowed = 'move'
+    info.event.dataTransfer.setData('text/plain', draggedPath)
+  }
+}
+
+function handleTreeDragOver(info: { event: DragEvent; node: TreeOption }) {
+  const nodeType = (info.node as { nodeType?: string }).nodeType
+  const targetPath = String(info.node.key)
+  if (nodeType !== 'directory' || !canDropIntoTarget(targetPath)) {
+    dragOverKey.value = null
+    return
+  }
+
+  if (info.event.dataTransfer) {
+    info.event.dataTransfer.dropEffect = 'move'
+  }
+
+  dragOverKey.value = targetPath
+  scheduleDragAutoExpand(info.node)
+}
+
+function handleTreeDragLeave(info: { node: TreeOption }) {
+  const targetPath = String(info.node.key)
+  if (dragOverKey.value === targetPath) {
+    dragOverKey.value = null
+  }
+
+  if (dragExpandTargetKey.value === targetPath && dragExpandTimer.value) {
+    clearTimeout(dragExpandTimer.value)
+    dragExpandTimer.value = null
+    dragExpandTargetKey.value = null
+  }
+}
+
+function handleTreeDragEnd() {
+  clearDragState()
+}
+
+async function handleDrop(info: { node: TreeOption; dragNode: TreeOption; dropPosition: 'inside' | 'before' | 'after' }) {
   const { node, dragNode, dropPosition } = info
+  if (dropPosition !== 'inside') {
+    clearDragState()
+    return
+  }
 
-  // 只处理放入目录内部的情况
-  if (dropPosition !== 'inside') return
+  const draggedPath = String(dragNode.key)
+  const targetPath = String(node.key)
+  const sourcePaths = dragPaths.value.length > 0
+    ? dragPaths.value
+    : (selectedActionPaths.value.includes(draggedPath) ? selectedActionPaths.value : [draggedPath])
+  const movablePaths = dedupePaths(sourcePaths).filter(path =>
+    path !== targetPath && !isAncestorPath(path, targetPath)
+  )
 
-  const sourcePath = dragNode.key as string
-  const targetPath = node.key as string
+  if (movablePaths.length === 0) {
+    clearDragState()
+    return
+  }
 
-  const result = await moveFile(sourcePath, targetPath)
-  if (result?.success) {
+  if (!expandedKeys.value.includes(targetPath)) {
+    expandedKeys.value = [...expandedKeys.value, targetPath]
+  }
+
+  const results = []
+  for (const sourcePath of movablePaths) {
+    results.push(await moveFile(sourcePath, targetPath))
+  }
+
+  clearDragState()
+
+  if (results.every(result => result?.success)) {
+    clearSelectionState()
     await loadTreeData()
   }
 }
 
-/// 自定义节点渲染
-const renderLabel = ({ option }: { option: TreeOption }) => {
-  const nodeType = (option as any).nodeType as string
+async function handleSendToSession(node: FileTreeNodeData) {
+  const mentions = resolveActionPaths(node).map(path => createComposerFileMention({ fullPath: path }))
+  await sendFileReferencesToSession({
+    sourceProjectId: props.projectId,
+    mentions
+  })
+}
+
+function renderLabel({ option }: { option: TreeOption }) {
+  const nodeType = (option as { nodeType?: string }).nodeType ?? 'file'
   const fileName = option.label as string
-  const extension = (option as any).extension as string | undefined
+  const extension = (option as { extension?: string }).extension
   const iconMeta = resolveFileIcon(nodeType, fileName, extension)
 
   return h('div', {
     class: 'file-tree-node__content',
-    onContextmenu: (e: MouseEvent) => handleContextMenu(e, option)
+    onClick: (event: MouseEvent) => handleNodeClick(event, option),
+    onContextmenu: (event: MouseEvent) => handleContextMenu(event, option)
   }, [
     h(EaIcon, {
       name: iconMeta.icon,
@@ -408,96 +750,144 @@ const renderLabel = ({ option }: { option: TreeOption }) => {
   ])
 }
 
-/// 点击空白处关闭右键菜单
-const handleClickOutside = () => {
+function resolveNodeProps({ option }: { option: TreeOption }) {
+  const nodePath = String(option.key)
+
+  return {
+    class: [
+      'file-tree-node',
+      selectedPathSet.value.has(nodePath) && 'file-tree-node--selected',
+      activePath.value === nodePath && 'file-tree-node--active',
+      dragOverKey.value === nodePath && 'file-tree-node--drop-target'
+    ]
+  }
+}
+
+function handleClickOutside() {
   closeContextMenu()
 }
 
-/// 监听点击事件关闭右键菜单
+function handleDocumentKeydown(event: KeyboardEvent) {
+  const root = rootRef.value
+  const target = event.target
+  if (!root || !(target instanceof Node)) {
+    return
+  }
+
+  if (!root.contains(target) && document.activeElement !== root) {
+    return
+  }
+
+  if (
+    target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || (target instanceof HTMLElement && target.isContentEditable)
+  ) {
+    return
+  }
+
+  if (event.key === 'Escape') {
+    closeContextMenu()
+    return
+  }
+
+  if (event.key !== 'Delete' && event.key !== 'Backspace') {
+    return
+  }
+
+  if (selectedActionPaths.value.length > 0) {
+    event.preventDefault()
+    handleDeleteSelection()
+    return
+  }
+
+  if (!activePath.value) {
+    return
+  }
+
+  const selectedNode = findTreeNodeByKey(treeData.value, activePath.value)
+  if (!selectedNode) {
+    return
+  }
+
+  event.preventDefault()
+  handleDelete(buildNodeData(selectedNode))
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleDocumentKeydown)
   void loadTreeData()
   void startFileWatcher(props.projectPath)
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleDocumentKeydown)
   stopFileWatcher()
+  clearDragState()
 })
 
-/// 监听项目路径变化重新加载
 watch(() => props.projectPath, async (newPath, oldPath) => {
   if (newPath === oldPath) {
     return
   }
 
   directoryChildrenCache.value = new Map()
+  clearSelectionState()
+  closeContextMenu()
+  clearDragState()
   await loadTreeData()
   await startFileWatcher(newPath)
 })
 </script>
 
 <template>
-  <div class="file-tree">
-    <!-- 批量操作工具栏 -->
-    <div
-      v-if="checkedKeys.length > 0"
-      class="file-tree__toolbar"
-    >
-      <span class="file-tree__toolbar-text">
-        {{ t('fileTree.selectedCount', { count: checkedKeys.length }) }}
-      </span>
-      <EaButton
-        type="danger"
-        size="small"
-        :loading="loading"
-        @click="handleBatchDelete"
-      >
-        <EaIcon
-          name="trash-2"
-          :size="14"
-        />
-        {{ t('common.batchDelete') }}
-      </EaButton>
-      <EaButton
-        type="secondary"
-        size="small"
-        @click="clearSelection"
-      >
-        {{ t('common.clearSelection') }}
-      </EaButton>
-    </div>
-
-    <!-- 文件树 -->
+  <div
+    ref="rootRef"
+    class="file-tree"
+    tabindex="0"
+    @click="handleRootClick"
+    @contextmenu="handleTreeRootContextMenu"
+  >
     <n-tree
       :data="treeData"
       :expanded-keys="expandedKeys"
-      :checked-keys="checkedKeys"
-      :selected-keys="selectedKey ? [selectedKey] : []"
       virtual-scroll
       draggable
-      checkable
-      selectable
-      cascade
+      :selectable="false"
       block-line
       :allow-drop="allowDrop"
       :render-label="renderLabel"
+      :node-props="resolveNodeProps"
+      :override-default-node-click-behavior="() => 'none'"
       class="file-tree__n-tree"
       @update:expanded-keys="handleExpandChange"
-      @update:checked-keys="handleCheckChange"
-      @update:selected-keys="handleSelectChange"
+      @dragstart="handleTreeDragStart"
+      @dragover="handleTreeDragOver"
+      @dragleave="handleTreeDragLeave"
+      @dragend="handleTreeDragEnd"
       @drop="handleDrop"
     />
 
-    <!-- 右键菜单 -->
     <FileTreeContextMenu
       :context="contextMenuContext"
+      @create-file="handleCreateFile"
+      @create-folder="handleCreateFolder"
       @rename="handleRename"
       @delete="handleDelete"
+      @send-to-session="handleSendToSession"
       @close="closeContextMenu"
     />
 
-    <!-- 重命名对话框 -->
+    <FileTreeCreateDialog
+      v-model:visible="createDialogVisible"
+      :node="createTargetNode"
+      :entry-type="createEntryType"
+      @confirm="confirmCreate"
+      @cancel="createDialogVisible = false"
+    />
+
     <FileTreeRenameDialog
       v-model:visible="renameDialogVisible"
       :node="renameNode"
@@ -505,7 +895,6 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
       @cancel="renameDialogVisible = false"
     />
 
-    <!-- 删除确认对话框 -->
     <Teleport to="body">
       <Transition name="modal">
         <div
@@ -550,7 +939,6 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
       </Transition>
     </Teleport>
 
-    <!-- 批量删除确认对话框 -->
     <Teleport to="body">
       <Transition name="modal">
         <div
@@ -572,7 +960,7 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
                 {{ t('fileTree.confirmBatchDeleteTitle') }}
               </h4>
               <p class="confirm-dialog__message">
-                {{ t('fileTree.confirmBatchDeleteMessage', { count: checkedKeys.length }) }}
+                {{ t('fileTree.confirmBatchDeleteMessage', { count: selectedActionPaths.length }) }}
               </p>
             </div>
             <div class="confirm-dialog__actions">
@@ -602,24 +990,9 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
   display: flex;
   flex-direction: column;
   height: 100%;
+  outline: none;
 }
 
-.file-tree__toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-  padding: var(--spacing-2) var(--spacing-3);
-  background-color: var(--color-bg-tertiary);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.file-tree__toolbar-text {
-  flex: 1;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-secondary);
-}
-
-/* Naive UI n-tree 自定义样式 */
 .file-tree__n-tree {
   flex: 1;
   overflow: auto;
@@ -630,20 +1003,22 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
   --n-node-text-color-active: var(--color-primary) !important;
   --n-node-text-color-selected: var(--color-primary) !important;
   --n-node-color-hover: var(--color-surface-hover) !important;
-  --n-node-color-active: var(--color-primary-light) !important;
-  --n-node-color-selected: var(--color-primary-light) !important;
+  --n-node-color-active: transparent !important;
+  --n-node-color-selected: transparent !important;
   --n-arrow-color: var(--color-text-tertiary) !important;
   --n-line-color: var(--color-border) !important;
   padding: var(--spacing-1) 0;
 }
 
-.file-tree__n-tree :deep(.n-tree-node) {
-  padding: 2px 0;
+.file-tree__n-tree:focus,
+.file-tree__n-tree:focus-visible,
+.file-tree__n-tree :deep(.n-tree-node-content:focus),
+.file-tree__n-tree :deep(.n-tree-node-content:focus-visible) {
+  outline: none !important;
 }
 
-.file-tree__n-tree :deep(.n-tree-node-content) {
-  padding: 5px 10px !important;
-  border-radius: var(--radius-sm);
+.file-tree__n-tree :deep(.n-tree-node) {
+  padding: 2px 0;
 }
 
 .file-tree__n-tree :deep(.n-tree-node-wrapper) {
@@ -655,11 +1030,46 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
   height: 16px !important;
 }
 
+.file-tree__n-tree :deep(.file-tree-node) {
+  padding: 5px 10px !important;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--transition-fast) var(--easing-default),
+    box-shadow var(--transition-fast) var(--easing-default);
+}
+
+.file-tree__n-tree :deep(.n-tree-node-content) {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-tree__n-tree :deep(.n-tree-node-content__text) {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-tree__n-tree :deep(.file-tree-node--selected) {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.file-tree__n-tree :deep(.file-tree-node--active) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 42%, transparent);
+}
+
+.file-tree__n-tree :deep(.file-tree-node--drop-target) {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-success) 42%, transparent);
+}
+
 .file-tree__n-tree :deep(.file-tree-node__content) {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
   width: 100%;
+  min-width: 0;
+  cursor: pointer;
 }
 
 .file-tree__n-tree :deep(.file-tree-node__icon) {
@@ -683,7 +1093,6 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
   color: var(--color-text-secondary);
 }
 
-/* 弹框样式 */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -736,28 +1145,5 @@ watch(() => props.projectPath, async (newPath, oldPath) => {
   gap: var(--spacing-3);
   padding: var(--spacing-4) var(--spacing-6);
   border-top: 1px solid var(--color-border);
-}
-
-/* 动画 */
-.modal-enter-active,
-.modal-leave-active {
-  transition: opacity var(--transition-normal) var(--easing-default);
-}
-
-.modal-enter-active .confirm-dialog,
-.modal-leave-active .confirm-dialog {
-  transition: transform var(--transition-normal) var(--easing-default),
-              opacity var(--transition-normal) var(--easing-default);
-}
-
-.modal-enter-from,
-.modal-leave-to {
-  opacity: 0;
-}
-
-.modal-enter-from .confirm-dialog,
-.modal-leave-to .confirm-dialog {
-  transform: scale(0.95);
-  opacity: 0;
 }
 </style>

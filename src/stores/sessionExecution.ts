@@ -12,6 +12,7 @@ export interface ComposerFileMention {
   displayText: string
   fullPath: string
   titleText: string
+  insertText?: string
 }
 
 export interface ComposerMemoryReference {

@@ -17,6 +17,7 @@ export interface FileTreeNodeData {
   extension?: string
   projectId: string
   isLeaf: boolean
+  isRoot?: boolean
 }
 
 /// 重命名文件输入
@@ -34,6 +35,16 @@ export interface MoveFileInput {
 /// 批量删除输入
 export interface BatchDeleteInput {
   paths: string[]
+}
+
+/// 新建文件/目录类型
+export type CreateEntryType = 'file' | 'directory'
+
+/// 新建文件/目录输入
+export interface CreateEntryInput {
+  parentPath: string
+  name: string
+  entryType: CreateEntryType
 }
 
 /// 右键菜单位置

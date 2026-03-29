@@ -17,8 +17,11 @@ interface Props {
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
+  createFile: [node: ContextMenuContext['node']]
+  createFolder: [node: ContextMenuContext['node']]
   rename: [node: ContextMenuContext['node']]
   delete: [node: ContextMenuContext['node']]
+  sendToSession: [node: ContextMenuContext['node']]
   close: []
 }>()
 
@@ -36,6 +39,23 @@ const visible = computed(() => props.context !== null)
 
 /// 节点类型
 const nodeType = computed(() => props.context?.node.nodeType)
+const isRoot = computed(() => props.context?.node.isRoot === true)
+
+/// 处理新建文件
+const handleCreateFile = () => {
+  if (props.context) {
+    emit('createFile', props.context.node)
+  }
+  emit('close')
+}
+
+/// 处理新建文件夹
+const handleCreateFolder = () => {
+  if (props.context) {
+    emit('createFolder', props.context.node)
+  }
+  emit('close')
+}
 
 /// 处理重命名
 const handleRename = () => {
@@ -52,6 +72,14 @@ const handleDelete = () => {
   }
   emit('close')
 }
+
+/// 处理发送到会话
+const handleSendToSession = () => {
+  if (props.context) {
+    emit('sendToSession', props.context.node)
+  }
+  emit('close')
+}
 </script>
 
 <template>
@@ -63,7 +91,43 @@ const handleDelete = () => {
         :style="menuStyle"
         @click.stop
       >
+      <div
+        v-if="!isRoot"
+        class="context-menu__item"
+        @click="handleSendToSession"
+      >
+        <EaIcon
+            name="at-sign"
+            :size="14"
+            class="context-menu__icon"
+        />
+        <span>{{ t('fileTree.sendToSession') }}</span>
+      </div>
+      <div
+        class="context-menu__item"
+        @click="handleCreateFile"
+      >
+        <EaIcon
+          name="file-plus"
+          :size="14"
+          class="context-menu__icon"
+        />
+        <span>{{ t('fileTree.createFile') }}</span>
+      </div>
+      <div
+        class="context-menu__item"
+        @click="handleCreateFolder"
+      >
+        <EaIcon
+          name="folder-plus"
+          :size="14"
+          class="context-menu__icon"
+        />
+        <span>{{ t('fileTree.createFolder') }}</span>
+      </div>
+      <div class="context-menu__divider" />
         <div
+          v-if="!isRoot"
           class="context-menu__item"
           @click="handleRename"
         >
@@ -74,8 +138,8 @@ const handleDelete = () => {
           />
           <span>{{ t('common.rename') }}</span>
         </div>
-        <div class="context-menu__divider" />
         <div
+          v-if="!isRoot"
           class="context-menu__item context-menu__item--danger"
           @click="handleDelete"
         >

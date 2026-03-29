@@ -166,9 +166,23 @@ const features: WelcomeFeature[] = [
   }
 ]
 
+/**
+ * 从欢迎页进入项目工作区。
+ * 统一收敛导入成功和手动选择项目后的 UI 状态，避免继承上一次停留的特殊模式。
+ */
+function openProjectWorkspace(projectId: string) {
+  uiStore.setAppMode('chat')
+  uiStore.setMainContentMode('chat')
+  projectStore.setCurrentProject(projectId)
+
+  if (!projectStore.isProjectExpanded(projectId)) {
+    projectStore.toggleProjectExpand(projectId)
+  }
+}
+
 // 选择项目
 function selectProject(projectId: string) {
-  projectStore.setCurrentProject(projectId)
+  openProjectWorkspace(projectId)
 }
 
 // 打开外部链接
@@ -194,8 +208,7 @@ async function handleProjectSubmit(data: { name: string; path: string; descripti
   try {
     const newProject = await projectStore.createProject(data)
     uiStore.closeProjectCreateModal()
-    // 自动选中新创建的项目
-    projectStore.setCurrentProject(newProject.id)
+    openProjectWorkspace(newProject.id)
   } catch (error) {
     console.error('Failed to create project:', error)
   }

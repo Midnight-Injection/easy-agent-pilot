@@ -38,6 +38,7 @@ import {
 } from '@/services/slashCommands'
 import { useSafeOutsideClick } from '@/composables/useSafeOutsideClick'
 import { FILE_MENTION_PATTERN, getMentionDisplayText, getMentionTitle, isGlobalMentionPath } from '@/utils/fileMention'
+import { createComposerFileMention, formatMentionLiteral } from '@/utils/composerFileMention'
 import { resolveSessionAgent, resolveSessionAgentId } from '@/utils/sessionAgent'
 import { resolveAttachmentPreviewUrl } from '@/utils/attachmentPreview'
 import type { MemorySuggestion, MemorySuggestionSourceType } from '@/types/memory'
@@ -189,18 +190,6 @@ function sanitizeComposerText(value: string): string {
   }
 
   return sanitized
-}
-
-function formatMentionLiteral(path: string): string {
-  if (!path) {
-    return '@'
-  }
-
-  if (/\s/.test(path)) {
-    return `@"${path.replace(/"/g, '\\"')}"`
-  }
-
-  return `@${path}`
 }
 
 function getLeadingSlashSegment(text: string): { content: string; length: number } | null {
@@ -374,13 +363,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
   )
 
   const createComposerMention = (fullPath: string): ComposerFileMention => {
-    const literal = formatMentionLiteral(fullPath)
-    return {
-      id: `mention-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      displayText: getMentionDisplayText(literal, fullPath),
-      fullPath,
-      titleText: getMentionTitle(fullPath)
-    }
+    return createComposerFileMention({ fullPath })
   }
 
   const createComposerMemoryReference = (suggestion: MemorySuggestion): ComposerMemoryReference => ({
@@ -432,6 +415,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
       mention.id === right[index]?.id
       && mention.displayText === right[index]?.displayText
       && mention.fullPath === right[index]?.fullPath
+      && mention.insertText === right[index]?.insertText
     )
   )
 
@@ -489,7 +473,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     FILE_MENTION_PATTERN.lastIndex = 0
     return text.replace(FILE_MENTION_PATTERN, (literal) => {
       const mappedMention = mentionBuckets.get(literal)?.shift()
-      return mappedMention ? formatMentionLiteral(mappedMention.fullPath) : literal
+      return mappedMention?.insertText ?? literal
     })
   }
 
@@ -1123,10 +1107,6 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     cdPathQuery.value = ''
   }
 
-  const formatMentionInsertText = (path: string) => {
-    return formatMentionLiteral(path)
-  }
-
   const openFileMention = (x: number, y: number, query: string, start: number) => {
     if (!currentSessionId.value || !currentProjectPath.value) {
       return
@@ -1164,7 +1144,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     const beforeAt = inputText.value.slice(0, mentionStartPos)
     const afterSearch = inputText.value.slice(cursorPos)
     const nextMention = isGlobalMentionPath(insertPath) ? createComposerMention(insertPath) : null
-    const insertText = `${nextMention?.displayText ?? formatMentionInsertText(insertPath)} `
+    const insertText = `${nextMention?.displayText ?? formatMentionLiteral(insertPath)} `
     const newText = sanitizeComposerText(beforeAt + insertText + afterSearch)
     const newPosition = beforeAt.length + insertText.length
     const nextMentions = [...reconcileFileMentions(inputText.value, currentFileMentions.value)]
@@ -1944,7 +1924,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     const globalMentions: ComposerFileMention[] = []
     const insertText = paths.map((path) => {
       if (!isGlobalMentionPath(path)) {
-        return formatMentionInsertText(path)
+        return formatMentionLiteral(path)
       }
 
       const mention = createComposerMention(path)

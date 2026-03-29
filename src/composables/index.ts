@@ -14,4 +14,5 @@ export { useWindowEvents } from './useWindowEvents'
 export { useDependencySelector, checkCircularDependency, getAvailableDependencies } from './useDependencySelector'
 
 export { useSessionView } from './useSessionView'
+export { useSessionFileReference } from './useSessionFileReference'
 export { useMessageComposer } from './useMessageComposer'

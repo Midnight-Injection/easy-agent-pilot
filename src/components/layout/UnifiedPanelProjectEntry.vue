@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NTree, type TreeOption } from 'naive-ui'
+import type { TreeOption } from 'naive-ui'
+import { FileTree } from '@/components/file-tree'
 import type { Project } from '@/stores/project'
 import type { Session } from '@/stores/session'
 import type { ProjectTabType } from '@/stores/layout'
@@ -325,7 +326,7 @@ onBeforeUnmount(() => {
       class="tab-content tab-content--files"
     >
       <div
-        v-if="isFileTreeLoading"
+        v-if="isFileTreeLoading && treeData.length === 0"
         class="file-tree__loading"
       >
         <EaSkeleton
@@ -341,17 +342,12 @@ onBeforeUnmount(() => {
           animation="wave"
         />
       </div>
-      <n-tree
+      <FileTree
         v-else
-        :data="treeData"
-        :expanded-keys="expandedKeys"
-        :render-label="renderTreeLabel"
-        block-line
-        expand-on-click
-        selectable
-        class="file-tree__n-tree"
-        @update:expanded-keys="(keys: string[]) => emit('expandTree', keys, project.id)"
-        @update:selected-keys="(keys: string[], options: Array<TreeOption | null>) => emit('selectFile', keys, options, project)"
+        :project-id="project.id"
+        :project-path="project.path"
+        class="file-tree__content"
+        @file-select="emit('selectFile', [$event], [], project)"
       />
     </div>
   </div>
@@ -744,6 +740,12 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: var(--spacing-2);
   padding: var(--spacing-2);
+}
+
+.file-tree__content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
 .file-tree__n-tree {

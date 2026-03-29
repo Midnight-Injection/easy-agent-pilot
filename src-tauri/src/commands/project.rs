@@ -45,6 +45,23 @@ pub struct BatchDeleteInput {
     pub paths: Vec<String>,
 }
 
+/// 新建文件/目录类型
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CreateEntryType {
+    File,
+    Directory,
+}
+
+/// 新建文件/目录输入
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateEntryInput {
+    pub parent_path: String,
+    pub name: String,
+    pub entry_type: CreateEntryType,
+}
+
 /// 项目数据结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
@@ -1442,6 +1459,72 @@ pub fn search_file_mentions(
         }
         FileMentionScope::Global => search_global_mentions_indexed(&input.query, limit),
     }
+}
+
+fn validate_create_entry_name(name: &str) -> Result<&str, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("名称不能为空".to_string());
+    }
+
+    if trimmed == "." || trimmed == ".." || trimmed.contains('/') || trimmed.contains('\\') {
+        return Err("名称不能包含路径分隔符".to_string());
+    }
+
+    Ok(trimmed)
+}
+
+/// 在指定目录下创建文件或文件夹。
+/// 参数：`parent_path` 为父目录，`name` 为新条目名称，`entry_type` 指定创建文件或目录。
+/// 返回：文件操作结果，成功时附带新路径。
+#[tauri::command]
+pub fn create_entry(input: CreateEntryInput) -> Result<FileOperationResult, String> {
+    let parent_path = resolve_path(&input.parent_path)?;
+    let name = validate_create_entry_name(&input.name)?;
+
+    if !parent_path.exists() {
+        return Ok(FileOperationResult {
+            success: false,
+            message: Some(format!("父目录不存在: {}", input.parent_path)),
+            new_path: None,
+        });
+    }
+
+    if !parent_path.is_dir() {
+        return Ok(FileOperationResult {
+            success: false,
+            message: Some("目标父路径不是目录".to_string()),
+            new_path: None,
+        });
+    }
+
+    let new_path = parent_path.join(name);
+    if new_path.exists() {
+        return Ok(FileOperationResult {
+            success: false,
+            message: Some(format!("已存在同名文件或目录: {}", name)),
+            new_path: None,
+        });
+    }
+
+    match input.entry_type {
+        CreateEntryType::File => {
+            fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&new_path)
+                .map_err(|e| format!("创建文件失败: {}", e))?;
+        }
+        CreateEntryType::Directory => {
+            fs::create_dir(&new_path).map_err(|e| format!("创建目录失败: {}", e))?;
+        }
+    }
+
+    Ok(FileOperationResult {
+        success: true,
+        message: None,
+        new_path: Some(new_path.to_string_lossy().to_string()),
+    })
 }
 
 /// 重命名文件/文件夹

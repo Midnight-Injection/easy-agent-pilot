@@ -7,6 +7,7 @@ import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type {
   FileOperationResult,
+  CreateEntryInput,
   RenameFileInput,
   MoveFileInput,
   BatchDeleteInput
@@ -40,6 +41,32 @@ export function useFileOperations() {
         '重命名文件',
         getErrorMessage(error),
         async () => { await renameFile(oldPath, newName) }
+      )
+      return null
+    } finally {
+      loading.value = false
+    }
+  }
+
+  /**
+   * 在指定目录下创建文件或文件夹。
+   */
+  async function createEntry(input: CreateEntryInput): Promise<FileOperationResult | null> {
+    loading.value = true
+    try {
+      const result = await invoke<FileOperationResult>('create_entry', { input })
+
+      if (!result.success && result.message) {
+        notificationStore.error('创建失败', result.message)
+      }
+
+      return result
+    } catch (error) {
+      console.error('Failed to create entry:', error)
+      notificationStore.networkError(
+        '创建文件或目录',
+        getErrorMessage(error),
+        async () => { await createEntry(input) }
       )
       return null
     } finally {
@@ -133,6 +160,7 @@ export function useFileOperations() {
 
   return {
     loading,
+    createEntry,
     renameFile,
     deleteFile,
     batchDeleteFiles,

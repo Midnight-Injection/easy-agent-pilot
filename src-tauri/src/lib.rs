@@ -175,6 +175,7 @@ pub fn run() {
             commands::project::load_directory_children,
             commands::project::list_all_project_files_flat,
             commands::project::search_file_mentions,
+            commands::project::create_entry,
             commands::project::rename_file,
             commands::project::delete_file,
             commands::project::batch_delete_files,

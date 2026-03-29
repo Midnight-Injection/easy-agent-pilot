@@ -12,6 +12,11 @@ const UNSAVED_CHANGES_CONFIRM = '当前文件有未保存修改，确认放弃�
 const LARGE_FILE_SIZE_BYTES = 512 * 1024
 const LARGE_FILE_LINE_COUNT = 8000
 
+interface FileEditorSelectionRange {
+  startLine: number
+  endLine: number
+}
+
 export const useFileEditorStore = defineStore('fileEditor', () => {
   const uiStore = useUIStore()
   const notificationStore = useNotificationStore()
@@ -27,6 +32,8 @@ export const useFileEditorStore = defineStore('fileEditor', () => {
   const completionEntries = ref<CompletionEntry[]>([])
   const fileSizeBytes = ref(0)
   const lineCount = ref(0)
+  const selectedText = ref('')
+  const selectionRange = ref<FileEditorSelectionRange | null>(null)
 
   const isLoading = ref(false)
   const isSaving = ref(false)
@@ -40,6 +47,7 @@ export const useFileEditorStore = defineStore('fileEditor', () => {
 
   const isDirty = computed(() => content.value !== originalContent.value)
   const hasActiveFile = computed(() => Boolean(activeFilePath.value))
+  const hasSelection = computed(() => Boolean(selectedText.value.trim()) && selectionRange.value !== null)
   const isLargeFile = computed(() =>
     fileSizeBytes.value >= LARGE_FILE_SIZE_BYTES || lineCount.value >= LARGE_FILE_LINE_COUNT
   )
@@ -63,6 +71,8 @@ export const useFileEditorStore = defineStore('fileEditor', () => {
     completionEntries.value = []
     fileSizeBytes.value = 0
     lineCount.value = 0
+    selectedText.value = ''
+    selectionRange.value = null
     isLoading.value = false
     isSaving.value = false
     loadError.value = null
@@ -142,6 +152,8 @@ export const useFileEditorStore = defineStore('fileEditor', () => {
       // 大文件场景把文件规模暴露给编辑器组件，便于主动关闭高成本能力。
       fileSizeBytes.value = filePayload.sizeBytes
       lineCount.value = filePayload.lineCount
+      selectedText.value = ''
+      selectionRange.value = null
 
       uiStore.setMainContentMode('fileEditor')
       return true
@@ -157,6 +169,23 @@ export const useFileEditorStore = defineStore('fileEditor', () => {
 
   const updateContent = (nextContent: string): void => {
     content.value = nextContent
+  }
+
+  /**
+   * 同步编辑器当前选区，供外部执行“引用选中内容”等动作。
+   */
+  const updateSelection = (payload: { text: string; startLine: number; endLine: number } | null): void => {
+    if (!payload || !payload.text.trim()) {
+      selectedText.value = ''
+      selectionRange.value = null
+      return
+    }
+
+    selectedText.value = payload.text
+    selectionRange.value = {
+      startLine: Math.min(payload.startLine, payload.endLine),
+      endLine: Math.max(payload.startLine, payload.endLine)
+    }
   }
 
   const saveFile = async (): Promise<boolean> => {
@@ -218,9 +247,13 @@ export const useFileEditorStore = defineStore('fileEditor', () => {
     hasActiveFile,
     fileSizeBytes,
     lineCount,
+    selectedText,
+    selectionRange,
     isLargeFile,
+    hasSelection,
     openFile,
     updateContent,
+    updateSelection,
     saveFile,
     switchBackToChat,
     closeEditor,

@@ -103,12 +103,18 @@ export default {
     confirmDelete: 'Confirm Delete',
     create: 'Create',
     delete: 'Delete',
+    deleteFile: 'Delete File',
+    deleteFolder: 'Delete Folder',
     edit: 'Edit',
+    rename: 'Rename',
     view: 'View',
     save: 'Save',
     search: 'Search',
     clear: 'Clear',
+    clearSelection: 'Clear Selection',
     clearSearch: 'Clear Search',
+    batchDelete: 'Delete Selected',
+    enterName: 'Enter name',
     retry: 'Retry',
     refresh: 'Refresh',
     stop: 'Stop',
@@ -130,6 +136,10 @@ export default {
     operationFailed: 'Operation failed',
     pleaseWait: 'Please wait...',
     cancelling: 'Cancelling...'
+  },
+  validation: {
+    nameRequired: 'Name is required',
+    nameUnchanged: 'Please enter a different name'
   },
   terminal: {
     title: 'Terminal',
@@ -1625,6 +1635,21 @@ export default {
     navigate: 'Navigate',
     select: 'Select',
     close: 'Close',
+  },
+  fileTree: {
+    selectedCount: '{count} selected',
+    createFile: 'New File',
+    createFolder: 'New Folder',
+    fileNamePlaceholder: 'Enter file name',
+    folderNamePlaceholder: 'Enter folder name',
+    invalidName: 'Name cannot contain path separators',
+    sendToSession: 'Send to Session',
+    renameFile: 'Rename File',
+    renameFolder: 'Rename Folder',
+    confirmDeleteTitle: 'Delete Entry',
+    confirmDeleteMessage: 'Are you sure you want to delete "{name}"?',
+    confirmBatchDeleteTitle: 'Delete Selected Entries',
+    confirmBatchDeleteMessage: 'Are you sure you want to delete {count} selected entries?'
   },
 
   // Marketplace page (integrated MCP/Skills/Plugins market)

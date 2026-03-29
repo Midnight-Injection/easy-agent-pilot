@@ -48,12 +48,18 @@ const zhCN = {
     confirmDelete: '确认删除',
     create: '创建',
     delete: '删除',
+    deleteFile: '删除文件',
+    deleteFolder: '删除文件夹',
     edit: '编辑',
+    rename: '重命名',
     view: '查看',
     save: '保存',
     search: '搜索',
     clear: '清除',
+    clearSelection: '清空选择',
     clearSearch: '清除搜索',
+    batchDelete: '删除所选',
+    enterName: '输入名称',
     refresh: '刷新',
     retry: '重试',
     error: '错误',
@@ -63,6 +69,11 @@ const zhCN = {
     minutesAgo: '{n} 分钟前',
     hoursAgo: '{n} 小时前',
     daysAgo: '{n} 天前'
+  },
+  validation: {
+    ...enUS.validation,
+    nameRequired: '名称不能为空',
+    nameUnchanged: '请输入不同的名称'
   },
   terminal: {
     ...enUS.terminal,
@@ -1390,6 +1401,22 @@ const zhCN = {
     skipAndContinue: '跳过并继续',
     noLogs: '暂无执行日志',
     aiRunning: 'AI 执行中...'
+  },
+  fileTree: {
+    ...enUS.fileTree,
+    selectedCount: '已选择 {count} 项',
+    createFile: '新建文件',
+    createFolder: '新建文件夹',
+    fileNamePlaceholder: '输入文件名',
+    folderNamePlaceholder: '输入文件夹名',
+    invalidName: '名称不能包含路径分隔符',
+    sendToSession: '发送到会话',
+    renameFile: '重命名文件',
+    renameFolder: '重命名文件夹',
+    confirmDeleteTitle: '删除条目',
+    confirmDeleteMessage: '确定要删除“{name}”吗？',
+    confirmBatchDeleteTitle: '删除所选条目',
+    confirmBatchDeleteMessage: '确定要删除已选择的 {count} 项吗？'
   },
   prompts: {
     conversation: {

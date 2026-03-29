@@ -38,17 +38,24 @@ const props = withDefaults(defineProps<MonacoCodeEditorProps>(), {
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   'save-shortcut': []
+  'selection-change': [value: { text: string; startLine: number; endLine: number } | null]
+  'send-selection': [value: { text: string; startLine: number; endLine: number }]
 }>()
 
 const themeStore = useThemeStore()
 
 const containerRef = ref<HTMLDivElement | null>(null)
+const contextMenuState = ref<{ x: number; y: number } | null>(null)
 let editor: monaco.editor.IStandaloneCodeEditor | null = null
 let model: monaco.editor.ITextModel | null = null
 let completionProviderDisposable: monaco.IDisposable | null = null
 let decorationCollection: monaco.editor.IEditorDecorationsCollection | null = null
+let sendSelectionActionDisposable: monaco.IDisposable | null = null
 let isSyncingFromOutside = false
 let renderTimer: number | null = null
+let preserveSelectionForContextMenu = false
+let preserveSelectionTimer: number | null = null
+let lastSelectionPayload: { text: string; startLine: number; endLine: number } | null = null
 
 const completionKindMap: Record<CompletionKind, monaco.languages.CompletionItemKind> = {
   keyword: monaco.languages.CompletionItemKind.Keyword,
@@ -218,6 +225,99 @@ const scheduleEditorRender = (): void => {
   }, 80)
 }
 
+const clearPreserveSelectionTimer = (): void => {
+  if (preserveSelectionTimer !== null) {
+    window.clearTimeout(preserveSelectionTimer)
+    preserveSelectionTimer = null
+  }
+}
+
+const schedulePreserveSelectionReset = (): void => {
+  clearPreserveSelectionTimer()
+  preserveSelectionTimer = window.setTimeout(() => {
+    preserveSelectionForContextMenu = false
+    preserveSelectionTimer = null
+  }, 240)
+}
+
+const hideSelectionContextMenu = (): void => {
+  contextMenuState.value = null
+}
+
+const resolveSelectionPayload = (): { text: string; startLine: number; endLine: number } | null => {
+  if (!editor || !model) {
+    return null
+  }
+
+  const selection = editor.getSelection()
+  if (!selection || selection.isEmpty()) {
+    return null
+  }
+
+  const text = model.getValueInRange(selection)
+  if (!text.trim()) {
+    return null
+  }
+
+  return {
+    text,
+    startLine: Math.min(selection.startLineNumber, selection.endLineNumber),
+    endLine: Math.max(selection.startLineNumber, selection.endLineNumber)
+  }
+}
+
+const handleSelectionContextMenu = (event: MouseEvent): void => {
+  const payload = resolveSelectionPayload() ?? lastSelectionPayload
+  if (!payload) {
+    hideSelectionContextMenu()
+    return
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  preserveSelectionForContextMenu = true
+  lastSelectionPayload = payload
+  schedulePreserveSelectionReset()
+  contextMenuState.value = {
+    x: event.clientX,
+    y: event.clientY
+  }
+}
+
+const handleDocumentPointerDown = (event: MouseEvent): void => {
+  const target = event.target
+  if (
+    contextMenuState.value
+    && target instanceof Element
+    && target.closest('.monaco-selection-context-menu')
+  ) {
+    return
+  }
+
+  hideSelectionContextMenu()
+}
+
+const handleDocumentKeydown = (event: KeyboardEvent): void => {
+  if (event.key !== 'Escape') {
+    return
+  }
+
+  hideSelectionContextMenu()
+}
+
+const handleSendSelectionFromContextMenu = (): void => {
+  const payload = resolveSelectionPayload() ?? lastSelectionPayload
+  hideSelectionContextMenu()
+  if (!payload) {
+    return
+  }
+
+  emit('send-selection', payload)
+  preserveSelectionForContextMenu = false
+  clearPreserveSelectionTimer()
+}
+
 onMounted(() => {
   ensureMonacoSetup()
   applyMonacoTheme(themeStore.isDark)
@@ -225,6 +325,10 @@ onMounted(() => {
   if (!containerRef.value) {
     return
   }
+
+  containerRef.value.addEventListener('contextmenu', handleSelectionContextMenu)
+  document.addEventListener('mousedown', handleDocumentPointerDown)
+  document.addEventListener('keydown', handleDocumentKeydown)
 
   model = monaco.editor.createModel(props.modelValue, props.language)
   monaco.editor.setModelLanguage(model, props.language)
@@ -235,10 +339,55 @@ onMounted(() => {
     ...buildEditorOptions()
   })
 
+  const hasSelectionContext = editor.createContextKey<boolean>('easyAgentHasSelection', false)
+
   decorationCollection = editor.createDecorationsCollection()
 
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
     emit('save-shortcut')
+  })
+
+  editor.onMouseDown((mouseEvent) => {
+    if (!editor) {
+      return
+    }
+
+    if (!mouseEvent.event.rightButton) {
+      preserveSelectionForContextMenu = false
+      clearPreserveSelectionTimer()
+      return
+    }
+
+    const payload = resolveSelectionPayload()
+    if (!payload) {
+      preserveSelectionForContextMenu = false
+      clearPreserveSelectionTimer()
+      return
+    }
+
+    preserveSelectionForContextMenu = true
+    lastSelectionPayload = payload
+    hasSelectionContext.set(true)
+    schedulePreserveSelectionReset()
+  })
+
+  sendSelectionActionDisposable = editor.addAction({
+    id: 'easy-agent.send-selection-to-session',
+    label: '发送到会话',
+    precondition: 'easyAgentHasSelection',
+    contextMenuGroupId: 'navigation',
+    contextMenuOrder: 1.2,
+    run: () => {
+      const payload = resolveSelectionPayload() ?? lastSelectionPayload
+      if (!payload) {
+        return
+      }
+
+      emit('send-selection', payload)
+      preserveSelectionForContextMenu = false
+      clearPreserveSelectionTimer()
+      return
+    }
   })
 
   editor.onDidChangeModelContent(() => {
@@ -247,6 +396,43 @@ onMounted(() => {
     }
 
     emit('update:modelValue', model.getValue())
+  })
+
+  editor.onDidChangeCursorSelection((event) => {
+    if (!model || event.selection.isEmpty()) {
+      if (preserveSelectionForContextMenu && lastSelectionPayload) {
+        hasSelectionContext.set(true)
+        emit('selection-change', lastSelectionPayload)
+        return
+      }
+
+      lastSelectionPayload = null
+      hasSelectionContext.set(false)
+      emit('selection-change', null)
+      return
+    }
+
+    const text = model.getValueInRange(event.selection)
+    if (!text.trim()) {
+      if (preserveSelectionForContextMenu && lastSelectionPayload) {
+        hasSelectionContext.set(true)
+        emit('selection-change', lastSelectionPayload)
+        return
+      }
+
+      lastSelectionPayload = null
+      hasSelectionContext.set(false)
+      emit('selection-change', null)
+      return
+    }
+
+    lastSelectionPayload = {
+      text,
+      startLine: Math.min(event.selection.startLineNumber, event.selection.endLineNumber),
+      endLine: Math.max(event.selection.startLineNumber, event.selection.endLineNumber)
+    }
+    hasSelectionContext.set(true)
+    emit('selection-change', lastSelectionPayload)
   })
 
   registerCompletionProvider()
@@ -308,10 +494,23 @@ onUnmounted(() => {
     renderTimer = null
   }
 
+  clearPreserveSelectionTimer()
+  preserveSelectionForContextMenu = false
+  lastSelectionPayload = null
+  hideSelectionContextMenu()
+
+  if (containerRef.value) {
+    containerRef.value.removeEventListener('contextmenu', handleSelectionContextMenu)
+  }
+  document.removeEventListener('mousedown', handleDocumentPointerDown)
+  document.removeEventListener('keydown', handleDocumentKeydown)
+
   decorationCollection?.clear()
   decorationCollection = null
   completionProviderDisposable?.dispose()
   completionProviderDisposable = null
+  sendSelectionActionDisposable?.dispose()
+  sendSelectionActionDisposable = null
 
   editor?.dispose()
   editor = null
@@ -322,17 +521,72 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    ref="containerRef"
-    class="monaco-editor-wrapper"
-  />
+  <div class="monaco-editor-shell">
+    <div
+      ref="containerRef"
+      class="monaco-editor-wrapper"
+    />
+
+    <Teleport to="body">
+      <div
+        v-if="contextMenuState"
+        class="monaco-selection-context-menu"
+        :style="{
+          left: `${contextMenuState.x}px`,
+          top: `${contextMenuState.y}px`
+        }"
+      >
+        <button
+          type="button"
+          class="monaco-selection-context-menu__item"
+          @click="handleSendSelectionFromContextMenu"
+        >
+          发送到会话
+        </button>
+      </div>
+    </Teleport>
+  </div>
 </template>
 
 <style scoped>
+.monaco-editor-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 .monaco-editor-wrapper {
   width: 100%;
   height: 100%;
   min-height: 0;
+}
+
+.monaco-selection-context-menu {
+  position: fixed;
+  z-index: calc(var(--z-dropdown) + 2);
+  min-width: 156px;
+  padding: var(--spacing-1);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.monaco-selection-context-menu__item {
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.monaco-selection-context-menu__item:hover {
+  background-color: var(--color-surface-hover);
 }
 
 :global(.monaco-editor .ea-monaco-highlight) {
