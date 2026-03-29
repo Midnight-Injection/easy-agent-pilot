@@ -63,7 +63,7 @@ import {
 import { loadAgentMcpServers } from '@/utils/mcpServerConfig'
 import { mergeToolInputArguments } from '@/utils/toolInput'
 import { getErrorMessage } from '@/utils/api'
-import { recordAgentCliUsageInBackground } from '@/services/usage/agentCliUsageRecorder'
+import { recordAgentCliUsageInBackground, resolveRecordedModelId } from '@/services/usage/agentCliUsageRecorder'
 
 function finalizeRunningToolCalls(toolCalls: ToolCall[]): void {
   for (const toolCall of toolCalls) {
@@ -554,7 +554,10 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
       recordAgentCliUsageInBackground(currentAgentForUsage, {
         executionId: state.executionRunId,
         executionMode: 'task_execution',
-        modelId: state.tokenUsage.model || currentAgentForUsage.modelId || null,
+        modelId: resolveRecordedModelId({
+          reportedModelId: state.tokenUsage.model,
+          requestedModelId: currentAgentForUsage.modelId
+        }),
         projectId: plan.projectId,
         sessionId: null,
         taskId,

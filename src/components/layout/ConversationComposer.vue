@@ -1008,7 +1008,7 @@ defineExpose({
 
 .conversation-composer--main {
   gap: 0;
-  padding: 10px 16px 20px;
+  padding: 10px 16px 8px;
   border-top: none;
   background: var(--color-bg-primary);
 }
@@ -1106,7 +1106,7 @@ defineExpose({
   width: 100%;
   gap: 10px;
   padding: 10px 14px;
-  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(4px + env(safe-area-inset-bottom, 0px));
   background: var(--color-surface);
   border: none;
   border-radius: 0;
@@ -1484,7 +1484,7 @@ defineExpose({
 .conversation-composer--main .conversation-composer__render,
 .conversation-composer--main .conversation-composer__textarea {
   min-height: 160px;
-  padding: 14px 16px;
+  padding: 14px 16px 10px;
   font-family: inherit;
   line-height: 1.6;
 }
@@ -1509,13 +1509,13 @@ defineExpose({
 }
 
 .conversation-composer__textarea::selection {
-  background: transparent;
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
   color: transparent;
   -webkit-text-fill-color: transparent;
 }
 
 .conversation-composer__textarea::-moz-selection {
-  background: transparent;
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
   color: transparent;
 }
 
@@ -1869,13 +1869,13 @@ defineExpose({
 }
 
 .conversation-composer--main .conversation-composer__toolbar--bottom {
-  padding: 6px 0 0;
+  padding: 4px 0 0;
   border-top: none;
 }
 
 @media (max-width: 900px) {
   .conversation-composer--main {
-    padding: 8px 12px 14px;
+    padding: 8px 12px 6px;
   }
 
   .conversation-composer__main-header {
@@ -1926,7 +1926,7 @@ defineExpose({
   .conversation-composer--main .conversation-composer__render,
   .conversation-composer--main .conversation-composer__textarea {
     min-height: 140px;
-    padding: 16px 16px 18px;
+    padding: 16px 16px 10px;
   }
 }
 

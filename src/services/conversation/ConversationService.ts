@@ -23,7 +23,7 @@ import {
 } from '@/utils/runtimeNotice'
 import { loadAgentMcpServers } from '@/utils/mcpServerConfig'
 import { mergeToolInputArguments } from '@/utils/toolInput'
-import { recordAgentCliUsageInBackground } from '@/services/usage/agentCliUsageRecorder'
+import { recordAgentCliUsageInBackground, resolveRecordedModelId } from '@/services/usage/agentCliUsageRecorder'
 
 interface StreamTimingMetrics {
   startedAt: number
@@ -751,7 +751,10 @@ export class ConversationService {
       recordAgentCliUsageInBackground(context.agent, {
         executionId: `chat-${aiMessage.id}`,
         executionMode: 'chat',
-        modelId: usageState.model || context.agent.modelId || null,
+        modelId: resolveRecordedModelId({
+          reportedModelId: usageState.model,
+          requestedModelId: context.agent.modelId
+        }),
         projectId: resolvedProjectId,
         sessionId,
         messageId: aiMessage.id,

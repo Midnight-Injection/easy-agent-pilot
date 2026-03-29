@@ -400,6 +400,14 @@ fn dimension_sql(dimension: &str, include_provider_prefix: bool) -> (&'static st
     }
 }
 
+fn breakdown_order_sql(dimension: &str) -> &'static str {
+    if dimension == "model" {
+        "SUM(estimated_total_cost_usd) DESC, SUM(total_tokens) DESC, dimension_label ASC"
+    } else {
+        "SUM(total_tokens) DESC, SUM(estimated_total_cost_usd) DESC, dimension_label ASC"
+    }
+}
+
 /// 记录一次 CLI 用量统计。
 ///
 /// 用途：在 CLI 主执行链路完成后异步落库，用于设置页图表和汇总统计。
@@ -553,6 +561,7 @@ pub fn query_agent_cli_usage_stats(input: QueryAgentCliUsageStatsInput) -> Resul
     let bucket_expr = bucket_sql(&granularity);
     let (dimension_id_expr, dimension_label_expr) =
         dimension_sql(&dimension, provider_filter == "all" && dimension == "model");
+    let breakdown_order_expr = breakdown_order_sql(&dimension);
 
     let summary_sql = format!(
         r#"
@@ -631,7 +640,7 @@ pub fn query_agent_cli_usage_stats(input: QueryAgentCliUsageStatsInput) -> Resul
         FROM agent_cli_usage_records
         WHERE {where_clause}
         GROUP BY dimension_id, dimension_label
-        ORDER BY SUM(total_tokens) DESC, dimension_label ASC
+        ORDER BY {breakdown_order_expr}
         "#
     );
 

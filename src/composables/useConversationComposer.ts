@@ -79,6 +79,7 @@ interface UseConversationComposerOptions {
 
 const MEMORY_REFERENCE_TOKEN_PATTERN = /\[\[memory-ref:(library_chunk|raw_record):([^\]]+)\]\]/g
 const MEMORY_SUGGESTION_DEBOUNCE_MS = 350
+const MEMORY_SUGGESTION_HIDE_DELAY_MS = 480
 
 function buildMemoryReferenceToken(sourceType: MemorySuggestionSourceType, sourceId: string): string {
   return `[[memory-ref:${sourceType}:${sourceId}]]`
@@ -254,6 +255,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
   const activeMemorySuggestionIndex = ref(-1)
   const hoveredMemoryPreview = ref<MemoryPreviewPayload | null>(null)
   let memorySuggestionTimer: ReturnType<typeof setTimeout> | null = null
+  let memorySuggestionHideTimer: ReturnType<typeof setTimeout> | null = null
   let memorySuggestionRequestId = 0
 
   const currentSessionId = computed(() => toValue(options.sessionId) || null)
@@ -682,6 +684,13 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     }
   }
 
+  const clearMemorySuggestionHideTimer = () => {
+    if (memorySuggestionHideTimer) {
+      clearTimeout(memorySuggestionHideTimer)
+      memorySuggestionHideTimer = null
+    }
+  }
+
   const resetMemorySuggestionState = () => {
     const sessionId = currentSessionId.value
     if (!sessionId) {
@@ -689,6 +698,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     }
 
     clearMemorySuggestionTimer()
+    clearMemorySuggestionHideTimer()
     memorySuggestionRequestId += 1
     activeMemorySuggestionIndex.value = -1
     hoveredMemoryPreview.value = null
@@ -728,8 +738,34 @@ export function useConversationComposer(options: UseConversationComposerOptions)
       return
     }
 
-    sessionExecutionStore.setMemorySuggestions(sessionId, suggestions, searchText)
     sessionExecutionStore.setIsSearchingMemory(sessionId, false)
+    clearMemorySuggestionHideTimer()
+
+    const hasSuggestions = suggestions.librarySuggestions.length > 0 || suggestions.rawSuggestions.length > 0
+    if (hasSuggestions || flatVisibleMemorySuggestions.value.length === 0) {
+      sessionExecutionStore.setMemorySuggestions(sessionId, suggestions, searchText)
+      if (!hasSuggestions) {
+        activeMemorySuggestionIndex.value = -1
+      }
+      return
+    }
+
+    // 旧建议先保留一个很短的窗口，避免用户连续输入时因中间空结果导致面板闪烁。
+    memorySuggestionHideTimer = setTimeout(() => {
+      if (requestId !== memorySuggestionRequestId || currentSessionId.value !== sessionId) {
+        return
+      }
+
+      if (sanitizeMemorySearchText(inputText.value) !== searchText) {
+        return
+      }
+
+      sessionExecutionStore.setMemorySuggestions(sessionId, suggestions, searchText)
+      activeMemorySuggestionIndex.value = -1
+      if (hoveredMemoryPreview.value && !activeMemorySuggestion.value) {
+        hoveredMemoryPreview.value = null
+      }
+    }, MEMORY_SUGGESTION_HIDE_DELAY_MS)
   }
 
   const scheduleMemorySuggestionSearch = (draftText: string) => {
@@ -742,6 +778,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     if (searchText.length < 4) {
       memorySuggestionRequestId += 1
       clearMemorySuggestionTimer()
+      clearMemorySuggestionHideTimer()
       sessionExecutionStore.setIsSearchingMemory(sessionId, false)
       sessionExecutionStore.clearMemorySuggestions(sessionId)
       activeMemorySuggestionIndex.value = -1
@@ -749,6 +786,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     }
 
     clearMemorySuggestionTimer()
+    clearMemorySuggestionHideTimer()
     const requestId = ++memorySuggestionRequestId
     memorySuggestionTimer = setTimeout(() => {
       if (requestId !== memorySuggestionRequestId || currentSessionId.value !== sessionId) {
@@ -813,6 +851,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
 
   watch(currentSessionId, (sessionId) => {
     clearMemorySuggestionTimer()
+    clearMemorySuggestionHideTimer()
     memorySuggestionRequestId += 1
     activeMemorySuggestionIndex.value = -1
     hoveredMemoryPreview.value = null
@@ -834,6 +873,14 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     const nextMemoryReferences = reconcileMemoryReferences(sanitizedValue, currentMemoryReferences.value)
     if (currentSessionId.value) {
       sessionExecutionStore.setMemoryReferences(currentSessionId.value, nextMemoryReferences)
+    }
+
+    if (isInputComposing.value) {
+      clearMemorySuggestionTimer()
+      if (currentSessionId.value) {
+        sessionExecutionStore.setIsSearchingMemory(currentSessionId.value, false)
+      }
+      return
     }
 
     if (!sanitizedValue.trim()) {
@@ -869,6 +916,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
 
   onUnmounted(() => {
     clearMemorySuggestionTimer()
+    clearMemorySuggestionHideTimer()
   })
 
   useSafeOutsideClick(
@@ -1325,10 +1373,20 @@ export function useConversationComposer(options: UseConversationComposerOptions)
 
   const handleCompositionStart = () => {
     isInputComposing.value = true
+    clearMemorySuggestionTimer()
+    if (currentSessionId.value) {
+      sessionExecutionStore.setIsSearchingMemory(currentSessionId.value, false)
+    }
   }
 
   const handleCompositionEnd = () => {
     isInputComposing.value = false
+    if (!inputText.value.trim()) {
+      resetMemorySuggestionState()
+      return
+    }
+
+    scheduleMemorySuggestionSearch(inputText.value)
   }
 
   const toPendingImage = async (attachment: MessageAttachment): Promise<PendingImageAttachment> => ({
@@ -1516,6 +1574,7 @@ export function useConversationComposer(options: UseConversationComposerOptions)
     closeSlashCommand()
     closeCdPathSuggestions()
     clearMemorySuggestionTimer()
+    clearMemorySuggestionHideTimer()
   }
 
   const sendWithCurrentAgent = async (

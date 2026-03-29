@@ -9,6 +9,70 @@ interface UsageSnapshot {
   outputTokens?: number
 }
 
+function normalizeModelId(value?: string | null): string {
+  return value?.trim().toLowerCase() || ''
+}
+
+function splitModelTokens(value: string): string[] {
+  return value.split(/[^a-z0-9]+/).filter(Boolean)
+}
+
+function areEquivalentModelIds(left?: string | null, right?: string | null): boolean {
+  const normalizedLeft = normalizeModelId(left)
+  const normalizedRight = normalizeModelId(right)
+  if (!normalizedLeft || !normalizedRight) {
+    return false
+  }
+
+  if (normalizedLeft === normalizedRight) {
+    return true
+  }
+
+  if (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)) {
+    return true
+  }
+
+  const leftTokens = splitModelTokens(normalizedLeft)
+  const rightTokens = splitModelTokens(normalizedRight)
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return false
+  }
+
+  const rightTokenSet = new Set(rightTokens)
+  const sharedCount = leftTokens.filter(token => rightTokenSet.has(token)).length
+  const requiredSharedCount = Math.min(2, leftTokens.length, rightTokens.length)
+  return sharedCount >= requiredSharedCount
+    && sharedCount / Math.max(leftTokens.length, rightTokens.length) >= 0.5
+}
+
+/**
+ * 统一 CLI 用量统计使用的模型 ID。
+ *
+ * 自定义 Claude 兼容源可能会上报一个通用 Anthropic 模型名，但用户真实请求的是显式配置的模型；
+ * 这里优先保留显式请求模型，仅在两者明显等价时接受运行时上报值。
+ */
+export function resolveRecordedModelId(options: {
+  reportedModelId?: string | null
+  requestedModelId?: string | null
+}): string | null {
+  const requestedModelId = options.requestedModelId?.trim() || ''
+  const reportedModelId = options.reportedModelId?.trim() || ''
+
+  if (!requestedModelId) {
+    return reportedModelId || null
+  }
+
+  if (!reportedModelId) {
+    return requestedModelId
+  }
+
+  if (areEquivalentModelIds(reportedModelId, requestedModelId)) {
+    return reportedModelId
+  }
+
+  return requestedModelId
+}
+
 function buildUsagePayload(
   agent: Pick<AgentConfig, 'id' | 'name' | 'provider'>,
   input: Omit<RecordAgentCliUsageInput, 'provider' | 'agentId' | 'agentNameSnapshot'>

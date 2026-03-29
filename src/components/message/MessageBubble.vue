@@ -739,6 +739,16 @@ const isAssistantFormOnly = computed(() => {
   word-break: break-word;
 }
 
+.message-bubble__content ::selection {
+  background: color-mix(in srgb, var(--color-primary) 24%, transparent);
+  color: inherit;
+}
+
+.message-bubble__content ::-moz-selection {
+  background: color-mix(in srgb, var(--color-primary) 24%, transparent);
+  color: inherit;
+}
+
 .message-bubble__attachments {
   display: flex;
   flex-wrap: wrap;

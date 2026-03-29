@@ -18,7 +18,11 @@ import { buildAgentExecutionRequest } from '@/services/conversation/runtimeProfi
 import type { RuntimeNotice } from '@/utils/runtimeNotice'
 import { buildCliEnvironmentNotice } from '@/utils/runtimeNotice'
 import { loadAgentMcpServers } from '@/utils/mcpServerConfig'
-import { findLatestUsageSnapshot, recordAgentCliUsageInBackground } from '@/services/usage/agentCliUsageRecorder'
+import {
+  findLatestUsageSnapshot,
+  recordAgentCliUsageInBackground,
+  resolveRecordedModelId
+} from '@/services/usage/agentCliUsageRecorder'
 import type {
   AITaskItem,
   DynamicFormSchema,
@@ -248,7 +252,10 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     recordAgentCliUsageInBackground(agent, {
       executionId: `plan-split-${snapshot.id}`,
       executionMode: 'task_split',
-      modelId: latestUsage.modelId || context.value.modelId || usageModelHint.value || null,
+      modelId: resolveRecordedModelId({
+        reportedModelId: latestUsage.modelId,
+        requestedModelId: context.value.modelId || usageModelHint.value || null
+      }),
       projectId,
       sessionId: null,
       inputTokens: latestUsage.inputTokens,
