@@ -21,6 +21,7 @@ const props = defineProps<{
   initialValues?: Record<string, any>
   disabled?: boolean
   variant?: 'active' | 'submitted' | 'archived'
+  cancelText?: string
 }>()
 
 const emit = defineEmits<{
@@ -94,38 +95,41 @@ function normalizeFieldValue(
 }
 
 // 初始化表单值
+function buildFieldInitialValue(field: DynamicFormSchema['fields'][number]): unknown {
+  const hasSuggestion = field.suggestion !== undefined
+    && field.suggestion !== null
+    && (!Array.isArray(field.suggestion) || field.suggestion.length > 0)
+
+  if (props.initialValues && props.initialValues[field.name] !== undefined) {
+    return normalizeFieldValue(field, props.initialValues[field.name])
+  }
+
+  if (hasSuggestion) {
+    return normalizeFieldValue(field, field.suggestion)
+  }
+
+  if (field.default !== undefined) {
+    return normalizeFieldValue(field, field.default)
+  }
+
+  switch (field.type) {
+    case 'checkbox':
+      return false
+    case 'multiselect':
+      return []
+    case 'number':
+    case 'slider':
+      return field.validation?.min ?? 0
+    default:
+      return ''
+  }
+}
+
 function initFormValues() {
   const values: Record<string, any> = {}
 
   props.schema.fields.forEach(field => {
-    const hasSuggestion = field.suggestion !== undefined
-      && field.suggestion !== null
-      && (!Array.isArray(field.suggestion) || field.suggestion.length > 0)
-
-    // 优先使用传入的初始值
-    if (props.initialValues && props.initialValues[field.name] !== undefined) {
-      values[field.name] = normalizeFieldValue(field, props.initialValues[field.name])
-    } else if (hasSuggestion) {
-      values[field.name] = normalizeFieldValue(field, field.suggestion)
-    } else if (field.default !== undefined) {
-      values[field.name] = normalizeFieldValue(field, field.default)
-    } else {
-      // 根据类型设置默认值
-      switch (field.type) {
-        case 'checkbox':
-          values[field.name] = false
-          break
-        case 'multiselect':
-          values[field.name] = []
-          break
-        case 'number':
-        case 'slider':
-          values[field.name] = field.validation?.min ?? 0
-          break
-        default:
-          values[field.name] = ''
-      }
-    }
+    values[field.name] = buildFieldInitialValue(field)
   })
 
   formValues.value = values
@@ -224,11 +228,23 @@ defineExpose({
   }
 })
 
-watch(visibleFieldNames, nextVisibleFieldNames => {
+watch(visibleFieldNames, (nextVisibleFieldNames, previousVisibleFieldNames) => {
   for (const key of Object.keys(formErrors.value)) {
     if (!nextVisibleFieldNames.has(key)) {
       delete formErrors.value[key]
     }
+  }
+
+  if (!previousVisibleFieldNames) {
+    return
+  }
+
+  for (const field of props.schema.fields) {
+    if (nextVisibleFieldNames.has(field.name) || !previousVisibleFieldNames.has(field.name)) {
+      continue
+    }
+
+    formValues.value[field.name] = buildFieldInitialValue(field)
   }
 })
 </script>
@@ -294,7 +310,7 @@ watch(visibleFieldNames, nextVisibleFieldNames => {
         :disabled="disabled"
         @click="handleCancel"
       >
-        取消
+        {{ props.cancelText || '取消' }}
       </button>
       <button
         type="button"

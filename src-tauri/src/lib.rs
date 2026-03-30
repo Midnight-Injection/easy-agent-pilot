@@ -310,6 +310,7 @@ pub fn run() {
             commands::conversation::execute_claude_sdk,
             commands::conversation::execute_codex_sdk,
             commands::conversation::executor::execute_agent,
+            commands::conversation::executor::is_execution_session_active,
             commands::conversation::abort_cli_execution,
             commands::conversation::abort_sdk_execution,
             // Plan Mode commands

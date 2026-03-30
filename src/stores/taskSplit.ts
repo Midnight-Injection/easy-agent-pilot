@@ -58,6 +58,8 @@ interface PlanSplitRuntimeMetrics {
   doneAt?: number
 }
 
+const STALE_PLAN_SPLIT_SESSION_TIMEOUT_MS = 2_000
+
 function formatOptionValue(field: DynamicFormSchema['fields'][number], value: unknown): string {
   if (value === undefined || value === null || value === '') return '-'
   if (Array.isArray(value)) {
@@ -98,6 +100,38 @@ function parseStreamPayloadMetadata(raw?: string | null): Record<string, unknown
   } catch {
     return null
   }
+}
+
+function buildPersistedLogMetadata(
+  payload: PlanSplitStreamPayload,
+  parsedMetadata: Record<string, unknown> | null
+): string {
+  const model = typeof payload.model === 'string' && payload.model.trim()
+    ? payload.model.trim()
+    : typeof parsedMetadata?.model === 'string' && parsedMetadata.model.trim()
+      ? parsedMetadata.model.trim()
+      : undefined
+  const inputTokens = typeof payload.inputTokens === 'number'
+    ? payload.inputTokens
+    : typeof parsedMetadata?.inputTokens === 'number'
+      ? parsedMetadata.inputTokens
+      : undefined
+  const outputTokens = typeof payload.outputTokens === 'number'
+    ? payload.outputTokens
+    : typeof parsedMetadata?.outputTokens === 'number'
+      ? parsedMetadata.outputTokens
+      : undefined
+
+  return JSON.stringify({
+    model,
+    inputTokens,
+    outputTokens,
+    ...(payload.metadata ? { rawMetadata: payload.metadata } : {}),
+    toolName: payload.toolName,
+    toolCallId: payload.toolCallId,
+    toolInput: payload.toolInput,
+    toolResult: payload.toolResult
+  })
 }
 
 function buildExecutionRequest(
@@ -274,6 +308,52 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     applySessionSnapshot(snapshot, true)
   }
 
+  async function isExecutionSessionActive(sessionId?: string | null): Promise<boolean> {
+    const normalizedSessionId = sessionId?.trim()
+    if (!normalizedSessionId) {
+      return false
+    }
+
+    try {
+      return await invoke<boolean>('is_execution_session_active', { sessionId: normalizedSessionId })
+    } catch (error) {
+      logger.warn('[TaskSplit] Failed to query execution session state:', error)
+      return false
+    }
+  }
+
+  async function recoverStaleRunningSession(planId: string): Promise<boolean> {
+    const snapshot = session.value
+    if (!snapshot || snapshot.status !== 'running') {
+      return false
+    }
+
+    const lastUpdatedAt = new Date(snapshot.updatedAt || snapshot.startedAt || snapshot.createdAt).getTime()
+    if (!Number.isFinite(lastUpdatedAt)) {
+      return false
+    }
+
+    const inactiveTooLong = Date.now() - lastUpdatedAt >= STALE_PLAN_SPLIT_SESSION_TIMEOUT_MS
+    if (!inactiveTooLong) {
+      return false
+    }
+
+    const isActive = await isExecutionSessionActive(snapshot.executionSessionId)
+    if (isActive) {
+      return false
+    }
+
+    logger.warn('[TaskSplit] Recovering stale running session', {
+      planId,
+      executionSessionId: snapshot.executionSessionId,
+      updatedAt: snapshot.updatedAt
+    })
+    await invoke('clear_plan_split_session', { planId })
+    logs.value = []
+    applySessionSnapshot(null, false)
+    return true
+  }
+
   async function subscribeToPlan(planId: string) {
     detachStream()
     streamUnlisten.value = await listen<PlanSplitStreamPayload>(`plan-split-stream-${planId}`, async (event) => {
@@ -335,16 +415,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
         sessionId: payload.sessionId || '',
         type: payload.type as PlanSplitLogRecord['type'],
         content,
-        metadata: JSON.stringify({
-          model: typeof parsedMetadata?.model === 'string' ? parsedMetadata.model : undefined,
-          inputTokens: typeof parsedMetadata?.inputTokens === 'number' ? parsedMetadata.inputTokens : undefined,
-          outputTokens: typeof parsedMetadata?.outputTokens === 'number' ? parsedMetadata.outputTokens : undefined,
-          ...(payload.metadata ? { rawMetadata: payload.metadata } : {}),
-          toolName: payload.toolName,
-          toolCallId: payload.toolCallId,
-          toolInput: payload.toolInput,
-          toolResult: payload.toolResult
-        }),
+        metadata: buildPersistedLogMetadata(payload, parsedMetadata),
         createdAt: payload.createdAt || new Date().toISOString()
       })
     })
@@ -436,6 +507,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     }
     await subscribeToPlan(nextContext.planId)
     await loadSession(nextContext.planId)
+    await recoverStaleRunningSession(nextContext.planId)
 
     if (session.value) {
       return
@@ -481,31 +553,51 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
       ?.content
       ?.trim()
 
-    const snapshot = await invoke<PlanSplitSessionRecord>('submit_plan_split_form', {
-      input: {
-        planId: context.value.planId,
-        formId,
-        values,
-        displayContent: summarizeFormValues(schema, values)
-      }
-    })
-    applySessionSnapshot(snapshot, true)
-    rememberSubmittedForm(schema, values, promptText)
+    try {
+      const snapshot = await invoke<PlanSplitSessionRecord>('submit_plan_split_form', {
+        input: {
+          planId: context.value.planId,
+          formId,
+          values,
+          displayContent: summarizeFormValues(schema, values)
+        }
+      })
+      applySessionSnapshot(snapshot, true)
+      rememberSubmittedForm(schema, values, promptText)
+    } catch (error) {
+      logger.error('[TaskSplit] Failed to submit form response:', error)
+      throw error
+    }
   }
 
-  async function retry() {
-    if (!context.value || !session.value) {
+  async function restartFromPersistedContext(snapshot: PlanSplitSessionRecord) {
+    if (!context.value) {
       return
     }
 
-    const llmMessages = parseJson<MessageInput[]>(session.value.llmMessagesJson, [])
-    const uiMessages = toSplitMessages(session.value.messagesJson)
-
+    const llmMessages = parseJson<MessageInput[]>(snapshot.llmMessagesJson, [])
+    const uiMessages = toSplitMessages(snapshot.messagesJson)
     if (llmMessages.length === 0) {
       throw new Error('当前会话缺少可重试的上下文。')
     }
 
     await startBackgroundSession(context.value, llmMessages, uiMessages)
+  }
+
+  async function retry() {
+    if (!session.value) {
+      return
+    }
+
+    await restartFromPersistedContext(session.value)
+  }
+
+  async function continueSession() {
+    if (!session.value || session.value.status !== 'stopped') {
+      return
+    }
+
+    await restartFromPersistedContext(session.value)
   }
 
   async function stop() {
@@ -668,6 +760,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
     initSession,
     submitFormResponse,
     retry,
+    continueSession,
     stop,
     updateSplitTask,
     removeSplitTask,

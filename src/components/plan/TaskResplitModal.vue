@@ -296,15 +296,17 @@ watch(selectedAgentId, async (newAgentId) => {
 }
 
 .resplit-modal {
+  --resplit-accent: #0f766e;
+  --resplit-border: color-mix(in srgb, var(--resplit-accent) 14%, rgba(148, 163, 184, 0.28));
   background-color: var(--color-surface, #fff);
   border-radius: 1rem;
   width: min(90vw, 36rem);
   max-height: 85vh;
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-xl, 0 20px 25px -5px rgba(0, 0, 0, 0.1));
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
   animation: modalIn 0.2s var(--easing-out);
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--resplit-border);
 }
 
 @keyframes modalIn {
@@ -325,7 +327,9 @@ watch(selectedAgentId, async (newAgentId) => {
   padding: var(--spacing-4, 1rem) var(--spacing-5, 1.25rem);
   border-bottom: 1px solid var(--color-border, #e2e8f0);
   flex-shrink: 0;
-  background: linear-gradient(90deg, rgba(239, 246, 255, 0.92), rgba(238, 242, 255, 0.9));
+  background:
+    linear-gradient(135deg, rgba(249, 250, 251, 0.98), rgba(243, 246, 249, 0.96)),
+    linear-gradient(90deg, color-mix(in srgb, var(--resplit-accent) 6%, transparent), transparent);
 }
 
 .modal-header h4 {
@@ -340,6 +344,7 @@ watch(selectedAgentId, async (newAgentId) => {
 
 .modal-icon {
   font-size: 1rem;
+  color: var(--resplit-accent);
 }
 
 .btn-close {
@@ -356,7 +361,7 @@ watch(selectedAgentId, async (newAgentId) => {
 }
 
 .btn-close:hover {
-  background-color: var(--color-surface-hover, #f8fafc);
+  background-color: color-mix(in srgb, var(--resplit-accent) 8%, #f8fafc);
   color: var(--color-text-primary, #1e293b);
 }
 
@@ -370,8 +375,10 @@ watch(selectedAgentId, async (newAgentId) => {
 }
 
 .task-preview {
-  background: linear-gradient(180deg, #f8fbff, #f1f5ff);
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--resplit-accent) 8%, transparent), transparent 40%),
+    linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(244, 247, 250, 0.96));
+  border: 1px solid color-mix(in srgb, var(--resplit-accent) 12%, rgba(148, 163, 184, 0.24));
   border-radius: 0.75rem;
   padding: var(--spacing-3, 0.75rem);
 }
@@ -386,9 +393,9 @@ watch(selectedAgentId, async (newAgentId) => {
 .preview-label {
   font-size: var(--font-size-xs, 12px);
   font-weight: var(--font-weight-medium, 500);
-  color: var(--color-text-tertiary, #94a3b8);
+  color: var(--resplit-accent);
   padding: 0.125rem 0.5rem;
-  background-color: var(--color-bg, #e2e8f0);
+  background-color: color-mix(in srgb, var(--resplit-accent) 10%, #ffffff);
   border-radius: var(--radius-full, 9999px);
 }
 
@@ -451,7 +458,7 @@ watch(selectedAgentId, async (newAgentId) => {
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: var(--radius-md, 8px);
   font-size: var(--font-size-sm, 13px);
-  background-color: var(--color-surface, #fff);
+  background-color: color-mix(in srgb, var(--resplit-accent) 2%, #ffffff);
   color: var(--color-text-primary, #1e293b);
   transition: border-color var(--transition-fast, 150ms), box-shadow var(--transition-fast, 150ms);
   resize: vertical;
@@ -461,8 +468,8 @@ watch(selectedAgentId, async (newAgentId) => {
 .form-row input:focus,
 .form-row select:focus {
   outline: none;
-  border-color: var(--color-primary, #60a5fa);
-  box-shadow: 0 0 0 3px rgb(59 130 246 / 15%);
+  border-color: color-mix(in srgb, var(--resplit-accent) 42%, #94a3b8);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--resplit-accent) 12%, transparent);
 }
 
 .form-row textarea {
@@ -496,12 +503,12 @@ watch(selectedAgentId, async (newAgentId) => {
   -moz-appearance: none;
   cursor: pointer;
   padding-right: 2rem;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%);
 }
 
 .select-wrap select:hover {
   border-color: #cbd5e1;
-  background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f2f6f7 100%);
 }
 
 .select-arrow {
@@ -515,7 +522,7 @@ watch(selectedAgentId, async (newAgentId) => {
 }
 
 .select-wrap:focus-within .select-arrow {
-  color: #3b82f6;
+  color: var(--resplit-accent);
   transform: translateY(-50%) rotate(180deg);
 }
 
@@ -525,7 +532,7 @@ watch(selectedAgentId, async (newAgentId) => {
   gap: var(--spacing-3, 0.75rem);
   padding: var(--spacing-4, 1rem) var(--spacing-5, 1.25rem);
   border-top: 1px solid var(--color-border, #e2e8f0);
-  background: linear-gradient(180deg, #f8fbff, #f1f5ff);
+  background: linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(244, 247, 250, 0.96));
   flex-shrink: 0;
 }
 
@@ -539,25 +546,25 @@ watch(selectedAgentId, async (newAgentId) => {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #0ea5e9, #6366f1);
+  background: linear-gradient(135deg, #0f766e, #0ea5a2);
   color: white;
   border: none;
-  box-shadow: 0 9px 18px rgba(79, 70, 229, 0.24);
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.16);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 12px 24px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 12px 24px rgba(15, 118, 110, 0.2);
 }
 
 .btn-secondary {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.94);
   color: #334155;
-  border: 1px solid rgba(148, 163, 184, 0.42);
+  border: 1px solid rgba(148, 163, 184, 0.34);
 }
 
 .btn-secondary:hover {
-  background: linear-gradient(180deg, #ffffff, #f5f9ff);
-  border-color: rgba(99, 102, 241, 0.35);
+  background: linear-gradient(180deg, #ffffff, #f3f7f7);
+  border-color: color-mix(in srgb, var(--resplit-accent) 26%, rgba(148, 163, 184, 0.4));
 }
 </style>

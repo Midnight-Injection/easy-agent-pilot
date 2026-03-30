@@ -797,6 +797,20 @@ const zhCN = {
       enable: '启用',
       disable: '禁用',
       confirmDeleteMessage: '确定要删除此配置吗？此操作无法撤销。',
+      addMode: {
+        skillTitle: '新增技能',
+        skillDescription: '选择要通过可视化脚手架创建技能，还是直接从 Git 仓库安装到当前 CLI 技能目录。',
+        pluginTitle: '新增插件',
+        pluginDescription: '选择要添加插件配置，还是直接从 Git 仓库安装插件到当前 CLI 插件目录。',
+        manualSkillLabel: '可视化创建技能',
+        manualSkillDescription: '生成 SKILL.md、引用文档与标准目录结构，并安装到当前技能目录。',
+        gitSkillLabel: '从 Git 安装技能',
+        gitSkillDescription: '直接从 Git 仓库拉取并安装到当前选中 CLI 的全局 skills 目录。',
+        manualPluginLabel: '手动新增插件配置',
+        manualPluginDescription: '为当前智能体添加插件配置记录或本地插件路径。',
+        gitPluginLabel: '从 Git 安装插件',
+        gitPluginDescription: '直接从 Git 仓库安装插件组件到当前选中 CLI 的全局 plugins 目录。'
+      },
       mcp: {
         title: 'MCP 配置',
         noConfigs: '暂无 MCP 配置。点击上方按钮添加。',
@@ -1441,16 +1455,24 @@ const zhCN = {
 
 规则：
 1. 只输出单个 JSON 对象，不要 markdown 或解释。
-2. 信息不足输出 form_request；信息足够输出 task_split。
-3. form_request 优先输出 forms 数组；字段 type 只能是 text、textarea、select、multiselect、number、checkbox、radio、date、slider。
-4. select / radio / multiselect 的 options 必须是 [{ "label": "...", "value": "..." }]，并保留 allowOther；可补充 suggestion、suggestionReason、optionReasons。
-5. 条件显示仅使用 condition: { field, value }。
-6. task_split 必须包含 status:"DONE"、tasks、dependsOn；每个任务都要有 title、description、priority、implementationSteps、testSteps、acceptanceCriteria。
-7. 任务要边界清晰，可直接执行。`,
+2. 首轮收到原始需求时，先判断信息是否足以稳定拆分；只要关键维度缺失、冲突或模糊，就必须输出 form_request，禁止直接猜测后拆分。
+3. 在输出 task_split 之前，你必须确认以下维度已经足够明确：目标与范围、交付物、技术/运行环境、约束与依赖、验收与测试要求；任一维度缺失都要先收集。
+4. form_request 优先输出 forms 数组；字段 type 只能是 text、textarea、select、multiselect、number、checkbox、radio、date、slider。
+5. form_request 应一次性收集当前轮次缺失的关键信息，优先设计 3-8 个高信息量字段，并尽量提供 suggestion、suggestionReason、optionReasons、allowOther。
+6. select / radio / multiselect 的 options 必须是 [{'{' } "label": "...", "value": "..." {'}'}]，并保留 allowOther；可补充 suggestion、suggestionReason、optionReasons。
+7. 条件显示仅使用 condition: {'{' } field, value {'}'}。
+8. task_split 必须包含 status:"DONE"、tasks、dependsOn；每个任务都要有 title、description、priority、implementationSteps、testSteps、acceptanceCriteria。
+9. 任务要边界清晰、可直接执行，禁止把仍然依赖用户补充信息的模糊事项直接塞进任务。
+10. description 不能写成泛泛的一句话，必须明确这个任务要完成什么业务目标、涉及哪些页面/模块/服务/数据、使用什么技术或方案来实现什么结果。
+11. implementationSteps 必须写成可直接执行的实现步骤，至少覆盖：改动位置、核心逻辑、关键数据流/状态流、边界处理；避免“完善功能”“处理逻辑”“完成开发”这类空话。
+12. 如果任务涉及前端，description 或 implementationSteps 中要写清楚页面/组件/状态管理/接口联动；如果涉及后端，要写清楚接口、服务、存储、调度、权限、事务或异常处理；如果跨端，要写清楚前后端协作边界。
+13. testSteps 不能只写“测试功能正常”，必须写清楚如何验证：测试前置条件、操作步骤、输入样例、预期结果，必要时区分手工验证、自动化测试、接口验证、回归验证。
+14. acceptanceCriteria 必须是可观察、可验收、可判定通过/失败的结果标准，优先描述业务结果、界面/接口表现、异常分支和性能/稳定性要求，禁止写成重复 implementationSteps 的过程描述。
+15. 优先输出少而完整的高质量任务，而不是很多个描述空泛的任务；每个任务都应该让执行者在不反复追问的情况下理解“做什么、怎么做、如何测试、何时算完成”。`,
       kickoffPlanName: '计划名称',
       kickoffPlanDescription: '计划描述',
       kickoffMinTaskCount: '最少任务数',
-      kickoffStart: '开始拆分：信息不足就输出 form_request，信息足够就直接输出 task_split。',
+      kickoffStart: '开始拆分：先检查信息完整度；只要目标、范围、技术环境、依赖或验收条件仍不清晰，就先输出 form_request 收集信息。只有在每个任务都能写出清晰的技术方案描述、实现步骤、测试步骤和验收标准时，才输出 task_split。',
       none: '（无）',
       resplitIntro: '将以下任务继续拆分为至少 {minTaskCount} 个子任务：',
       plan: '计划',
@@ -1460,7 +1482,7 @@ const zhCN = {
       testSteps: '测试步骤',
       acceptanceCriteria: '验收标准',
       extraRequirements: '用户额外要求',
-      directTaskSplitDone: '直接输出 task_split（status=DONE）。',
+      directTaskSplitDone: '在保证每个任务都具备清晰的技术实现说明、实现步骤、测试步骤、验收标准的前提下，直接输出 task_split（status=DONE）。',
       formResponse: '表单 {formId} 回答: {valueStr}',
       formResponseContinue: '继续：需要更多信息就输出 form_request；足够则输出 task_split（status=DONE）。',
       outputCorrection: `输出格式错误，请重新输出：

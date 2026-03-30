@@ -1040,6 +1040,8 @@ function close() {
 }
 
 .task-edit-modal {
+  --task-edit-accent: #0f766e;
+  --task-edit-accent-soft: color-mix(in srgb, var(--task-edit-accent) 10%, #ffffff);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1051,7 +1053,9 @@ function close() {
   align-items: center;
   justify-content: space-between;
   padding: 1.25rem 1.5rem;
-  background: linear-gradient(180deg, var(--color-surface, #fff) 0%, color-mix(in srgb, var(--color-bg-secondary, #f8fafc) 50%, transparent));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--task-edit-accent) 7%, transparent), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(245, 247, 249, 0.96));
   border-bottom: 1px solid var(--color-border, #e2e8f0);
 }
 
@@ -1068,8 +1072,9 @@ function close() {
   width: 36px;
   height: 36px;
   border-radius: var(--radius-lg, 10px);
-  background: linear-gradient(135deg, var(--color-primary, #3b82f6) 0%, color-mix(in srgb, var(--color-primary, #3b82f6) 80%, #8b5cf6));
-  color: white;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--task-edit-accent) 14%, #ffffff), color-mix(in srgb, var(--task-edit-accent) 8%, #f8fafc));
+  color: var(--task-edit-accent);
+  border: 1px solid color-mix(in srgb, var(--task-edit-accent) 18%, rgba(148, 163, 184, 0.28));
 }
 
 .modal-header h3 {
@@ -1094,7 +1099,7 @@ function close() {
 }
 
 .btn-close:hover {
-  background-color: var(--color-bg-secondary, #f1f5f9);
+  background-color: color-mix(in srgb, var(--task-edit-accent) 8%, #f1f5f9);
   color: var(--color-text-primary, #1e293b);
 }
 
@@ -1134,7 +1139,7 @@ function close() {
 }
 
 .section-title svg {
-  color: var(--color-primary, #3b82f6);
+  color: var(--task-edit-accent);
 }
 
 .section-header {
@@ -1143,14 +1148,14 @@ function close() {
   justify-content: space-between;
   padding: 0.75rem 1rem;
   margin: 0 -1rem;
-  background: var(--color-bg-secondary, #f8fafc);
+  background: linear-gradient(180deg, rgba(249, 250, 251, 0.96), rgba(244, 247, 250, 0.94));
   border-radius: var(--radius-md, 8px);
   cursor: pointer;
   transition: background-color 150ms ease;
 }
 
 .section-header:hover {
-  background: var(--color-bg-tertiary, #f1f5f9);
+  background: linear-gradient(180deg, rgba(247, 249, 251, 0.98), rgba(241, 245, 249, 0.96));
 }
 
 .section-chevron {
@@ -1211,7 +1216,7 @@ function close() {
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: var(--radius-md, 8px);
   font-size: 0.875rem;
-  background-color: var(--color-surface, #fff);
+  background-color: color-mix(in srgb, var(--task-edit-accent) 2%, #ffffff);
   color: var(--color-text-primary, #1e293b);
   transition: all 150ms ease;
 }
@@ -1232,8 +1237,8 @@ function close() {
 .form-field textarea:focus,
 .form-field select:focus {
   outline: none;
-  border-color: var(--color-primary, #3b82f6);
-  box-shadow: 0 0 0 3px rgb(59 130 246 / 15%);
+  border-color: color-mix(in srgb, var(--task-edit-accent) 42%, #94a3b8);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--task-edit-accent) 12%, transparent);
 }
 
 .input-title {
@@ -1282,7 +1287,7 @@ function close() {
 
 .priority-btn.low.active {
   border-color: #22c55e;
-  background: #f0fdf4;
+  background: rgba(240, 253, 244, 0.78);
 }
 
 .priority-btn.medium {
@@ -1291,7 +1296,7 @@ function close() {
 
 .priority-btn.medium.active {
   border-color: #f59e0b;
-  background: #fffbeb;
+  background: rgba(255, 251, 235, 0.8);
 }
 
 .priority-btn.high {
@@ -1300,7 +1305,7 @@ function close() {
 
 .priority-btn.high.active {
   border-color: #ef4444;
-  background: #fef2f2;
+  background: rgba(254, 242, 242, 0.8);
 }
 
 .form-field .execution-select {
@@ -1342,7 +1347,7 @@ function close() {
   align-items: flex-start;
   gap: 0.75rem;
   padding: 0.75rem 0.875rem;
-  background: var(--color-bg-secondary, #f8fafc);
+  background: linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(244, 247, 250, 0.96));
   border: 1px solid var(--color-border, #e2e8f0);
   border-radius: var(--radius-md, 8px);
   transition: all 150ms ease;
@@ -1350,7 +1355,7 @@ function close() {
 
 .step-card:hover,
 .criteria-card:hover {
-  background: var(--color-bg-tertiary, #f1f5f9);
+  background: linear-gradient(180deg, rgba(247, 249, 251, 0.98), rgba(241, 245, 249, 0.96));
 }
 
 .step-card.test {
@@ -1364,7 +1369,7 @@ function close() {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--color-primary, #3b82f6);
+  background: var(--task-edit-accent);
   color: white;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1468,9 +1473,9 @@ function close() {
 
 .add-step-btn:hover,
 .add-criteria-btn:hover {
-  border-color: var(--color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 5%, transparent);
-  color: var(--color-primary, #3b82f6);
+  border-color: var(--task-edit-accent);
+  background: color-mix(in srgb, var(--task-edit-accent) 6%, transparent);
+  color: var(--task-edit-accent);
 }
 
 .add-step-btn.test {
@@ -1508,8 +1513,8 @@ function close() {
 }
 
 .dependency-selector.open .dependency-trigger {
-  border-color: var(--color-primary, #3b82f6);
-  box-shadow: 0 0 0 3px rgb(59 130 246 / 15%);
+  border-color: color-mix(in srgb, var(--task-edit-accent) 42%, #94a3b8);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--task-edit-accent) 12%, transparent);
 }
 
 .dep-placeholder {
@@ -1531,10 +1536,10 @@ function close() {
   align-items: center;
   gap: 0.25rem;
   padding: 0.25rem 0.625rem;
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
+  background: color-mix(in srgb, var(--task-edit-accent) 12%, transparent);
   border-radius: var(--radius-full, 9999px);
   font-size: 0.75rem;
-  color: var(--color-primary, #3b82f6);
+  color: var(--task-edit-accent);
 }
 
 .tag-remove {
@@ -1542,7 +1547,7 @@ function close() {
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--color-primary, #3b82f6);
+  color: var(--task-edit-accent);
   cursor: pointer;
   opacity: 0.7;
   transition: opacity 150ms ease;
@@ -1597,7 +1602,7 @@ function close() {
 }
 
 .dep-option.selected {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  background: color-mix(in srgb, var(--task-edit-accent) 10%, transparent);
 }
 
 .dep-option input {
@@ -1618,8 +1623,8 @@ function close() {
 }
 
 .dep-option.selected .checkbox-visual {
-  border-color: var(--color-primary, #3b82f6);
-  background: var(--color-primary, #3b82f6);
+  border-color: var(--task-edit-accent);
+  background: var(--task-edit-accent);
 }
 
 .option-label {
@@ -1643,7 +1648,7 @@ function close() {
   justify-content: flex-end;
   gap: 0.75rem;
   padding: 1rem 1.5rem;
-  background: var(--color-surface, #fff);
+  background: linear-gradient(180deg, rgba(249, 250, 251, 0.98), rgba(244, 247, 250, 0.96));
   border-top: 1px solid var(--color-border, #e2e8f0);
   box-shadow: 0 -10px 24px rgb(15 23 42 / 4%);
 }
@@ -1661,8 +1666,8 @@ function close() {
 }
 
 .btn-cancel:hover {
-  background: color-mix(in srgb, var(--color-surface, #fff) 92%, var(--color-bg-secondary, #f8fafc));
-  border-color: color-mix(in srgb, var(--color-border, #e2e8f0) 65%, var(--color-primary, #3b82f6));
+  background: color-mix(in srgb, var(--color-surface, #fff) 94%, rgba(241, 245, 249, 0.9));
+  border-color: color-mix(in srgb, var(--color-border, #e2e8f0) 70%, var(--task-edit-accent));
 }
 
 .btn-save {
@@ -1670,9 +1675,9 @@ function close() {
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1.5rem;
-  border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 70%, #1d4ed8);
+  border: 1px solid color-mix(in srgb, var(--task-edit-accent) 72%, #0f172a);
   border-radius: var(--radius-md, 8px);
-  background: var(--color-primary, #3b82f6);
+  background: linear-gradient(135deg, #0f766e, #0ea5a2);
   color: white;
   font-size: 0.875rem;
   font-weight: 500;
@@ -1681,7 +1686,7 @@ function close() {
 }
 
 .btn-save:hover:not(:disabled) {
-  box-shadow: 0 8px 20px rgb(59 130 246 / 24%);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.2);
   transform: translateY(-1px);
 }
 

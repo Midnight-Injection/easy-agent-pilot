@@ -26,4 +26,9 @@ export interface TimelineEntry {
   formInitialValues?: Record<string, unknown>
   formDisabled?: boolean
   formVariant?: 'active' | 'submitted' | 'archived'
+  runtimeFallbackUsage?: {
+    model?: string
+    inputTokens?: number
+    outputTokens?: number
+  }
 }

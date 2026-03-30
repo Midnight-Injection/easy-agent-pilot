@@ -65,6 +65,7 @@ watch(() => props.modelValue, value => {
 function onChange(value: string | number) {
   if (value === OTHER_VALUE) {
     isOtherSelected.value = true
+    emit('update:modelValue', otherValue.value || OTHER_VALUE)
     return
   }
   isOtherSelected.value = false

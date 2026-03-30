@@ -899,6 +899,20 @@ export default {
       enable: 'Enable',
       disable: 'Disable',
       confirmDeleteMessage: 'Are you sure you want to delete this configuration? This action cannot be undone.',
+      addMode: {
+        skillTitle: 'Add Skill',
+        skillDescription: 'Choose whether to create a skill with the visual scaffold flow or install one from a Git repository into the current CLI skills directory.',
+        pluginTitle: 'Add Plugin',
+        pluginDescription: 'Choose whether to add a plugin configuration manually or install a plugin directly from a Git repository into the current CLI plugins directory.',
+        manualSkillLabel: 'Create Skill Scaffold',
+        manualSkillDescription: 'Generate SKILL.md, references, and the standard directory layout, then install it into the current skills directory.',
+        gitSkillLabel: 'Install Skill from Git',
+        gitSkillDescription: 'Clone and install a skill directly into the selected CLI global skills directory.',
+        manualPluginLabel: 'Add Plugin Config',
+        manualPluginDescription: 'Create a plugin configuration record or point to a local plugin path for the current agent.',
+        gitPluginLabel: 'Install Plugin from Git',
+        gitPluginDescription: 'Install plugin components directly from a Git repository into the selected CLI global plugins directory.'
+      },
       mcp: {
         title: 'MCP Configuration',
         noConfigs: 'No MCP configurations yet. Click the button above to add.',
@@ -1896,16 +1910,24 @@ When you cannot continue the current task and must collect explicit parameters, 
 
 Rules:
 1. Output exactly one JSON object. No markdown and no explanations.
-2. If information is insufficient, output form_request. If information is sufficient, output task_split.
-3. For form_request, prefer the forms array. Field type may only be text, textarea, select, multiselect, number, checkbox, radio, date, or slider.
-4. select / radio / multiselect options must be [{ "label": "...", "value": "..." }], and keep allowOther. You may also provide suggestion, suggestionReason, and optionReasons.
-5. Conditional display may only use condition: { field, value }.
-6. task_split must include status:"DONE", tasks, and dependsOn. Every task must contain title, description, priority, implementationSteps, testSteps, and acceptanceCriteria.
-7. Tasks must have clear boundaries and be directly executable.`,
+2. On the first pass over the raw requirement, do not output task_split unless the requirement is already specific and stable enough; when any critical dimension is missing, conflicting, or ambiguous, you must output form_request instead of guessing.
+3. Before outputting task_split, make sure you have enough clarity on goal and scope, deliverables, technical/runtime environment, constraints and dependencies, and acceptance/testing expectations. If any dimension is incomplete, ask first.
+4. For form_request, prefer the forms array. Field type may only be text, textarea, select, multiselect, number, checkbox, radio, date, or slider.
+5. A form_request should collect the currently missing high-value information in one round when possible. Prefer 3-8 focused fields and provide suggestion, suggestionReason, optionReasons, and allowOther whenever useful.
+6. select / radio / multiselect options must be [{'{' } "label": "...", "value": "..." {'}'}], and keep allowOther. You may also provide suggestion, suggestionReason, and optionReasons.
+7. Conditional display may only use condition: {'{' } field, value {'}'}.
+8. task_split must include status:"DONE", tasks, and dependsOn. Every task must contain title, description, priority, implementationSteps, testSteps, and acceptanceCriteria.
+9. Tasks must have clear boundaries, be directly executable, and must not hide unresolved user decisions behind vague task wording.
+10. description must not be a generic one-liner. It must clearly state the business goal, the affected pages/modules/services/data, and what technology or implementation approach will be used to achieve the outcome.
+11. implementationSteps must be action-oriented and execution-ready. They must cover change location, core logic, key data/state flow, and edge-case handling. Avoid vague phrases such as "improve feature", "handle logic", or "complete development".
+12. If the task is frontend-related, description or implementationSteps must mention the relevant pages/components/state management/API interactions. If it is backend-related, mention the API/service/storage/scheduler/permission/transaction/error-handling aspects. If it is cross-stack, make the collaboration boundary explicit.
+13. testSteps must not say only "test that it works". They must describe how to verify the task: setup/preconditions, operation steps, sample inputs, and expected results. Distinguish manual verification, automated tests, API checks, and regression checks when relevant.
+14. acceptanceCriteria must be observable and pass/fail oriented. Prefer business outcomes, UI/API behavior, error-path expectations, and performance/stability constraints. Do not repeat implementation steps as acceptance criteria.
+15. Prefer fewer but more complete high-quality tasks over many vague tasks. Each task should let an executor understand what to do, how to do it, how to test it, and when it is considered done without repeated clarification.`,
       kickoffPlanName: 'Plan Name',
       kickoffPlanDescription: 'Plan Description',
       kickoffMinTaskCount: 'Minimum Task Count',
-      kickoffStart: 'Start splitting: if information is insufficient, output form_request; if information is sufficient, output task_split directly.',
+      kickoffStart: 'Start by checking information completeness first. If goal, scope, environment, dependencies, or acceptance criteria are still unclear, output form_request first. Output task_split only when every task can be written with a clear technical approach, implementation steps, test steps, and acceptance criteria.',
       none: '(none)',
       resplitIntro: 'Continue splitting the following task into at least {minTaskCount} subtasks:',
       plan: 'Plan',
@@ -1915,7 +1937,7 @@ Rules:
       testSteps: 'Test Steps',
       acceptanceCriteria: 'Acceptance Criteria',
       extraRequirements: 'Additional User Requirements',
-      directTaskSplitDone: 'Output task_split directly (status=DONE).',
+      directTaskSplitDone: 'Output task_split directly (status=DONE) only when every task already has a clear technical implementation description, implementation steps, test steps, and acceptance criteria.',
       formResponse: 'Form {formId} response: {valueStr}',
       formResponseContinue: 'Continue: if more information is needed, output form_request; if sufficient, output task_split (status=DONE).',
       outputCorrection: `Output format is invalid. Please output again:

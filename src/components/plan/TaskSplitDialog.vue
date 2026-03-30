@@ -14,6 +14,7 @@ import type { TimelineEntry } from '@/types/timeline'
 import { buildToolCallMapFromLogs, extractDynamicFormSchemas } from '@/utils/toolCallLog'
 import { buildUsageNotice } from '@/utils/runtimeNotice'
 import { DEFAULT_SPLIT_GRANULARITY } from '@/constants/plan'
+import { logger } from '@/utils/logger'
 
 const planStore = usePlanStore()
 const taskSplitStore = useTaskSplitStore()
@@ -38,6 +39,11 @@ const isSessionRunning = computed(() => taskSplitStore.session?.status === 'runn
 const showStopButton = computed(() => taskSplitStore.session?.status === 'running')
 const showLoadingIndicator = computed(() => taskSplitStore.session?.status === 'running')
 const canRetrySplit = computed(() => taskSplitStore.session?.status === 'failed')
+const canContinueSplit = computed(() =>
+  taskSplitStore.session?.status === 'stopped'
+  && !activeFormSchema.value
+  && !showPreview.value
+)
 const retryActionLabel = computed(() => {
   const hasUserMessage = taskSplitStore.messages.some(message =>
     message.role === 'user' && message.content.trim()
@@ -62,8 +68,8 @@ const footerHint = computed(() => {
       log.type === 'content' && log.content.includes('"type": "form_request"')
     )
     return hasArchivedForms
-      ? '当前会话已停止，历史表单已固化展示，可回看每一轮的建议与表单内容。'
-      : '当前会话已停止，且没有待填写的表单数据，仅保留已有思考记录。'
+      ? '当前会话已停止，可继续拆分，或回看历史表单与建议。'
+      : '当前会话已停止，可继续拆分并从上一次确认过的上下文接着执行。'
   }
 
   if (taskSplitStore.session?.status === 'running') {
@@ -86,7 +92,11 @@ const sortedSplitLogs = computed(() => [...taskSplitStore.logs].sort((left, righ
 ))
 
 const toolCallMap = computed(() => buildToolCallMapFromLogs(sortedSplitLogs.value, {
-  fallbackStatus: isSessionRunning.value ? 'running' : 'success'
+  fallbackStatus: isSessionRunning.value
+    ? 'running'
+    : taskSplitStore.session?.status === 'failed' || taskSplitStore.session?.status === 'stopped'
+      ? 'error'
+      : 'success'
 }))
 
 const latestRuntimeLog = computed(() => {
@@ -166,6 +176,49 @@ function parseLogMetadata(log: PlanSplitLogRecord): Record<string, unknown> | nu
     }
   }
   return log.metadata as unknown as Record<string, unknown>
+}
+
+function readMetadataNumber(metadata: Record<string, unknown> | null, key: string): number | undefined {
+  const value = metadata?.[key]
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) {
+      return numeric
+    }
+  }
+  return undefined
+}
+
+function resolveUsageState(logs: PlanSplitLogRecord[]) {
+  const usageState: { model?: string, inputTokens?: number, outputTokens?: number } = {
+    model: taskSplitStore.context?.modelId
+      || taskSplitStore.usageModelHint
+      || undefined
+  }
+
+  for (const log of logs) {
+    const metadata = parseLogMetadata(log)
+    const model = typeof metadata?.model === 'string' && metadata.model.trim()
+      ? metadata.model.trim()
+      : undefined
+    const inputTokens = readMetadataNumber(metadata, 'inputTokens')
+    const outputTokens = readMetadataNumber(metadata, 'outputTokens')
+
+    if (model) {
+      usageState.model = model
+    }
+    if (inputTokens !== undefined && (usageState.inputTokens === undefined || inputTokens >= usageState.inputTokens)) {
+      usageState.inputTokens = inputTokens
+    }
+    if (outputTokens !== undefined && (usageState.outputTokens === undefined || outputTokens >= usageState.outputTokens)) {
+      usageState.outputTokens = outputTokens
+    }
+  }
+
+  return usageState
 }
 
 function buildSummaryValueMap(schema: DynamicFormSchema, content: string): Record<string, string> {
@@ -382,24 +435,16 @@ const hasRuntimeSystemLog = computed(() =>
 )
 
 const usageNoticeEntry = computed<TimelineEntry | null>(() => {
-  const usageLogs = sortedSplitLogs.value
-    .filter(log => log.type === 'usage' || log.type === 'message_start')
-
-  const usageState: { model?: string, inputTokens?: number, outputTokens?: number } = {
-    model: taskSplitStore.context?.modelId
-      || taskSplitStore.usageModelHint
-      || undefined
-  }
-  for (const log of usageLogs) {
+  const usageLogs = sortedSplitLogs.value.filter(log => {
     const metadata = parseLogMetadata(log)
-    const model = typeof metadata?.model === 'string' ? metadata.model : undefined
-    const inputTokens = typeof metadata?.inputTokens === 'number' ? metadata.inputTokens : undefined
-    const outputTokens = typeof metadata?.outputTokens === 'number' ? metadata.outputTokens : undefined
+    return log.type === 'usage'
+      || log.type === 'message_start'
+      || typeof metadata?.model === 'string'
+      || readMetadataNumber(metadata, 'inputTokens') !== undefined
+      || readMetadataNumber(metadata, 'outputTokens') !== undefined
+  })
 
-    if (model) usageState.model = model
-    if (inputTokens !== undefined) usageState.inputTokens = inputTokens
-    if (outputTokens !== undefined) usageState.outputTokens = outputTokens
-  }
+  const usageState = resolveUsageState(sortedSplitLogs.value)
 
   const notice = buildUsageNotice(usageState)
   if (!notice) return null
@@ -409,7 +454,8 @@ const usageNoticeEntry = computed<TimelineEntry | null>(() => {
     id: `usage-${latestUsageLog?.id || 'runtime'}`,
     type: 'system',
     content: `### ${notice.title}\n${notice.content}`,
-    timestamp: latestUsageLog?.createdAt || taskSplitStore.session?.updatedAt
+    timestamp: latestUsageLog?.createdAt || taskSplitStore.session?.updatedAt,
+    runtimeFallbackUsage: usageState
   }
 })
 
@@ -752,20 +798,24 @@ async function initializeDialogSession() {
   const dialogContext = planStore.splitDialogContext
   if (!dialogContext) return
 
-  const existingPlan = planStore.plans.find(p => p.id === dialogContext.planId)
-  const plan = existingPlan || await planStore.getPlan(dialogContext.planId)
-  if (!plan) return
+  try {
+    const existingPlan = planStore.plans.find(p => p.id === dialogContext.planId)
+    const plan = existingPlan || await planStore.getPlan(dialogContext.planId)
+    if (!plan) return
 
-  const project = projectStore.projects.find(p => p.id === plan.projectId)
-  await taskSplitStore.initSession({
-    planId: plan.id,
-    planName: plan.name,
-    planDescription: plan.description,
-    granularity: plan.granularity,
-    agentId: dialogContext.agentId,
-    modelId: dialogContext.modelId,
-    workingDirectory: project?.path
-  })
+    const project = projectStore.projects.find(p => p.id === plan.projectId)
+    await taskSplitStore.initSession({
+      planId: plan.id,
+      planName: plan.name,
+      planDescription: plan.description,
+      granularity: plan.granularity,
+      agentId: dialogContext.agentId,
+      modelId: dialogContext.modelId,
+      workingDirectory: project?.path
+    })
+  } catch (error) {
+    logger.error('[TaskSplitDialog] Failed to initialize session:', error)
+  }
 }
 
 // 重新拆分（清理当前状态，开始新会话）
@@ -785,7 +835,11 @@ async function restartSplit() {
 
 async function handleFormSubmit(values: Record<string, any>) {
   if (!activeFormSchema.value) return
-  await taskSplitStore.submitFormResponse(activeFormSchema.value.formId, values)
+  try {
+    await taskSplitStore.submitFormResponse(activeFormSchema.value.formId, values)
+  } catch (error) {
+    logger.error('[TaskSplitDialog] Failed to submit task split form:', error)
+  }
 }
 
 function handleTimelineFormSubmit(_entryId: string, values: Record<string, unknown>) {
@@ -876,6 +930,10 @@ async function retrySplitTask() {
   await taskSplitStore.retry()
 }
 
+async function continueSplitTask() {
+  await taskSplitStore.continueSession()
+}
+
 // 监听对话框打开
 watch(() => planStore.splitDialogVisible, async (visible) => {
   if (visible) {
@@ -940,6 +998,8 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
                 <ExecutionTimeline
                   :entries="timelineEntries"
                   group-tool-calls
+                  show-elapsed-meta
+                  form-cancel-text="隐藏"
                   @form-submit="handleTimelineFormSubmit"
                   @form-cancel="closeDialog"
                   @message-form-submit="(_formId, values) => handleTimelineFormSubmit('', values)"
@@ -997,6 +1057,13 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
                 {{ retryActionLabel }}
               </button>
               <button
+                v-if="canContinueSplit"
+                class="btn btn-secondary btn-continue"
+                @click="continueSplitTask"
+              >
+                继续拆分
+              </button>
+              <button
                 v-if="showStopButton"
                 class="btn btn-danger"
                 @click="stopSplitTask"
@@ -1007,7 +1074,7 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
                 class="btn btn-secondary"
                 @click="closeDialog"
               >
-                取消
+                隐藏
               </button>
             </div>
           </div>
@@ -1408,6 +1475,12 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
   border-color: rgba(14, 165, 233, 0.36);
   color: #0369a1;
   background: linear-gradient(180deg, #ffffff, #eff8ff);
+}
+
+.btn-continue {
+  border-color: rgba(99, 102, 241, 0.28);
+  color: #4338ca;
+  background: linear-gradient(180deg, #ffffff, #f3f4ff);
 }
 
 .split-log-panel {

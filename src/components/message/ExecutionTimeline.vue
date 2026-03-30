@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import DynamicForm from '@/components/plan/DynamicForm.vue'
 import type { TimelineEntry } from '@/types/timeline'
 import StructuredContentRenderer from './StructuredContentRenderer.vue'
@@ -13,9 +14,14 @@ import type { ToolCall } from '@/stores/message'
 const props = withDefaults(defineProps<{
   entries: TimelineEntry[]
   groupToolCalls?: boolean
+  showElapsedMeta?: boolean
+  formCancelText?: string
 }>(), {
-  groupToolCalls: false
+  groupToolCalls: false,
+  showElapsedMeta: false,
+  formCancelText: '取消'
 })
+const { t } = useI18n()
 
 const emit = defineEmits<{
   (e: 'form-submit', entryId: string, values: Record<string, unknown>): void
@@ -72,6 +78,78 @@ function shouldClampToolGroup(entries: TimelineEntry[]) {
   return entries.length > 10
 }
 
+function toTimestampMs(value?: string) {
+  if (!value) {
+    return null
+  }
+
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function formatElapsedMs(value: number | null) {
+  if (value === null || value < 250) {
+    return null
+  }
+
+  if (value < 1_000) {
+    return `${Math.round(value)}ms`
+  }
+
+  if (value < 60_000) {
+    return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}s`
+  }
+
+  const minutes = Math.floor(value / 60_000)
+  const seconds = Math.round((value % 60_000) / 1_000)
+  return `${minutes}m ${seconds}s`
+}
+
+const collapsedToolGroups = ref<Record<string, boolean>>({})
+
+function sortToolEntries(entries: TimelineEntry[]) {
+  const statusWeight = (entry: TimelineEntry) => {
+    const status = entry.toolCall?.status
+    switch (status) {
+      case 'running':
+        return 0
+      case 'pending':
+        return 1
+      case 'error':
+        return 2
+      default:
+        return 3
+    }
+  }
+
+  return [...entries].sort((left, right) => {
+    const weightDiff = statusWeight(left) - statusWeight(right)
+    if (weightDiff !== 0) {
+      return weightDiff
+    }
+
+    const leftTime = new Date(left.timestamp || 0).getTime()
+    const rightTime = new Date(right.timestamp || 0).getTime()
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime
+    }
+
+    return left.id.localeCompare(right.id)
+  })
+}
+
+function isToolGroupExpanded(key: string) {
+  if (!(key in collapsedToolGroups.value)) {
+    collapsedToolGroups.value[key] = false
+  }
+
+  return collapsedToolGroups.value[key]
+}
+
+function toggleToolGroup(key: string) {
+  collapsedToolGroups.value[key] = !isToolGroupExpanded(key)
+}
+
 const renderBlocks = computed<TimelineRenderBlock[]>(() => {
   if (!props.groupToolCalls) {
     return props.entries.map(entry => ({
@@ -92,7 +170,7 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
     blocks.push({
       kind: 'tool-group',
       key: getToolGroupKey(pendingToolEntries),
-      entries: [...pendingToolEntries]
+      entries: sortToolEntries(pendingToolEntries)
     })
     pendingToolEntries = []
   }
@@ -114,6 +192,36 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
   flushPendingTools()
   return blocks
 })
+
+const entryElapsedLabelMap = computed(() => {
+  const labels = new Map<string, string>()
+  let previousTimestampMs: number | null = null
+
+  for (const entry of props.entries) {
+    const timestampMs = toTimestampMs(entry.timestamp)
+    const elapsedLabel = timestampMs !== null && previousTimestampMs !== null
+      ? formatElapsedMs(Math.max(0, timestampMs - previousTimestampMs))
+      : null
+
+    if (elapsedLabel) {
+      labels.set(entry.id, elapsedLabel)
+    }
+
+    if (timestampMs !== null) {
+      previousTimestampMs = timestampMs
+    }
+  }
+
+  return labels
+})
+
+function getEntryElapsedLabel(entry: TimelineEntry) {
+  if (!props.showElapsedMeta || entry.role === 'user') {
+    return null
+  }
+
+  return entryElapsedLabelMap.value.get(entry.id) ?? null
+}
 </script>
 
 <template>
@@ -127,11 +235,24 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
         class="execution-timeline__tool-calls-shell"
         :class="{ 'execution-timeline__tool-calls-shell--scrollable': shouldClampToolGroup(block.entries) }"
       >
-        <div class="execution-timeline__tool-calls-head">
+        <button
+          type="button"
+          class="execution-timeline__tool-calls-head"
+          :aria-expanded="isToolGroupExpanded(block.key)"
+          @click="toggleToolGroup(block.key)"
+        >
           <span class="execution-timeline__tool-calls-title">工具调用</span>
-          <span class="execution-timeline__tool-calls-count">{{ block.entries.length }}</span>
-        </div>
-        <div class="execution-timeline__tool-calls">
+          <span class="execution-timeline__tool-calls-head-right">
+            <span class="execution-timeline__tool-calls-count">{{ block.entries.length }}</span>
+            <span class="execution-timeline__tool-calls-toggle">
+              {{ isToolGroupExpanded(block.key) ? t('message.collapse') : t('message.expand') }}
+            </span>
+          </span>
+        </button>
+        <div
+          v-if="isToolGroupExpanded(block.key)"
+          class="execution-timeline__tool-calls"
+        >
           <ToolCallDisplay
             v-for="toolEntry in block.entries"
             :key="getToolCallRenderKey(toolEntry.toolCall!)"
@@ -151,6 +272,12 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
           :class="`timeline-message--${block.entry.role || 'assistant'}`"
         >
           <div class="timeline-message__content">
+            <div
+              v-if="getEntryElapsedLabel(block.entry)"
+              class="timeline-entry__meta"
+            >
+              用时 {{ getEntryElapsedLabel(block.entry) }}
+            </div>
             <StructuredContentRenderer
               v-if="block.entry.role !== 'user'"
               :content="block.entry.content || ''"
@@ -190,6 +317,12 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
           class="timeline-message timeline-message--assistant"
         >
           <div class="timeline-message__content">
+            <div
+              v-if="getEntryElapsedLabel(block.entry)"
+              class="timeline-entry__meta"
+            >
+              用时 {{ getEntryElapsedLabel(block.entry) }}
+            </div>
             <MarkdownRenderer
               :content="block.entry.content"
               :animate="block.entry.animate"
@@ -210,12 +343,19 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
               'timeline-form__content--active': (block.entry.formVariant || 'active') === 'active'
             }"
           >
+            <div
+              v-if="getEntryElapsedLabel(block.entry)"
+              class="timeline-entry__meta timeline-entry__meta--panel"
+            >
+              用时 {{ getEntryElapsedLabel(block.entry) }}
+            </div>
             <DynamicForm
               :schema="block.entry.formSchema"
               :question="block.entry.formPrompt"
               :initial-values="block.entry.formInitialValues"
               :disabled="block.entry.formDisabled"
               :variant="block.entry.formVariant || 'active'"
+              :cancel-text="formCancelText"
               @submit="emit('form-submit', block.entry.id, $event)"
               @cancel="emit('form-cancel', block.entry.id)"
             />
@@ -226,7 +366,16 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
           v-else-if="block.entry.type === 'system' && block.entry.content && toRuntimeNotices(block.entry.content).length > 0"
           class="timeline-runtime"
         >
-          <RuntimeNoticeList :notices="toRuntimeNotices(block.entry.content)" />
+          <div
+            v-if="getEntryElapsedLabel(block.entry)"
+            class="timeline-entry__meta timeline-entry__meta--panel"
+          >
+            用时 {{ getEntryElapsedLabel(block.entry) }}
+          </div>
+          <RuntimeNoticeList
+            :notices="toRuntimeNotices(block.entry.content)"
+            :fallback-usage="block.entry.runtimeFallbackUsage || null"
+          />
         </div>
 
         <div
@@ -234,6 +383,12 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
           class="timeline-entry"
           :class="`timeline-entry--${block.entry.type}`"
         >
+          <div
+            v-if="getEntryElapsedLabel(block.entry)"
+            class="timeline-entry__meta"
+          >
+            用时 {{ getEntryElapsedLabel(block.entry) }}
+          </div>
           <StructuredContentRenderer
             :content="block.entry.content"
             :animate="block.entry.animate"
@@ -296,7 +451,25 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  width: 100%;
   padding: 0 0.1rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.execution-timeline__tool-calls-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.execution-timeline__tool-calls-toggle {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--tool-call-shell-title);
+  opacity: 0.82;
 }
 
 .execution-timeline__tool-calls-title {
@@ -398,6 +571,20 @@ const renderBlocks = computed<TimelineRenderBlock[]>(() => {
   border: 1px solid var(--timeline-entry-border);
   background: var(--timeline-entry-bg);
   padding: 0.875rem 1rem;
+}
+
+.timeline-entry__meta {
+  margin-bottom: 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #64748b);
+  letter-spacing: 0.01em;
+}
+
+.timeline-entry__meta--panel {
+  width: fit-content;
+  margin-bottom: 0.55rem;
+  padding-left: 0.2rem;
 }
 
 .timeline-entry--error {

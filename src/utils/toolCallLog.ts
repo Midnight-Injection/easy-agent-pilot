@@ -11,10 +11,15 @@ interface ToolCallLogLike {
 
 interface ToolCallMetadata {
   toolName?: string
+  tool_name?: string
   toolCallId?: string
+  tool_call_id?: string
   toolInput?: string
+  tool_input?: string
   toolResult?: string
+  tool_result?: string
   isError?: boolean
+  rawMetadata?: unknown
 }
 
 interface ToolCallLogOptions {
@@ -36,18 +41,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function toToolCallMetadata(metadata: unknown): ToolCallMetadata {
+  const normalize = (value: ToolCallMetadata): ToolCallMetadata => {
+    const rawMetadata = value.rawMetadata
+    const rawRecord = typeof rawMetadata === 'string'
+      ? (() => {
+          try {
+            const parsed = JSON.parse(rawMetadata) as unknown
+            return isRecord(parsed) ? parsed as ToolCallMetadata : {}
+          } catch {
+            return {}
+          }
+        })()
+      : isRecord(rawMetadata)
+        ? rawMetadata as ToolCallMetadata
+        : {}
+
+    const merged = {
+      ...rawRecord,
+      ...value
+    }
+
+    return {
+      ...merged,
+      toolName: merged.toolName ?? merged.tool_name,
+      toolCallId: merged.toolCallId ?? merged.tool_call_id,
+      toolInput: merged.toolInput ?? merged.tool_input,
+      toolResult: merged.toolResult ?? merged.tool_result
+    }
+  }
+
   if (!metadata) return {}
 
   if (typeof metadata === 'string') {
     try {
-      return JSON.parse(metadata) as ToolCallMetadata
+      return normalize(JSON.parse(metadata) as ToolCallMetadata)
     } catch {
       return {}
     }
   }
 
   if (typeof metadata === 'object') {
-    return metadata as ToolCallMetadata
+    return normalize(metadata as ToolCallMetadata)
   }
 
   return {}

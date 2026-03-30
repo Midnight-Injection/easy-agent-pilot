@@ -1,7 +1,9 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
 use tauri::AppHandle;
+use tokio::sync::RwLock;
 
 use super::strategy::{AgentExecutionStrategy, AgentRuntimeKind};
 use super::types::ExecutionRequest;
@@ -51,7 +53,11 @@ impl StrategyRegistry {
             )
         })?;
 
-        strategy.execute(app, request).await
+        let session_id = request.session_id.clone();
+        mark_execution_session_active(&session_id).await;
+        let result = strategy.execute(app, request).await;
+        mark_execution_session_inactive(&session_id).await;
+        result
     }
 }
 
@@ -65,6 +71,8 @@ impl Default for StrategyRegistry {
 lazy_static::lazy_static! {
     static ref REGISTRY: Arc<tokio::sync::RwLock<StrategyRegistry>> =
         Arc::new(tokio::sync::RwLock::new(StrategyRegistry::new()));
+    static ref ACTIVE_EXECUTION_SESSIONS: Arc<RwLock<HashSet<String>>> =
+        Arc::new(RwLock::new(HashSet::new()));
 }
 
 /// 初始化策略注册表
@@ -83,6 +91,30 @@ pub async fn init_registry() {
 /// 获取策略注册表
 pub async fn get_registry() -> Arc<tokio::sync::RwLock<StrategyRegistry>> {
     REGISTRY.clone()
+}
+
+/// 标记执行会话为活跃状态。
+pub async fn mark_execution_session_active(session_id: &str) {
+    let mut sessions = ACTIVE_EXECUTION_SESSIONS.write().await;
+    sessions.insert(session_id.to_string());
+}
+
+/// 清理执行会话的活跃状态。
+pub async fn mark_execution_session_inactive(session_id: &str) {
+    let mut sessions = ACTIVE_EXECUTION_SESSIONS.write().await;
+    sessions.remove(session_id);
+}
+
+/// 判断执行会话当前是否仍在本进程内活跃。
+pub async fn is_execution_session_active_internal(session_id: &str) -> bool {
+    let sessions = ACTIVE_EXECUTION_SESSIONS.read().await;
+    sessions.contains(session_id)
+}
+
+/// 查询执行会话当前是否仍在运行。
+#[tauri::command]
+pub async fn is_execution_session_active(session_id: String) -> Result<bool, String> {
+    Ok(is_execution_session_active_internal(&session_id).await)
 }
 
 /// 统一执行命令

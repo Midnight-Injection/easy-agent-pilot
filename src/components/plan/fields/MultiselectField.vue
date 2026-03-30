@@ -85,6 +85,10 @@ function emitCombinedValues(selectedPresetValues: (string | number)[], customVal
   emit('update:modelValue', [...selectedPresetValues, ...normalizeCustomValues(customValues)])
 }
 
+function selectedPresetValuesWithoutOther(values: (string | number)[]) {
+  return values.filter(value => presetValues.value.has(value) && value !== OTHER_VALUE)
+}
+
 watch(() => props.modelValue, newVal => {
   const customValues = extractCustomValues(newVal)
   const normalizedIncoming = normalizeCustomValues(customValues)
@@ -117,7 +121,12 @@ function isSelected(value: string | number): boolean {
 }
 
 function toggleOption(value: string | number) {
-  const current = [...props.modelValue].filter(v => presetValues.value.has(v))
+  if (value === OTHER_VALUE) {
+    toggleOther()
+    return
+  }
+
+  const current = [...selectedPresetValuesWithoutOther(props.modelValue)]
   const customValues = extractCustomValues(props.modelValue)
 
   const index = current.indexOf(value)
@@ -132,7 +141,7 @@ function toggleOption(value: string | number) {
 
 function toggleOther() {
   isOtherSelected.value = !isOtherSelected.value
-  const current = props.modelValue.filter(v => presetValues.value.has(v))
+  const current = selectedPresetValuesWithoutOther(props.modelValue)
 
   if (!isOtherSelected.value) {
     otherValues.value = []
@@ -154,7 +163,7 @@ function addOtherInput() {
 function removeOtherInput(index: number) {
   const nextValues = otherValues.value.filter((_, itemIndex) => itemIndex !== index)
   otherValues.value = nextValues.length > 0 ? nextValues : ['']
-  const current = props.modelValue.filter(v => presetValues.value.has(v))
+  const current = selectedPresetValuesWithoutOther(props.modelValue)
   emitCombinedValues(current, otherValues.value)
 }
 
@@ -164,7 +173,7 @@ function onOtherInput(index: number, event: Event) {
   nextValues[index] = target.value
   otherValues.value = nextValues
 
-  const current = props.modelValue.filter(v => presetValues.value.has(v))
+  const current = selectedPresetValuesWithoutOther(props.modelValue)
   emitCombinedValues(current, nextValues)
 }
 

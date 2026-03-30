@@ -5,6 +5,10 @@ import { EaButton, EaIcon, EaInput, EaModal, EaSelect } from '@/components/commo
 import { inferAgentProvider, useAgentStore } from '@/stores/agent'
 import { useMarketplaceStore, type GitPluginInstallInput } from '@/stores/marketplace'
 
+const props = defineProps<{
+  defaultAgentId?: string
+}>()
+
 const emit = defineEmits<{
   close: []
   complete: []
@@ -82,9 +86,19 @@ function handleClose() {
 
 onMounted(async () => {
   await agentStore.loadAgents()
-  if (cliAgents.value.length > 0) {
-    selectedAgentId.value = cliAgents.value[0].id
+  if (cliAgents.value.length === 0) {
+    return
   }
+
+  const preferredAgent = props.defaultAgentId
+    ? cliAgents.value.find(agent => agent.id === props.defaultAgentId)
+    : null
+  if (preferredAgent) {
+    selectedAgentId.value = preferredAgent.id
+    return
+  }
+
+  selectedAgentId.value = cliAgents.value[0].id
 })
 </script>
 
