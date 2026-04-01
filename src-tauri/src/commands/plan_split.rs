@@ -1105,11 +1105,6 @@ pub fn start_plan_split(
     input: StartPlanSplitInput,
 ) -> Result<PlanSplitSession, String> {
     let conn = open_db_connection().map_err(|error| error.to_string())?;
-    conn.execute(
-        "DELETE FROM plan_split_logs WHERE plan_id = ?1",
-        [&input.plan_id],
-    )
-    .map_err(|error| error.to_string())?;
 
     let mut request = input.execution_request.clone();
     request.plan_id = Some(input.plan_id.clone());

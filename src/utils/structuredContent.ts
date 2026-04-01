@@ -1,4 +1,15 @@
-import type { AIFormRequest, DynamicFormSchema, FieldCondition, FieldType, FieldValidation, FormField, FormFieldOption } from '@/types/plan'
+import type {
+  AIFormRequest,
+  AITaskItem,
+  AITaskSplitResult,
+  DynamicFormSchema,
+  FieldCondition,
+  FieldType,
+  FieldValidation,
+  FormField,
+  FormFieldOption,
+  TaskPriority
+} from '@/types/plan'
 import { normalizeFormSchemaForRendering } from './formSchema'
 
 export interface StructuredExecutionResult {
@@ -143,6 +154,61 @@ function normalizeFieldOptions(value: unknown): FormFieldOption[] | undefined {
   }).filter((option): option is FormFieldOption => Boolean(option))
 
   return normalized.length > 0 ? normalized : undefined
+}
+
+function isTaskPriority(value: unknown): value is TaskPriority {
+  return value === 'low' || value === 'medium' || value === 'high'
+}
+
+function normalizeTaskSplitItem(value: unknown): AITaskItem | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const title = readString(value, 'title')?.trim()
+  if (!title) {
+    return null
+  }
+
+  const description = readString(value, 'description')?.trim() ?? ''
+  const priority = isTaskPriority(value.priority) ? value.priority : 'medium'
+
+  return {
+    title,
+    description,
+    priority,
+    expertId: readString(value, 'expertId', 'expert_id'),
+    agentId: readString(value, 'agentId', 'agent_id'),
+    modelId: readString(value, 'modelId', 'model_id'),
+    implementationSteps: normalizeStringArray(value.implementationSteps ?? value.implementation_steps),
+    testSteps: normalizeStringArray(value.testSteps ?? value.test_steps),
+    acceptanceCriteria: normalizeStringArray(value.acceptanceCriteria ?? value.acceptance_criteria),
+    dependsOn: normalizeStringArray(value.dependsOn ?? value.depends_on)
+  }
+}
+
+function toTaskSplitResult(value: unknown): AITaskSplitResult | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const tasksValue = value.tasks
+  if (!Array.isArray(tasksValue) || tasksValue.length === 0) {
+    return null
+  }
+
+  const normalizedTasks = tasksValue
+    .map(normalizeTaskSplitItem)
+    .filter((item): item is AITaskItem => Boolean(item))
+
+  if (normalizedTasks.length === 0) {
+    return null
+  }
+
+  return {
+    type: 'task_split',
+    tasks: normalizedTasks
+  }
 }
 
 function normalizeFormField(value: unknown): FormField | null {
@@ -302,6 +368,14 @@ function toFormResponse(value: unknown): StructuredFormResponse | null {
 function tryParseFormResponse(rawJson: string): StructuredFormResponse | null {
   try {
     return toFormResponse(JSON.parse(rawJson) as unknown)
+  } catch {
+    return null
+  }
+}
+
+function tryParseTaskSplitResult(rawJson: string): AITaskSplitResult | null {
+  try {
+    return toTaskSplitResult(JSON.parse(rawJson) as unknown)
   } catch {
     return null
   }
@@ -560,6 +634,27 @@ export function extractFormResponse(content: string): StructuredFormResponse | n
     const nestedResponse = tryParseFormResponse(content.slice(start, end))
     if (nestedResponse) {
       return nestedResponse
+    }
+  }
+
+  return null
+}
+
+export function extractTaskSplitResult(content: string): AITaskSplitResult | null {
+  const trimmed = content.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const fullResult = tryParseTaskSplitResult(trimmed)
+  if (fullResult) {
+    return fullResult
+  }
+
+  for (const { start, end } of extractBalancedJsonRanges(content)) {
+    const nestedResult = tryParseTaskSplitResult(content.slice(start, end))
+    if (nestedResult) {
+      return nestedResult
     }
   }
 

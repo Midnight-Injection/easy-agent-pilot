@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DynamicForm from '@/components/plan/DynamicForm.vue'
+import { useThemeStore } from '@/stores/theme'
 import type { TimelineEntry } from '@/types/timeline'
 import StructuredContentRenderer from './StructuredContentRenderer.vue'
 import ThinkingDisplay from './ThinkingDisplay.vue'
@@ -22,6 +23,8 @@ const props = withDefaults(defineProps<{
   formCancelText: '取消'
 })
 const { t } = useI18n()
+const themeStore = useThemeStore()
+const isDarkTheme = computed(() => themeStore.isDark)
 
 const emit = defineEmits<{
   (e: 'form-submit', entryId: string, values: Record<string, unknown>): void
@@ -286,6 +289,10 @@ const entryElapsedLabelMap = computed(() => {
 })
 
 function getEntryElapsedLabel(entry: TimelineEntry) {
+  if (entry.metaLabel?.trim()) {
+    return entry.metaLabel.trim()
+  }
+
   if (!props.showElapsedMeta || entry.role === 'user') {
     return null
   }
@@ -295,7 +302,10 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
 </script>
 
 <template>
-  <div class="execution-timeline">
+  <div
+    class="execution-timeline"
+    :class="{ 'execution-timeline--dark': isDarkTheme }"
+  >
     <template
       v-for="block in renderBlocks"
       :key="block.key"
@@ -540,6 +550,7 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
   --timeline-bubble-bg: rgba(248, 250, 252, 0.92);
   --timeline-bubble-border: rgba(148, 163, 184, 0.22);
   --timeline-bubble-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  --timeline-bubble-text: var(--color-text-primary);
   --timeline-user-bubble-bg: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(14, 165, 233, 0.08));
   --timeline-user-bubble-border: rgba(59, 130, 246, 0.22);
   --timeline-entry-bg: rgba(248, 250, 252, 0.82);
@@ -548,6 +559,8 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
   --timeline-entry-error-border: rgba(239, 68, 68, 0.28);
   --timeline-entry-system-bg: rgba(239, 246, 255, 0.9);
   --timeline-entry-system-border: rgba(14, 165, 233, 0.2);
+  --timeline-entry-text: var(--color-text-primary);
+  --timeline-meta-text: var(--color-text-secondary, #64748b);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
@@ -681,6 +694,7 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
   background: var(--timeline-bubble-bg);
   border: 1px solid var(--timeline-bubble-border);
   box-shadow: var(--timeline-bubble-shadow);
+  color: var(--timeline-bubble-text);
 }
 
 .timeline-message--user .timeline-message__content {
@@ -704,13 +718,14 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
   border: 1px solid var(--timeline-entry-border);
   background: var(--timeline-entry-bg);
   padding: 0.875rem 1rem;
+  color: var(--timeline-entry-text);
 }
 
 .timeline-entry__meta {
   margin-bottom: 0.55rem;
   font-size: 0.68rem;
   font-weight: 600;
-  color: var(--color-text-secondary, #64748b);
+  color: var(--timeline-meta-text);
   letter-spacing: 0.01em;
 }
 
@@ -738,11 +753,13 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
 .timeline-runtime {
   width: var(--timeline-entry-width);
   max-width: 100%;
+  color: var(--timeline-entry-text);
 }
 
 .timeline-form__content {
   width: var(--timeline-entry-width);
   max-width: 100%;
+  color: var(--timeline-entry-text);
   transition: transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -759,11 +776,11 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
   opacity: 0.72;
 }
 
-:global([data-theme='dark']) .execution-timeline,
-:global(.dark) .execution-timeline {
+.execution-timeline--dark {
   --timeline-bubble-bg: rgba(15, 23, 42, 0.8);
   --timeline-bubble-border: rgba(148, 163, 184, 0.18);
   --timeline-bubble-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
+  --timeline-bubble-text: #e2e8f0;
   --timeline-user-bubble-bg: linear-gradient(135deg, rgba(37, 99, 235, 0.28), rgba(14, 165, 233, 0.16));
   --timeline-user-bubble-border: rgba(96, 165, 250, 0.24);
   --timeline-entry-bg: rgba(15, 23, 42, 0.76);
@@ -772,10 +789,11 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
   --timeline-entry-error-border: rgba(248, 113, 113, 0.26);
   --timeline-entry-system-bg: rgba(12, 74, 110, 0.28);
   --timeline-entry-system-border: rgba(56, 189, 248, 0.22);
+  --timeline-entry-text: #e2e8f0;
+  --timeline-meta-text: #94a3b8;
 }
 
-:global([data-theme='dark']) .execution-timeline__tool-calls-shell,
-:global(.dark) .execution-timeline__tool-calls-shell {
+.execution-timeline--dark .execution-timeline__tool-calls-shell {
   --tool-call-shell-border: rgba(249, 115, 22, 0.26);
   --tool-call-shell-bg: linear-gradient(180deg, rgba(67, 20, 7, 0.7), rgba(15, 23, 42, 0.92));
   --tool-call-shell-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
@@ -785,8 +803,11 @@ function getEntryElapsedLabel(entry: TimelineEntry) {
   --tool-call-shell-scrollbar-thumb: rgba(251, 146, 60, 0.42);
 }
 
-:global([data-theme='dark']) .timeline-message__text,
-:global(.dark) .timeline-message__text {
+.execution-timeline--dark .timeline-message__text {
   color: #f8fafc;
+}
+
+.execution-timeline--dark :deep(.structured-content__label) {
+  color: #7dd3fc;
 }
 </style>

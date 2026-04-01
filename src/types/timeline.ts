@@ -13,8 +13,10 @@ export type TimelineEntryType =
 export interface TimelineEntry {
   id: string
   type: TimelineEntryType
+  sequence?: number
   content?: string
   timestamp?: string
+  metaLabel?: string
   role?: 'user' | 'assistant' | 'system'
   animate?: boolean
   toolCall?: ToolCall

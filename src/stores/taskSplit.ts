@@ -467,7 +467,10 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
   async function startBackgroundSession(
     nextContext: TaskSplitContext,
     llmMessages: MessageInput[],
-    uiMessages: SplitMessage[]
+    uiMessages: SplitMessage[],
+    options?: {
+      preserveLogs?: boolean
+    }
   ) {
     const agentStore = useAgentStore()
     const agent = agentStore.agents.find(item => item.id === nextContext.agentId)
@@ -481,7 +484,9 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
       throw new Error('SDK API Key 未配置')
     }
 
-    logs.value = []
+    if (!options?.preserveLogs) {
+      logs.value = []
+    }
     runtimeMetrics.value = {
       startedAt: performance.now()
     }
@@ -576,7 +581,7 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
       const contextNotice = buildContextStrategyNotice({
         strategy: 'Plan Split Prompt Context',
         runtime: inferAgentProvider(selectedAgent)?.toUpperCase() || selectedAgent.type,
-        model: modelHint ?? nextContext.modelId ?? selectedAgent.modelId,
+        model: nextContext.modelId || selectedAgent.modelId || modelHint,
         expert: selectedExpert?.name || nextContext.expertId,
         systemMessageCount: 1,
         userMessageCount: 1,
@@ -666,7 +671,9 @@ export const useTaskSplitStore = defineStore('taskSplit', () => {
       throw new Error('当前会话缺少可重试的上下文。')
     }
 
-    await startBackgroundSession(context.value, llmMessages, uiMessages)
+    await startBackgroundSession(context.value, llmMessages, uiMessages, {
+      preserveLogs: true
+    })
   }
 
   async function retry() {

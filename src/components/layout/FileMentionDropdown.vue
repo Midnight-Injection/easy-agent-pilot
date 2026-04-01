@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useI18n } from 'vue-i18n'
 import { useSessionStore } from '@/stores/session'
 import { useProjectStore } from '@/stores/project'
+import { useThemeStore } from '@/stores/theme'
 import { resolveFileIcon } from '@/utils/fileIcon'
 import { EaIcon } from '@/components/common'
 
@@ -38,8 +39,10 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const sessionStore = useSessionStore()
 const projectStore = useProjectStore()
+const themeStore = useThemeStore()
 
 const isOpen = computed(() => props.visible)
+const isDarkTheme = computed(() => themeStore.isDark)
 const isLoading = ref(false)
 const hasResolvedSearch = ref(false)
 const results = ref<FileMentionSearchResult[]>([])
@@ -333,6 +336,7 @@ onUnmounted(() => {
       v-if="isOpen"
       ref="dropdownRef"
       class="file-mention-dropdown"
+      :class="{ 'file-mention-dropdown--dark': isDarkTheme }"
       :style="dropdownStyle"
     >
       <div class="file-mention__header">
@@ -527,6 +531,21 @@ onUnmounted(() => {
 .file-mention__list {
   flex: 1;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.34) transparent;
+}
+
+.file-mention__list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.file-mention__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.file-mention__list::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
 }
 
 .file-mention__empty,
@@ -636,5 +655,89 @@ onUnmounted(() => {
   color: var(--color-text-secondary);
   font-family: inherit;
   font-size: 10px;
+}
+
+.file-mention-dropdown--dark {
+  border-color: rgba(71, 85, 105, 0.72);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.97), rgba(2, 6, 23, 0.96));
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.46);
+}
+
+.file-mention-dropdown--dark .file-mention__header {
+  border-bottom-color: rgba(71, 85, 105, 0.42);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(15, 23, 42, 0.38));
+}
+
+.file-mention-dropdown--dark .file-mention__scope-switch {
+  background: rgba(51, 65, 85, 0.72);
+}
+
+.file-mention-dropdown--dark .file-mention__scope {
+  color: #94a3b8;
+}
+
+.file-mention-dropdown--dark .file-mention__scope:hover {
+  color: #e2e8f0;
+}
+
+.file-mention-dropdown--dark .file-mention__scope--active {
+  background: rgba(14, 165, 233, 0.18);
+  color: #bae6fd;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.22);
+}
+
+.file-mention-dropdown--dark .file-mention__meta,
+.file-mention-dropdown--dark .file-mention__empty,
+.file-mention-dropdown--dark .file-mention__loading,
+.file-mention-dropdown--dark .file-mention__footer {
+  color: #94a3b8;
+}
+
+.file-mention-dropdown--dark .file-mention__count {
+  background: rgba(14, 165, 233, 0.18);
+  color: #bae6fd;
+}
+
+.file-mention-dropdown--dark .file-mention__item {
+  border-bottom-color: rgba(71, 85, 105, 0.28);
+}
+
+.file-mention-dropdown--dark .file-mention__item:hover,
+.file-mention-dropdown--dark .file-mention__item--selected {
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.file-mention-dropdown--dark .file-mention__item-icon,
+.file-mention-dropdown--dark .file-mention__item-path,
+.file-mention-dropdown--dark .file-mention__item-scope {
+  color: #94a3b8;
+}
+
+.file-mention-dropdown--dark .file-mention__item-name {
+  color: #e2e8f0;
+}
+
+.file-mention-dropdown--dark .file-mention__item-scope {
+  background: rgba(51, 65, 85, 0.72);
+}
+
+.file-mention-dropdown--dark .file-mention__footer {
+  border-top-color: rgba(71, 85, 105, 0.42);
+  background: rgba(15, 23, 42, 0.78);
+}
+
+.file-mention-dropdown--dark .file-mention__footer kbd {
+  border-color: rgba(71, 85, 105, 0.76);
+  background: rgba(30, 41, 59, 0.9);
+  color: #cbd5e1;
+}
+
+.file-mention-dropdown--dark .file-mention__list {
+  scrollbar-color: rgba(100, 116, 139, 0.48) transparent;
+}
+
+.file-mention-dropdown--dark .file-mention__list::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.48);
 }
 </style>

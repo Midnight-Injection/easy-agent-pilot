@@ -2286,6 +2286,13 @@ defineExpose({
   text-decoration-color: rgba(245, 158, 11, 0.34);
 }
 
+:global([data-theme='dark']) .conversation-composer__file-tag,
+:global(.dark) .conversation-composer__file-tag,
+.conversation-composer--dark .conversation-composer__file-tag {
+  color: #7dd3fc;
+  text-decoration-color: rgba(125, 211, 252, 0.4);
+}
+
 :global([data-theme='dark']) .conversation-composer__memory-tag,
 :global(.dark) .conversation-composer__memory-tag,
 .conversation-composer--dark .conversation-composer__memory-tag {

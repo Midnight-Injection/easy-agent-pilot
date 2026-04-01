@@ -446,8 +446,38 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-4);
-  min-height: 100%;
   height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--spacing-2);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.log-settings.settings-content__full {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.log-settings::-webkit-scrollbar {
+  width: var(--scrollbar-size, 6px);
+}
+
+.log-settings::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, transparent);
+  border-radius: var(--radius-full);
+}
+
+.log-settings::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb, var(--color-border));
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.log-settings::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover, var(--color-border-dark));
 }
 
 .log-settings__workspace {

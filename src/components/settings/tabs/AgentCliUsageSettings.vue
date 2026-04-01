@@ -792,7 +792,39 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-5);
+  height: 100%;
+  min-height: 0;
   min-width: 0;
+  overflow-y: auto;
+  padding-right: var(--spacing-2);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.usage-stats-page.settings-content__full {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.usage-stats-page::-webkit-scrollbar {
+  width: var(--scrollbar-size, 6px);
+}
+
+.usage-stats-page::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, transparent);
+  border-radius: var(--radius-full);
+}
+
+.usage-stats-page::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb, var(--color-border));
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.usage-stats-page::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover, var(--color-border-dark));
 }
 
 .usage-stats-page__hero {

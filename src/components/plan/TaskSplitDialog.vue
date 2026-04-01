@@ -26,6 +26,7 @@ import {
   buildUsageNotice,
   isContextRuntimeNotice
 } from '@/utils/runtimeNotice'
+import { extractFirstFormRequest, extractTaskSplitResult } from '@/utils/structuredContent'
 import { DEFAULT_SPLIT_GRANULARITY } from '@/constants/plan'
 import { logger } from '@/utils/logger'
 import { resolveExpertById, resolveExpertRuntime } from '@/services/agentTeams/runtime'
@@ -182,6 +183,33 @@ function compareTimestamp(left?: string, right?: string) {
   return new Date(left || 0).getTime() - new Date(right || 0).getTime()
 }
 
+function toTimestampMs(value?: string | null) {
+  if (!value) {
+    return null
+  }
+
+  const timestampMs = new Date(value).getTime()
+  return Number.isFinite(timestampMs) ? timestampMs : null
+}
+
+function formatElapsedLabel(durationMs: number | null) {
+  if (durationMs === null || durationMs < 250) {
+    return null
+  }
+
+  if (durationMs < 1_000) {
+    return `${Math.round(durationMs)}ms`
+  }
+
+  if (durationMs < 60_000) {
+    return `${(durationMs / 1_000).toFixed(durationMs >= 10_000 ? 0 : 1)}s`
+  }
+
+  const minutes = Math.floor(durationMs / 60_000)
+  const seconds = Math.round((durationMs % 60_000) / 1_000)
+  return `${minutes}m ${seconds}s`
+}
+
 function parseLogMetadata(log: PlanSplitLogRecord): Record<string, unknown> | null {
   if (!log.metadata) return null
   if (typeof log.metadata === 'string') {
@@ -330,6 +358,47 @@ function parseFieldSummaryValue(
   }
 }
 
+function formatFieldSummaryValue(
+  field: DynamicFormSchema['fields'][number],
+  value: unknown
+): string {
+  if (value === undefined || value === null || value === '') return '-'
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '-'
+    return value.map(item => formatFieldSummaryValue(field, item)).join('、')
+  }
+
+  const matchedOption = field.options?.find(option => option.value === value)
+  return matchedOption ? matchedOption.label : String(value)
+}
+
+function summarizeFormValues(
+  schema: DynamicFormSchema,
+  values: Record<string, unknown>
+): string {
+  return schema.fields
+    .map(field => `${field.label}：${formatFieldSummaryValue(field, values[field.name])}`)
+    .join('\n')
+}
+
+function normalizeMultilineText(value?: string | null): string {
+  return (value ?? '')
+    .split('\n')
+    .map(line => line.trim())
+    .join('\n')
+    .trim()
+}
+
+function resolveMessageTimestampDistance(left?: string, right?: string): number {
+  const leftMs = toTimestampMs(left)
+  const rightMs = toTimestampMs(right)
+  if (leftMs === null || rightMs === null) {
+    return Number.MAX_SAFE_INTEGER
+  }
+
+  return Math.abs(leftMs - rightMs)
+}
+
 function buildFormValuesFromMessage(schema: DynamicFormSchema, messageContent: string): Record<string, unknown> {
   const summaryValueMap = buildSummaryValueMap(schema, messageContent)
   const values: Record<string, unknown> = {}
@@ -354,19 +423,6 @@ interface FormRequestTurn {
   forms: FormRequestSnapshot[]
 }
 
-function getTimelineEntryPriority(entry: TimelineEntry) {
-  if (entry.type === 'thinking') return 0
-  if (entry.type === 'tool') return 1
-  if (entry.type === 'content') return 2
-  if (entry.type === 'message') {
-    return entry.role === 'user' ? 5 : 3
-  }
-  if (entry.type === 'form') return 4
-  if (entry.type === 'system') return 6
-  if (entry.type === 'error') return 7
-  return 8
-}
-
 function sortTimelineEntries(entries: TimelineEntry[]) {
   entries.sort((left, right) => {
     const timeDiff = compareTimestamp(left.timestamp, right.timestamp)
@@ -374,9 +430,10 @@ function sortTimelineEntries(entries: TimelineEntry[]) {
       return timeDiff
     }
 
-    const priorityDiff = getTimelineEntryPriority(left) - getTimelineEntryPriority(right)
-    if (priorityDiff !== 0) {
-      return priorityDiff
+    const leftSequence = left.sequence ?? Number.MAX_SAFE_INTEGER
+    const rightSequence = right.sequence ?? Number.MAX_SAFE_INTEGER
+    if (leftSequence !== rightSequence) {
+      return leftSequence - rightSequence
     }
 
     return left.id.localeCompare(right.id)
@@ -461,9 +518,17 @@ const activeFormRequestedAt = computed(() => {
   return taskSplitStore.session?.updatedAt || new Date().toISOString()
 })
 
-const suppressAssistantContentLogs = computed(() =>
-  formRequestTurns.value.length > 0 || showPreview.value
-)
+function shouldSuppressStructuredContentLog(log: PlanSplitLogRecord) {
+  if (log.type !== 'content' || !log.content.trim()) {
+    return false
+  }
+
+  if (extractFirstFormRequest(log.content)) {
+    return true
+  }
+
+  return showPreview.value && Boolean(extractTaskSplitResult(log.content))
+}
 
 function isContextSystemLog(log: PlanSplitLogRecord) {
   if (log.type !== 'system' || !log.content.trim()) {
@@ -510,6 +575,47 @@ const usageNoticeEntry = computed<TimelineEntry | null>(() => {
     runtimeFallbackUsage: usageState
   }
 })
+
+const sessionElapsedLabel = computed(() => {
+  const sessionStartMs = toTimestampMs(taskSplitStore.session?.startedAt || taskSplitStore.session?.createdAt)
+  const sessionEndMs = toTimestampMs(
+    taskSplitStore.session?.completedAt
+      || taskSplitStore.session?.stoppedAt
+      || (!isSessionRunning.value ? taskSplitStore.session?.updatedAt : null)
+  )
+
+  if (sessionStartMs === null || sessionEndMs === null) {
+    const runtimeMetrics = taskSplitStore.runtimeMetrics
+    if (runtimeMetrics?.doneAt !== undefined) {
+      return formatElapsedLabel(Math.max(0, runtimeMetrics.doneAt - runtimeMetrics.startedAt))
+    }
+    return null
+  }
+
+  return formatElapsedLabel(Math.max(0, sessionEndMs - sessionStartMs))
+})
+
+function attachSessionElapsedLabel(entries: TimelineEntry[]) {
+  const elapsedLabel = sessionElapsedLabel.value
+  if (!elapsedLabel) {
+    return
+  }
+
+  const activeFormEntry = [...entries].reverse().find(entry =>
+    entry.type === 'form'
+    && entry.formVariant === 'active'
+    && entry.formSchema?.formId === activeFormSchema.value?.formId
+  )
+  if (activeFormEntry) {
+    activeFormEntry.metaLabel = elapsedLabel
+    return
+  }
+
+  const lastRenderableEntry = [...entries].reverse().find(entry => entry.role !== 'user')
+  if (lastRenderableEntry) {
+    lastRenderableEntry.metaLabel = elapsedLabel
+  }
+}
 
 const historicalSubmittedForms = computed(() => {
   const derivedSnapshots: Array<{
@@ -559,6 +665,14 @@ const historicalSubmittedForms = computed(() => {
 
   for (const snapshot of taskSplitStore.submittedForms) {
     const derivedSnapshot = mergedSnapshots.get(snapshot.formId)
+    const normalizedSummary = normalizeMultilineText(summarizeFormValues(snapshot.schema, snapshot.values))
+    const matchedMessage = sortedMessages
+      .filter(message => message.role === 'user' && normalizeMultilineText(message.content) === normalizedSummary)
+      .sort((left, right) =>
+        resolveMessageTimestampDistance(left.timestamp, snapshot.submittedAt)
+        - resolveMessageTimestampDistance(right.timestamp, snapshot.submittedAt)
+      )[0]
+
     mergedSnapshots.set(snapshot.formId, {
       formId: snapshot.formId,
       schema: snapshot.schema,
@@ -566,7 +680,7 @@ const historicalSubmittedForms = computed(() => {
       requestedAt: derivedSnapshot?.requestedAt || snapshot.submittedAt,
       values: snapshot.values,
       submittedAt: snapshot.submittedAt,
-      sourceMessageId: derivedSnapshot?.sourceMessageId
+      sourceMessageId: derivedSnapshot?.sourceMessageId || matchedMessage?.id
     })
   }
 
@@ -578,17 +692,15 @@ const historicalSubmittedForms = computed(() => {
 const timelineEntries = computed<TimelineEntry[]>(() => {
   const entries: TimelineEntry[] = []
   const activeFormId = activeFormSchema.value?.formId ?? null
+  const sortedMessages = [...taskSplitStore.messages].sort((left, right) =>
+    compareTimestamp(left.timestamp, right.timestamp)
+  )
   const submittedMessageIds = new Set(
     historicalSubmittedForms.value
       .map(item => item.sourceMessageId)
       .filter((messageId): messageId is string => Boolean(messageId))
   )
-  const submittedMessagesById = new Map(
-    taskSplitStore.messages
-      .filter(message => message.role === 'user' && message.content.trim())
-      .map(message => [message.id, message] as const)
-  )
-  const activeFormPrompt = [...taskSplitStore.messages]
+  const activeFormPrompt = [...sortedMessages]
     .slice()
     .reverse()
     .find(message => message.role === 'assistant' && message.content.trim())
@@ -597,13 +709,21 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
   const animateLiveEntries = isSessionRunning.value
   let lastThinkingEntry: TimelineEntry | null = null
   let lastAssistantContentEntry: TimelineEntry | null = null
+  let nextSequence = 0
 
-  for (const message of taskSplitStore.messages) {
+  const pushEntry = (entry: TimelineEntry) => {
+    entries.push({
+      ...entry,
+      sequence: nextSequence++
+    })
+  }
+
+  for (const message of sortedMessages) {
     if (message.role !== 'user' || !message.content.trim() || submittedMessageIds.has(message.id)) {
       continue
     }
 
-    entries.push({
+    pushEntry({
       id: `message-${message.id}`,
       type: 'message',
       role: message.role,
@@ -614,7 +734,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
 
   if (!hasRuntimeSystemLog.value) {
     for (const notice of visibleRuntimeNotices.value) {
-      entries.push({
+      pushEntry({
         id: `runtime-notice-${notice.id}`,
         type: 'system',
         content: `### ${notice.title}\n${notice.content}`,
@@ -624,7 +744,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
   }
 
   if (usageNoticeEntry.value) {
-    entries.push(usageNoticeEntry.value)
+    pushEntry(usageNoticeEntry.value)
   }
 
   for (const log of sortedSplitLogs.value) {
@@ -635,7 +755,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
     }
 
     if (log.type === 'content' && log.content) {
-      if (suppressAssistantContentLogs.value) {
+      if (shouldSuppressStructuredContentLog(log)) {
         lastThinkingEntry = null
         lastAssistantContentEntry = null
         continue
@@ -654,7 +774,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
           timestamp: log.createdAt,
           animate: animateLiveEntries
         }
-        entries.push(contentEntry)
+        pushEntry(contentEntry)
         lastAssistantContentEntry = contentEntry
       }
 
@@ -671,7 +791,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
           timestamp: log.createdAt,
           animate: animateLiveEntries
         }
-        entries.push(thinkingEntry)
+        pushEntry(thinkingEntry)
         lastThinkingEntry = thinkingEntry
       }
       continue
@@ -692,7 +812,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
         timestamp: log.createdAt,
         animate: animateLiveEntries
       }
-      entries.push(thinkingEntry)
+      pushEntry(thinkingEntry)
       lastThinkingEntry = thinkingEntry
       lastAssistantContentEntry = null
       continue
@@ -706,7 +826,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
         continue
       }
 
-      entries.push({
+      pushEntry({
         id: `system-${log.id}`,
         type: 'system',
         content: log.content,
@@ -727,7 +847,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
         continue
       }
 
-      entries.push({
+      pushEntry({
         id: `tool-${log.id}`,
         type: 'tool',
         toolCall,
@@ -752,7 +872,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
       continue
     }
 
-    entries.push({
+    pushEntry({
       id: `log-${log.id}`,
       type: log.type === 'error' ? 'error' : 'system',
       content: log.content,
@@ -761,10 +881,8 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
     })
   }
 
-  sortTimelineEntries(entries)
-
   for (const submittedForm of historicalSubmittedForms.value) {
-    entries.push({
+    pushEntry({
       id: `submitted-form-${submittedForm.formId}-${submittedForm.submittedAt}`,
       type: 'form',
       formSchema: submittedForm.schema,
@@ -772,22 +890,8 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
       formInitialValues: submittedForm.values,
       formDisabled: true,
       formVariant: 'submitted',
-      timestamp: submittedForm.requestedAt
+      timestamp: submittedForm.submittedAt
     })
-
-    const submittedMessage = submittedForm.sourceMessageId
-      ? submittedMessagesById.get(submittedForm.sourceMessageId)
-      : null
-
-    if (submittedMessage?.content.trim()) {
-      entries.push({
-        id: `message-${submittedMessage.id}`,
-        type: 'message',
-        role: 'user',
-        content: submittedMessage.content,
-        timestamp: submittedForm.submittedAt
-      })
-    }
   }
 
   const requestedFormIds = new Set<string>()
@@ -804,7 +908,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
       continue
     }
 
-    entries.push({
+    pushEntry({
       id: `archived-form-${pendingForm.formId}-${pendingForm.requestedAt}`,
       type: 'form',
       formSchema: pendingForm.schema,
@@ -816,7 +920,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
   }
 
   if (activeFormSchema.value && (!showPreview.value || hasPendingRefinement.value)) {
-    entries.push({
+    pushEntry({
       id: `form-${activeFormSchema.value.formId}`,
       type: 'form',
       formSchema: activeFormSchema.value,
@@ -828,6 +932,7 @@ const timelineEntries = computed<TimelineEntry[]>(() => {
   }
 
   sortTimelineEntries(entries)
+  attachSessionElapsedLabel(entries)
 
   return entries
 })
@@ -1088,7 +1193,6 @@ const { handleOverlayPointerDown, handleOverlayClick } = useOverlayDismiss(close
                 <ExecutionTimeline
                   :entries="timelineEntries"
                   group-tool-calls
-                  show-elapsed-meta
                   form-cancel-text="隐藏"
                   @form-submit="handleTimelineFormSubmit"
                   @form-cancel="closeDialog"
