@@ -32,7 +32,8 @@ export const useAgentSchedulerStore = defineStore('agentScheduler', () => {
   // Actions
 
   // 综合调度逻辑 - 始终返回规划者
-  function scheduleRole(_context: ScheduleContext): AgentRole {
+  function scheduleRole(context: ScheduleContext): AgentRole {
+    void context
     // 计划管理模块只负责拆分任务，始终使用规划者
     return 'planner'
   }

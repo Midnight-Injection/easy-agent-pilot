@@ -1,0 +1,28 @@
+.ea-modal.cli-sync-modal {
+  width: min(1480px, calc(100vw - 24px)) !important;
+  max-width: min(1480px, calc(100vw - 24px)) !important;
+  min-width: min(1240px, calc(100vw - 24px)) !important;
+  border-radius: 24px;
+}
+
+.ea-modal.cli-sync-modal .ea-modal__body {
+  overflow-x: hidden;
+  padding: 20px;
+}
+
+.ea-modal.cli-sync-modal .ea-modal__header {
+  padding: 20px 20px 0;
+  border-bottom: none;
+}
+
+.ea-modal.cli-sync-modal .ea-modal__footer {
+  padding: 16px 20px 20px;
+}
+
+@media (max-width: 980px) {
+  .ea-modal.cli-sync-modal {
+    width: min(100vw - 20px, 980px) !important;
+    max-width: min(100vw - 20px, 980px) !important;
+    min-width: 0 !important;
+  }
+}

@@ -84,6 +84,32 @@ function extractRawMemoryCaptureContent(content: string): string {
   return trimmed.slice(currentInputIndex + CURRENT_INPUT_BLOCK_HEADER.length).trim()
 }
 
+function resolveRequestedUsageModel(options: {
+  requestedModelId?: string
+  reportedModelId?: string
+}): string | undefined {
+  const normalizedRequested = options.requestedModelId?.trim() || undefined
+  const normalizedReported = options.reportedModelId?.trim() || undefined
+
+  return resolveRecordedModelId({
+    reportedModelId: normalizedReported,
+    requestedModelId: normalizedRequested
+  }) ?? normalizedRequested ?? normalizedReported
+}
+
+function estimateTextTokens(content: string): number {
+  const normalized = content.trim()
+  if (!normalized) {
+    return 0
+  }
+
+  return Math.ceil(normalized.length / 4)
+}
+
+function estimateConversationInputTokens(messages: Message[]): number {
+  return messages.reduce((total, message) => total + estimateTextTokens(message.content), 0)
+}
+
 /**
  * 对话服务
  * 封装消息发送逻辑，处理流式事件更新
@@ -239,9 +265,13 @@ export class ConversationService {
       const executionAgent = (!agent.modelId?.trim() && usageModelHint)
         ? { ...agent, modelId: usageModelHint }
         : agent
+      const requestedUsageModel = resolveRequestedUsageModel({
+        requestedModelId: executionAgent.modelId,
+        reportedModelId: usageModelHint
+      })
 
-      if (usageModelHint) {
-        tokenStore.updateRealtimeTokens(sessionId, undefined, undefined, usageModelHint)
+      if (requestedUsageModel) {
+        tokenStore.updateRealtimeTokens(sessionId, undefined, undefined, requestedUsageModel)
       }
 
       const environmentNotice = await buildCliEnvironmentNotice(executionAgent)
@@ -251,7 +281,7 @@ export class ConversationService {
         })
       }
 
-      const initialUsageNotice = buildUsageNotice({ model: usageModelHint })
+      const initialUsageNotice = buildUsageNotice({ model: requestedUsageModel })
       if (initialUsageNotice) {
         const currentMessage = messageStore.messagesBySession(sessionId)
           .find(message => message.id === aiMessage.id)
@@ -334,6 +364,24 @@ export class ConversationService {
       const userMessages = messages.filter(message => message.role === 'user')
       const systemMessages = messages.filter(message => message.role === 'system')
       const assistantMessages = messages.filter(message => message.role === 'assistant')
+      const estimatedInputTokens = estimateConversationInputTokens(messages)
+      if (estimatedInputTokens > 0 || requestedUsageModel) {
+        tokenStore.updateRealtimeTokens(
+          sessionId,
+          estimatedInputTokens > 0 ? estimatedInputTokens : undefined,
+          0,
+          requestedUsageModel
+        )
+        const currentMessage = messageStore.messagesBySession(sessionId)
+          .find(message => message.id === aiMessage.id)
+        messageStore.updateMessageBuffered(aiMessage.id, {
+          runtimeNotices: upsertRuntimeNotice(currentMessage?.runtimeNotices, buildUsageNotice({
+            model: requestedUsageModel,
+            inputTokens: estimatedInputTokens > 0 ? estimatedInputTokens : undefined,
+            outputTokens: 0
+          }))
+        })
+      }
       const selectedExpert = resolveExpertById(session?.expertId, useAgentTeamsStore().experts)
       const contextStrategyNotice = buildContextStrategyNotice({
         strategy: reusableCliSessionId ? 'CLI Resume + Delta Prompt' : 'Full Conversation Context',
@@ -638,7 +686,9 @@ export class ConversationService {
     const toolCalls: ToolCall[] = []
     const editTraces: FileEditTrace[] = []
     const usageState: { model?: string, inputTokens?: number, outputTokens?: number } = {
-      model: context.agent.modelId?.trim() || undefined
+      model: resolveRequestedUsageModel({
+        requestedModelId: context.agent.modelId
+      })
     }
     let runtimeNoticesState = messageStore.messagesBySession(sessionId)
       .find(message => message.id === aiMessage.id)
@@ -856,8 +906,12 @@ export class ConversationService {
     const syncFinalUsageNotice = () => {
       const realtimeUsage = tokenStore.realtimeTokens.get(sessionId)
       if (realtimeUsage) {
-        if ((!usageState.model || usageState.model.trim().length === 0) && realtimeUsage.model) {
-          usageState.model = realtimeUsage.model
+        const normalizedRealtimeModel = resolveRequestedUsageModel({
+          requestedModelId: context.agent.modelId,
+          reportedModelId: realtimeUsage.model
+        })
+        if ((!usageState.model || usageState.model.trim().length === 0) && normalizedRealtimeModel) {
+          usageState.model = normalizedRealtimeModel
         }
         if ((usageState.inputTokens ?? 0) <= 0 && realtimeUsage.inputTokens > 0) {
           usageState.inputTokens = realtimeUsage.inputTokens
@@ -867,6 +921,10 @@ export class ConversationService {
         }
       }
 
+      syncRealtimeUsageNotice()
+    }
+
+    const syncRealtimeUsageNotice = (options?: { immediate?: boolean }) => {
       const usageNotice = buildUsageNotice(usageState)
       if (!usageNotice) {
         return
@@ -875,7 +933,7 @@ export class ConversationService {
       runtimeNoticesState = upsertRuntimeNotice(runtimeNoticesState, usageNotice)
       bufferMessageUpdate({
         runtimeNotices: runtimeNoticesState
-      })
+      }, options)
     }
 
     const syncProcessingTimeNotice = () => {
@@ -899,6 +957,7 @@ export class ConversationService {
         this.handleStreamEvent(event, {
           aiMessage,
           sessionId,
+          requestedModelId: context.agent.modelId?.trim() || undefined,
           toolCalls,
           onContent: (content) => {
             markMetric('firstContentAt')
@@ -908,6 +967,7 @@ export class ConversationService {
             if ((usageState.outputTokens ?? 0) < estimatedOutputTokens) {
               usageState.outputTokens = estimatedOutputTokens
               tokenStore.updateRealtimeOutputEstimate(sessionId, estimatedOutputTokens)
+              syncRealtimeUsageNotice()
             }
             bufferMessageUpdate({
               content: accumulatedContent
@@ -996,8 +1056,12 @@ export class ConversationService {
             })
           },
           onUsage: (usage) => {
-            if (usage.model) {
-              usageState.model = usage.model
+            const normalizedUsageModel = resolveRequestedUsageModel({
+              requestedModelId: context.agent.modelId,
+              reportedModelId: usage.model
+            })
+            if (normalizedUsageModel) {
+              usageState.model = normalizedUsageModel
             }
             if (usage.inputTokens !== undefined) {
               usageState.inputTokens = usage.inputTokens
@@ -1006,15 +1070,7 @@ export class ConversationService {
               usageState.outputTokens = usage.outputTokens
             }
 
-            const usageNotice = buildUsageNotice(usageState)
-            if (!usageNotice) {
-              return
-            }
-
-            runtimeNoticesState = upsertRuntimeNotice(runtimeNoticesState, usageNotice)
-            bufferMessageUpdate({
-              runtimeNotices: runtimeNoticesState
-            })
+            syncRealtimeUsageNotice()
           },
           onSystem: (content) => {
             const runtimeNotice = buildRuntimeNoticeFromSystemContent(content)
@@ -1196,6 +1252,7 @@ export class ConversationService {
     handlers: {
       aiMessage: Message
       sessionId: string
+      requestedModelId?: string
       toolCalls: ToolCall[]
       onContent: (content: string) => void
       onThinking: (thinking: string) => void
@@ -1215,7 +1272,15 @@ export class ConversationService {
 
     // 处理 token 事件 - 优先使用 CLI 返回的真实 token 数据
     if (event.inputTokens !== undefined || event.outputTokens !== undefined) {
-      tokenStore.updateRealtimeTokens(handlers.sessionId, event.inputTokens, event.outputTokens, event.model)
+      tokenStore.updateRealtimeTokens(
+        handlers.sessionId,
+        event.inputTokens,
+        event.outputTokens,
+        resolveRequestedUsageModel({
+          requestedModelId: handlers.requestedModelId,
+          reportedModelId: event.model
+        })
+      )
     }
 
     switch (event.type) {

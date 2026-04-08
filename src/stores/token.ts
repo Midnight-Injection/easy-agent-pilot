@@ -49,6 +49,22 @@ interface SessionTokenCache {
   lastUpdated: number
 }
 
+function replaceMapEntry<K, V>(source: Map<K, V>, key: K, value: V): Map<K, V> {
+  const next = new Map(source)
+  next.set(key, value)
+  return next
+}
+
+function deleteMapEntry<K, V>(source: Map<K, V>, key: K): Map<K, V> {
+  if (!source.has(key)) {
+    return source
+  }
+
+  const next = new Map(source)
+  next.delete(key)
+  return next
+}
+
 function resolvePreferredTokenTotal(options: {
   estimatedTokens: number
   persistedTotal: number
@@ -227,7 +243,7 @@ export const useTokenStore = defineStore('token', () => {
     const nextInputTokens = incomingHasUsage ? (inputTokens ?? 0) : existing.inputTokens
     const nextOutputTokens = incomingHasUsage ? (outputTokens ?? 0) : existing.outputTokens
 
-    realtimeTokens.value.set(sessionId, {
+    realtimeTokens.value = replaceMapEntry(realtimeTokens.value, sessionId, {
       inputTokens: nextInputTokens,
       outputTokens: nextOutputTokens,
       model: model ?? existing.model
@@ -239,7 +255,7 @@ export const useTokenStore = defineStore('token', () => {
 
     const currentRequestTotal = nextInputTokens + nextOutputTokens
     const persistedTotal = sessionTokenCaches.value.get(sessionId)?.totalTokens ?? 0
-    sessionTokenCaches.value.set(sessionId, {
+    sessionTokenCaches.value = replaceMapEntry(sessionTokenCaches.value, sessionId, {
       sessionId,
       totalTokens: Math.max(persistedTotal, currentRequestTotal),
       lastUpdated: Date.now()
@@ -256,14 +272,14 @@ export const useTokenStore = defineStore('token', () => {
     if (!existing) return
     if (estimatedOutputTokens <= existing.outputTokens) return
 
-    realtimeTokens.value.set(sessionId, {
+    realtimeTokens.value = replaceMapEntry(realtimeTokens.value, sessionId, {
       ...existing,
       outputTokens: estimatedOutputTokens
     })
 
     const currentRequestTotal = existing.inputTokens + estimatedOutputTokens
     const persistedTotal = sessionTokenCaches.value.get(sessionId)?.totalTokens ?? 0
-    sessionTokenCaches.value.set(sessionId, {
+    sessionTokenCaches.value = replaceMapEntry(sessionTokenCaches.value, sessionId, {
       sessionId,
       totalTokens: Math.max(persistedTotal, currentRequestTotal),
       lastUpdated: Date.now()
@@ -275,7 +291,7 @@ export const useTokenStore = defineStore('token', () => {
    * 濞撳懘娅庯拷锟界偞锟?token 閺佺増锟?
    */
   function clearRealtimeTokens(sessionId: string) {
-    realtimeTokens.value.delete(sessionId)
+    realtimeTokens.value = deleteMapEntry(realtimeTokens.value, sessionId)
   }
 
   /**
@@ -292,7 +308,7 @@ export const useTokenStore = defineStore('token', () => {
     const persistedTotal = sessionTokenCaches.value.get(sessionId)?.totalTokens ?? 0
     const totalTokens = Math.max(estimatedTokens, persistedTotal)
 
-    sessionTokenCaches.value.set(sessionId, {
+    sessionTokenCaches.value = replaceMapEntry(sessionTokenCaches.value, sessionId, {
       sessionId,
       totalTokens,
       lastUpdated: Date.now()
@@ -303,7 +319,7 @@ export const useTokenStore = defineStore('token', () => {
   /**
    */
   function clearSessionTokenCache(sessionId: string) {
-    sessionTokenCaches.value.delete(sessionId)
+    sessionTokenCaches.value = deleteMapEntry(sessionTokenCaches.value, sessionId)
     // 閸氬本妞傚〒鍛存珟鐎圭偞锟?token
     clearRealtimeTokens(sessionId)
     persistSessionTokenCaches()
@@ -314,18 +330,22 @@ export const useTokenStore = defineStore('token', () => {
       return
     }
 
+    const nextSessionTokenCaches = new Map(sessionTokenCaches.value)
+    const nextRealtimeTokens = new Map(realtimeTokens.value)
     sessionIds.forEach((sessionId) => {
-      sessionTokenCaches.value.delete(sessionId)
-      realtimeTokens.value.delete(sessionId)
+      nextSessionTokenCaches.delete(sessionId)
+      nextRealtimeTokens.delete(sessionId)
     })
+    sessionTokenCaches.value = nextSessionTokenCaches
+    realtimeTokens.value = nextRealtimeTokens
     persistSessionTokenCaches()
   }
 
   /**
    */
   function clearAllTokenCaches() {
-    sessionTokenCaches.value.clear()
-    realtimeTokens.value.clear()
+    sessionTokenCaches.value = new Map()
+    realtimeTokens.value = new Map()
     persistSessionTokenCaches()
   }
 

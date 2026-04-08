@@ -1,0 +1,499 @@
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { open } from '@tauri-apps/plugin-dialog'
+import { useConfirmDialog } from '@/composables'
+import { resolveExpertRuntime } from '@/services/agentTeams/runtime'
+import { compactSoloSummary } from '@/services/solo/prompts'
+import { useAgentStore } from '@/stores/agent'
+import { useAgentConfigStore } from '@/stores/agentConfig'
+import { useAgentTeamsStore } from '@/stores/agentTeams'
+import { useProjectStore } from '@/stores/project'
+import { useSoloExecutionStore } from '@/stores/soloExecution'
+import { useSoloRunStore } from '@/stores/soloRun'
+import type { SoloRun, SoloStep } from '@/types/solo'
+import type { SoloAgentOption, SoloCreateFormState, SoloModelOption } from '../soloShared'
+
+/**
+ * 管理 SOLO 面板的运行列表、创建表单和执行时间线状态。
+ */
+export function useSoloModePanel() {
+  const projectStore = useProjectStore()
+  const soloRunStore = useSoloRunStore()
+  const soloExecutionStore = useSoloExecutionStore()
+  const agentStore = useAgentStore()
+  const agentTeamsStore = useAgentTeamsStore()
+  const agentConfigStore = useAgentConfigStore()
+  const confirmDialog = useConfirmDialog()
+
+  const showCreateDialog = ref(false)
+  const createDialogModelOptions = ref<SoloModelOption[]>([])
+  const selectedStepId = ref<string | null>(null)
+
+  const createForm = reactive<SoloCreateFormState>({
+    projectId: '',
+    executionPath: '',
+    name: '',
+    requirement: '',
+    goal: '',
+    maxDispatchDepth: 100,
+    participantExpertIds: [],
+    coordinatorExpertId: null,
+    coordinatorModelId: ''
+  })
+
+  const runs = computed(() => {
+    if (!projectStore.currentProjectId) return []
+    return soloRunStore.runs
+      .filter((run) => run.projectId === projectStore.currentProjectId)
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+  })
+
+  const currentRun = computed(() => soloRunStore.currentRun)
+  const currentSteps = computed(() => currentRun.value ? soloExecutionStore.getSteps(currentRun.value.id) : [])
+  const currentExecutionState = computed(() => currentRun.value ? soloExecutionStore.getExecutionState(currentRun.value.id) : undefined)
+  const selectedStep = computed(() => currentSteps.value.find((step) => step.id === selectedStepId.value) || null)
+
+  const builtinExpertPool = computed(() => {
+    const enabledBuiltins = agentTeamsStore.enabledExperts.filter((expert) => expert.isBuiltin)
+    return enabledBuiltins.length > 0 ? enabledBuiltins : agentTeamsStore.enabledExperts
+  })
+
+  const participantExpertOptions = computed<SoloAgentOption[]>(() =>
+    builtinExpertPool.value
+      .filter((expert) => expert.builtinCode !== 'builtin-solo-coordinator')
+      .map((expert) => ({
+        label: expert.name,
+        value: expert.id,
+        description: expert.description || `${expert.category} · 内置专家`
+      }))
+  )
+
+  const coordinatorExpertOptions = computed<SoloAgentOption[]>(() => {
+    const coordinatorExperts = builtinExpertPool.value.filter((expert) =>
+      expert.builtinCode === 'builtin-solo-coordinator'
+    )
+    const fallbackExperts = coordinatorExperts.length > 0
+      ? coordinatorExperts
+      : builtinExpertPool.value.filter((expert) => expert.category === 'planner' && expert.isBuiltin)
+
+    return fallbackExperts.map((expert) => ({
+      label: expert.name,
+      value: expert.id,
+      description: expert.description || 'SOLO 规划智能体'
+    }))
+  })
+
+  const currentRunParticipants = computed(() => {
+    if (!currentRun.value) return []
+    const idSet = new Set(currentRun.value.participantExpertIds)
+    const availableParticipants = builtinExpertPool.value.filter((expert) => expert.builtinCode !== 'builtin-solo-coordinator')
+    const matched = availableParticipants.filter((expert) => idSet.has(expert.id))
+    return matched.length > 0 ? matched : availableParticipants
+  })
+
+  const currentRunCoordinatorLabel = computed(() => {
+    if (!currentRun.value?.coordinatorExpertId) return '未指定智能体'
+    return builtinExpertPool.value.find((expert) => expert.id === currentRun.value?.coordinatorExpertId)?.name
+      || currentRun.value.coordinatorExpertId
+  })
+
+  const completedCount = computed(() => currentSteps.value.filter((step) => step.status === 'completed').length)
+  const blockedCount = computed(() => currentSteps.value.filter((step) => step.status === 'blocked').length)
+  const failedCount = computed(() => currentSteps.value.filter((step) => step.status === 'failed').length)
+
+  const canCreate = computed(() =>
+    Boolean(
+      createForm.executionPath.trim()
+      && createForm.name.trim()
+      && createForm.requirement.trim()
+      && createForm.goal.trim()
+      && createForm.participantExpertIds.length > 0
+      && createForm.coordinatorExpertId
+    )
+  )
+
+  function runStatusLabel(status: SoloRun['status']): string {
+    switch (status) {
+      case 'draft': return '草稿'
+      case 'running': return '执行中'
+      case 'blocked': return '待输入'
+      case 'completed': return '已完成'
+      case 'failed': return '失败'
+      case 'paused': return '已暂停'
+      case 'stopped': return '已停止'
+      default: return status
+    }
+  }
+
+  function stepStatusLabel(status: SoloStep['status']): string {
+    switch (status) {
+      case 'pending': return '等待'
+      case 'running': return '执行中'
+      case 'completed': return '完成'
+      case 'failed': return '失败'
+      case 'blocked': return '待输入'
+      case 'skipped': return '跳过'
+      default: return status
+    }
+  }
+
+  function formatTime(value?: string): string {
+    if (!value) return '暂无'
+    const date = new Date(value)
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  function getDefaultParticipantExpertIds(): string[] {
+    return participantExpertOptions.value.map((option) => option.value)
+  }
+
+  function getDefaultCoordinatorExpertId(): string | null {
+    return agentTeamsStore.builtinSoloCoordinatorExpert?.id
+      || coordinatorExpertOptions.value[0]?.value
+      || null
+  }
+
+  function extractNameFromPath(path: string): string {
+    const normalized = path.trim().replace(/[\\/]+$/, '').replace(/\\/g, '/')
+    if (!normalized) return 'SOLO 项目'
+    const segments = normalized.split('/').filter(Boolean)
+    return segments[segments.length - 1] || 'SOLO 项目'
+  }
+
+  async function loadCoordinatorModelOptions(coordinatorExpertId?: string | null): Promise<SoloModelOption[]> {
+    const runtimeExpert = builtinExpertPool.value.find((expert) => expert.id === coordinatorExpertId)
+      || agentTeamsStore.builtinSoloCoordinatorExpert
+      || agentTeamsStore.builtinPlannerExpert
+      || agentTeamsStore.builtinGeneralExpert
+      || builtinExpertPool.value[0]
+      || null
+    const runtime = resolveExpertRuntime(runtimeExpert, agentStore.agents)
+    const agent = runtime?.agent
+      || agentStore.agents.find((item) => item.type === 'cli')
+      || agentStore.agents[0]
+
+    if (!agent) {
+      return []
+    }
+
+    const configs = await agentConfigStore.ensureModelsConfigs(agent.id, agent.provider)
+    const enabledOptions = configs
+      .filter((item) => item.enabled)
+      .map((item) => ({
+        label: item.displayName,
+        value: item.modelId,
+        isDefault: item.isDefault
+      }))
+
+    if (enabledOptions.length > 0) {
+      return enabledOptions
+    }
+
+    return agent.modelId
+      ? [{ label: agent.modelId, value: agent.modelId, isDefault: true }]
+      : []
+  }
+
+  function pickDefaultModel(models: SoloModelOption[]): string {
+    return models.find((model) => model.isDefault)?.value || models[0]?.value || ''
+  }
+
+  async function syncCreateDialogModels() {
+    createDialogModelOptions.value = await loadCoordinatorModelOptions(createForm.coordinatorExpertId)
+    createForm.coordinatorModelId = pickDefaultModel(createDialogModelOptions.value)
+  }
+
+  function updateCreateForm(patch: Partial<SoloCreateFormState>) {
+    Object.assign(createForm, patch)
+  }
+
+  function resetCreateForm() {
+    updateCreateForm({
+      projectId: projectStore.currentProjectId || '',
+      executionPath: projectStore.currentProject?.path || '',
+      name: '',
+      requirement: '',
+      goal: '',
+      maxDispatchDepth: 100,
+      participantExpertIds: [],
+      coordinatorExpertId: getDefaultCoordinatorExpertId(),
+      coordinatorModelId: ''
+    })
+    createDialogModelOptions.value = []
+  }
+
+  async function openCreateDialog() {
+    await Promise.all([
+      projectStore.loadProjects(),
+      agentStore.loadAgents(),
+      agentTeamsStore.loadExperts()
+    ])
+    createForm.projectId = projectStore.currentProjectId || projectStore.projects[0]?.id || ''
+    createForm.executionPath = projectStore.currentProject?.path || projectStore.projects.find((project) => project.id === createForm.projectId)?.path || ''
+    createForm.participantExpertIds = getDefaultParticipantExpertIds()
+    createForm.coordinatorExpertId = getDefaultCoordinatorExpertId()
+    await syncCreateDialogModels()
+    showCreateDialog.value = true
+  }
+
+  function closeCreateDialog() {
+    showCreateDialog.value = false
+    resetCreateForm()
+  }
+
+  async function createRun(startImmediately: boolean) {
+    const selectedProject = projectStore.projects.find((project) => project.id === createForm.projectId)
+    const trimmedExecutionPath = createForm.executionPath.trim() || selectedProject?.path || ''
+    if (!trimmedExecutionPath) return
+
+    let targetProjectId = createForm.projectId || selectedProject?.id || ''
+    const matchedProject = projectStore.projects.find((project) => project.path === trimmedExecutionPath)
+    if (matchedProject) {
+      targetProjectId = matchedProject.id
+    } else if (!targetProjectId || selectedProject?.path !== trimmedExecutionPath) {
+      const createdProject = await projectStore.createProject({
+        name: extractNameFromPath(trimmedExecutionPath),
+        path: trimmedExecutionPath,
+        description: 'SOLO 执行路径自动创建的项目',
+        memoryLibraryIds: []
+      })
+      targetProjectId = createdProject.id
+    }
+
+    if (!targetProjectId) return
+
+    const run = await soloRunStore.createRun({
+      projectId: targetProjectId,
+      executionPath: trimmedExecutionPath,
+      name: createForm.name.trim(),
+      requirement: createForm.requirement.trim(),
+      goal: createForm.goal.trim(),
+      participantExpertIds: createForm.participantExpertIds,
+      coordinatorExpertId: createForm.coordinatorExpertId || undefined,
+      coordinatorModelId: createForm.coordinatorModelId || undefined,
+      maxDispatchDepth: Math.max(1, Math.min(100, createForm.maxDispatchDepth))
+    })
+    await selectRun(run.id)
+    closeCreateDialog()
+
+    if (startImmediately) {
+      await soloExecutionStore.startRun(run.id)
+    }
+  }
+
+  async function selectRun(runId: string) {
+    soloRunStore.setCurrentRun(runId)
+    await Promise.all([
+      soloRunStore.getRun(runId),
+      soloExecutionStore.loadSteps(runId),
+      soloExecutionStore.loadLogs(runId)
+    ])
+    syncSelectedStep()
+  }
+
+  function syncSelectedStep() {
+    if (!currentRun.value) {
+      selectedStepId.value = null
+      return
+    }
+
+    const candidateId = currentRun.value.currentStepId || currentSteps.value[currentSteps.value.length - 1]?.id || null
+    if (candidateId && currentSteps.value.some((step) => step.id === candidateId)) {
+      selectedStepId.value = candidateId
+      return
+    }
+
+    selectedStepId.value = currentSteps.value[0]?.id || null
+  }
+
+  function selectStep(stepId: string) {
+    selectedStepId.value = stepId
+  }
+
+  function getStepLogCount(stepId: string): number {
+    return currentExecutionState.value?.logs.filter((log) => log.stepId === stepId).length ?? 0
+  }
+
+  function getStepExpertLabel(step: SoloStep): string {
+    const expert = builtinExpertPool.value.find((item) => item.id === step.selectedExpertId)
+    return expert?.name || step.selectedExpertId || '未指定专家'
+  }
+
+  async function handleStart() {
+    if (!currentRun.value) return
+    await soloExecutionStore.startRun(currentRun.value.id)
+  }
+
+  async function handlePause() {
+    if (!currentRun.value) return
+    await soloExecutionStore.pauseRun(currentRun.value.id)
+  }
+
+  async function handleResume() {
+    if (!currentRun.value) return
+    await soloExecutionStore.resumeRun(currentRun.value.id)
+  }
+
+  async function handleStop() {
+    if (!currentRun.value) return
+    const confirmed = await confirmDialog.danger(
+      `确定要停止运行「${currentRun.value.name}」吗？停止后将清除当前续接会话。`,
+      '停止 SOLO 运行'
+    )
+    if (!confirmed) return
+    await soloExecutionStore.stopRun(currentRun.value.id)
+  }
+
+  async function handleReset() {
+    if (!currentRun.value) return
+    const confirmed = await confirmDialog.warning(
+      `确定要清空运行「${currentRun.value.name}」的步骤和日志吗？`,
+      '重置 SOLO 进度'
+    )
+    if (!confirmed) return
+    await soloRunStore.clearRunProgress(currentRun.value.id)
+    await Promise.all([
+      soloRunStore.getRun(currentRun.value.id),
+      soloExecutionStore.loadSteps(currentRun.value.id),
+      soloExecutionStore.loadLogs(currentRun.value.id)
+    ])
+    syncSelectedStep()
+  }
+
+  async function handleDelete() {
+    if (!currentRun.value) return
+    const confirmed = await confirmDialog.danger(
+      `确定要删除运行「${currentRun.value.name}」吗？`,
+      '删除 SOLO 运行'
+    )
+    if (!confirmed) return
+    const deletedId = currentRun.value.id
+    await soloRunStore.deleteRun(deletedId)
+    const nextRun = runs.value[0]
+    if (nextRun) {
+      await selectRun(nextRun.id)
+    } else {
+      selectedStepId.value = null
+    }
+  }
+
+  async function handleBrowseExecutionPath() {
+    const selected = await open({
+      title: '选择 SOLO 执行目录',
+      multiple: false,
+      directory: true
+    })
+
+    if (!selected || typeof selected !== 'string') {
+      return
+    }
+
+    const matchedProject = projectStore.projects.find((project) => project.path === selected)
+    updateCreateForm({
+      executionPath: selected,
+      projectId: matchedProject?.id || createForm.projectId
+    })
+  }
+
+  watch(
+    () => projectStore.currentProjectId,
+    async (projectId) => {
+      soloRunStore.setCurrentRun(null)
+      selectedStepId.value = null
+      if (!projectId) return
+      await soloRunStore.loadRuns(projectId)
+      if (runs.value[0]) {
+        await selectRun(runs.value[0].id)
+      }
+    },
+    { immediate: true }
+  )
+
+  watch(
+    () => [currentRun.value?.id, currentRun.value?.currentStepId, currentSteps.value.map((step) => step.id).join(':')].join('|'),
+    () => {
+      if (!currentRun.value) return
+      if (!selectedStepId.value || !currentSteps.value.some((step) => step.id === selectedStepId.value)) {
+        syncSelectedStep()
+      }
+    }
+  )
+
+  watch(
+    () => createForm.projectId,
+    (projectId, previousProjectId) => {
+      const project = projectStore.projects.find((item) => item.id === projectId)
+      if (!project) return
+      const previousProjectPath = projectStore.projects.find((item) => item.id === previousProjectId)?.path
+      if (!createForm.executionPath || createForm.executionPath === previousProjectPath) {
+        createForm.executionPath = project.path
+      }
+    }
+  )
+
+  watch(
+    () => createForm.coordinatorExpertId,
+    async (expertId, previousExpertId) => {
+      if (!showCreateDialog.value || expertId === previousExpertId) return
+      await syncCreateDialogModels()
+    }
+  )
+
+  onMounted(async () => {
+    await Promise.all([
+      projectStore.loadProjects(),
+      agentStore.loadAgents(),
+      agentTeamsStore.loadExperts()
+    ])
+    if (projectStore.currentProjectId) {
+      await soloRunStore.loadRuns(projectStore.currentProjectId)
+      if (!soloRunStore.currentRunId && runs.value[0]) {
+        await selectRun(runs.value[0].id)
+      }
+    }
+  })
+
+  return {
+    canCreate,
+    completedCount,
+    coordinatorExpertOptions,
+    createDialogModelOptions,
+    createForm,
+    currentExecutionState,
+    currentRun,
+    currentRunCoordinatorLabel,
+    currentRunParticipants,
+    currentSteps,
+    failedCount,
+    blockedCount,
+    formatTime,
+    getStepExpertLabel,
+    getStepLogCount,
+    handleBrowseExecutionPath,
+    handleDelete,
+    handlePause,
+    handleReset,
+    handleResume,
+    handleStart,
+    handleStop,
+    openCreateDialog,
+    participantExpertOptions,
+    runStatusLabel,
+    runs,
+    selectRun,
+    selectedStep,
+    selectedStepId,
+    selectStep,
+    showCreateDialog,
+    soloRunStore,
+    stepStatusLabel,
+    updateCreateForm,
+    createRun,
+    closeCreateDialog,
+    compactSoloSummary
+  }
+}

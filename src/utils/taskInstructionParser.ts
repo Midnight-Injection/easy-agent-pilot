@@ -23,6 +23,41 @@ export interface TaskInstructionResult {
   customPrompt?: string
 }
 
+const BRACKET_MENTION_PATTERN = /@\[(\d+)(?::[^\]]*)?\]/g
+
+/** 将任务引用标准化为可解析的文本。 */
+export function normalizeTaskInstructionInput(input: string): string {
+  return input.replace(BRACKET_MENTION_PATTERN, (_matched, numeric) => `任务${numeric}`)
+}
+
+/** 将任务引用替换成明确标题，便于拼到 AI 提示词中。 */
+export function materializeTaskMentions(input: string, tasks: AITaskItem[]): string {
+  return input.replace(BRACKET_MENTION_PATTERN, (_matched, numeric) => {
+    const index = Number.parseInt(numeric, 10) - 1
+    const task = tasks[index]
+    if (!task) {
+      return `任务${numeric}`
+    }
+    return `任务${numeric}《${task.title || '未命名任务'}》`
+  })
+}
+
+function extractFirstNumber(text: string, taskCount: number): number | null {
+  const matched = text.match(/(?:任务\s*)?(\d+)/)
+  return resolveByNumber(matched?.[1], taskCount)
+}
+
+function extractPromptSuffix(text: string): string | undefined {
+  for (const separator of ['，', ',', '：', ':']) {
+    const index = text.indexOf(separator)
+    if (index >= 0 && index < text.length - 1) {
+      const suffix = text.slice(index + 1).trim()
+      return suffix || undefined
+    }
+  }
+  return undefined
+}
+
 /**
  * 按数字序号解析目标索引（1-based → 0-based）
  */
@@ -70,7 +105,7 @@ function parsePriority(raw: string): AITaskItem['priority'] {
  * @returns      解析结果
  */
 export function parseTaskInstruction(input: string, tasks: AITaskItem[]): TaskInstructionResult {
-  const text = input.trim()
+  const text = normalizeTaskInstructionInput(input).trim()
   if (!text) return { type: 'unknown' }
 
   // --- 删除任务（按序号或标题） ---
@@ -82,7 +117,7 @@ export function parseTaskInstruction(input: string, tasks: AITaskItem[]): TaskIn
     }
   }
   {
-    const m = text.match(/(?:删除|移除)\s*(?:任务\s*)?[\"""'](.+?)[\"""']/)
+    const m = text.match(/(?:删除|移除)\s*(?:任务\s*)?["'](.+?)["']/)
     if (m) {
       const idx = resolveByTitle(m[1], tasks)
       if (idx !== null) return { type: 'delete', targetIndex: idx }
@@ -101,11 +136,14 @@ export function parseTaskInstruction(input: string, tasks: AITaskItem[]): TaskIn
 
   // --- 再次拆分任务 ---
   {
-    const m = text.match(/(?:再次?拆分|继续拆分)\s*(?:任务\s*)?(\d+)(?:[，,\s]*(?:要求|需要|按|以)[：:\s]*(.+))?/)
-    if (m) {
-      const idx = resolveByNumber(m[1], tasks.length)
+    if (/(?:再次?拆分|继续拆分|重新拆分|进一步拆分|拆细|细化)/.test(text)) {
+      const idx = extractFirstNumber(text, tasks.length)
       if (idx !== null) {
-        return { type: 'resplit', targetIndex: idx, customPrompt: m[2]?.trim() || undefined }
+        return {
+          type: 'resplit',
+          targetIndex: idx,
+          customPrompt: extractPromptSuffix(text) || text
+        }
       }
     }
   }
@@ -158,9 +196,9 @@ export function parseTaskInstruction(input: string, tasks: AITaskItem[]): TaskIn
   }
 
   // --- 整体优化列表 ---
-  if (/(?:优化|整理|改进)\s*(?:任务\s*)?(?:列表|清单|全部)/.test(text)) {
-    const m = text.match(/(?:优化|整理|改进)\s*(?:任务\s*)?(?:列表|清单|全部)[，,\s]*(.+)/)
-    return { type: 'optimize', customPrompt: m?.[1]?.trim() || undefined }
+  if (/(?:优化|整理|改进|完善|调整|补充|重排|精简)/.test(text)) {
+    const m = text.match(/(?:优化|整理|改进|完善|调整|补充|重排|精简)\s*(?:任务\s*)?(?:列表|清单|全部|整体|右侧任务)?[，,\s]*(.+)?/)
+    return { type: 'optimize', customPrompt: m?.[1]?.trim() || text }
   }
 
   // --- 重新排序 ---

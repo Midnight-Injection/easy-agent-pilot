@@ -11,6 +11,56 @@
 
 开发、联调、自动化测试时，默认按“前端 1430 + Tauri 2 宿主 + MCP Bridge 9423”理解当前运行环境，不要自行改成其他端口，除非任务明确要求。
 
+## 快速索引
+
+### 前端入口速查
+- 工作台主页
+  `src/views/HomeView.vue`、`src/components/layout/MainLayout.vue`、`src/components/layout/PanelContainer.vue`
+- 主会话与消息区
+  `src/components/layout/SessionPanel.vue`、`src/components/layout/ConversationComposer.vue`、`src/components/layout/MessageArea.vue`、`src/components/message/MessageBubble.vue`
+- 计划列表与执行
+  `src/components/plan/PlanList.vue`、`src/components/plan/TaskBoard.vue`、`src/components/plan/TaskExecutionLog.vue`、`src/components/plan/TaskEditModal.vue`
+- 计划拆分
+  `src/components/plan/TaskSplitDialog.vue`、`src/components/plan/taskSplitDialog/useTaskSplitDialog.ts`
+- 文件树与文件编辑
+  `src/components/fileTree/FileTree.vue`、`src/modules/file-editor/components/FileEditorWorkspace.vue`
+- SOLO 单兵执行
+  `src/components/solo/SoloModePanel.vue`、`src/components/solo/SoloExecutionLogPanel.vue`、`src/components/solo/SoloRunCreateDialog.vue`
+- 无人值守
+  `src/components/unattended/UnattendedPanel.vue`、`src/components/settings/tabs/UnattendedSettings.vue`
+- 设置中心
+  `src/views/SettingsView.vue`、`src/components/settings/SettingsNav.vue`、`src/components/settings/settingsTabs.ts`
+- Agent / MCP / Skill / Plugin 配置
+  `src/components/agent/`、`src/components/skill-config/`、`src/components/marketplace/`
+
+### 大组件拆分索引
+- 主会话 sidecar
+  `src/components/layout/conversationComposer/`、`src/components/layout/messageArea/`、`src/components/layout/sessionPanel/`
+- 消息渲染 sidecar
+  `src/components/message/messageBubble/`、`src/components/message/messageList/`
+- 计划模块 sidecar
+  `src/components/plan/planList/`、`src/components/plan/taskBoard/`、`src/components/plan/taskEditModal/`、`src/components/plan/taskExecutionLog/`、`src/components/plan/taskSplitDialog/`
+- 文件树 sidecar
+  `src/components/fileTree/`
+- 记忆模块 sidecar
+  `src/components/memory/memoryModePanel/`
+- 设置模块 sidecar
+  `src/components/settings/tabs/agentCliUsageSettings/`
+- SOLO sidecar
+  `src/components/solo/soloModePanel/`
+- 无人值守 sidecar
+  `src/components/unattended/unattendedPanel/`
+
+### 后端入口速查
+- Tauri 应用入口
+  `src-tauri/src/lib.rs`
+- 会话执行命令
+  `src-tauri/src/commands/conversation/`
+- 计划 / 任务 / 拆分命令
+  `src-tauri/src/commands/plan.rs`、`src-tauri/src/commands/plan_split.rs`、`src-tauri/src/commands/task.rs`、`src-tauri/src/commands/task_execution.rs`
+- 设置 / Agent / Marketplace / 无人值守命令
+  `src-tauri/src/commands/settings.rs`、`src-tauri/src/commands/agent*.rs`、`src-tauri/src/commands/*market*.rs`、`src-tauri/src/commands/unattended.rs`
+
 ## 目录与模块说明
 
 ### AgentTeams 与专家运行时
@@ -22,26 +72,38 @@
 ### 前端模块
 `src/` 为前端主目录，按业务域拆分，而不是按纯技术层堆叠。
 
+- 大文件拆分约定
+  超过约 1000 行的 Vue 组件优先拆为 `Component.vue + camelCase 目录 + useXxx.ts + styles.css`。
+  新增 sidecar 目录和文件统一使用 camelCase，避免再出现 `use-task-edit-modal` 这类横杆命名。
+
 - `src/views/`
   路由级页面入口。当前包含主页工作台、设置页、MCP 测试页、Mini Panel 页面。
 - `src/components/layout/`
   主工作区骨架。负责顶部栏、侧边导航、项目区、会话区、消息区、统一面板、文件编辑器切换。
+  关键文件：`MainLayout.vue`、`PanelContainer.vue`、`SessionPanel.vue`、`ConversationComposer.vue`、`MessageArea.vue`。
 - `src/components/settings/`
   设置中心。当前菜单包括：通用设置、智能体设置、Agent 配置、无人值守、Marketplace、Provider Switch、会话管理、主题、LSP、数据管理、日志管理、软件更新、Token 统计。
+  关键文件：`tabs/AgentCliUsageSettings.vue`、`tabs/agentCliUsageSettings/useAgentCliUsageSettings.ts`、`tabs/agentCliUsageSettings/chartUtils.ts`。
 - `src/components/plan/`
   计划模式核心模块。负责计划列表、计划新建/编辑、任务拆分、拆分预览、任务看板、任务详情、计划进度、执行日志、继续拆分等流程。
+  关键文件：`PlanList.vue`、`TaskBoard.vue`、`TaskSplitDialog.vue`、`TaskExecutionLog.vue`、`TaskEditModal.vue`。
 - `src/components/memory/`
   记忆模式模块。负责记忆库、原始记忆池、AI 合并、批量删除、Markdown 记忆维护。
+  关键文件：`MemoryModePanel.vue`、`memoryModePanel/useMemoryModePanel.ts`。
 - `src/components/message/`
   会话消息渲染模块。负责消息气泡、Markdown 渲染、Thinking 展示、工具调用展示、执行时间线、结构化结果渲染。
+  关键文件：`MessageBubble.vue`、`MessageList.vue`、`messageList/useMessageList.ts`、`MarkdownRenderer.vue`、`ToolCallRenderer.vue`、`ThinkingBlock.vue`。
 - `src/components/unattended/`
   无人值守渠道模块。负责微信渠道创建、扫码登录、监听状态管理、默认项目 / Agent / 模型绑定、远程线程日志回看。
+  关键文件：`UnattendedPanel.vue` 及其 `unattendedPanel/` sidecar 目录。
 - `src/components/marketplace/`
   市场模块。负责 MCP、Skill、Plugin 的列表、详情、安装、启停、更新入口。
 - `src/components/skill-config/`
   Agent 维度的 MCP / Skill / Plugin 配置中心，包含配置列表、编辑器、文件工作区、详情侧栏等。
-- `src/components/file-tree/`
+  关键文件：`SkillConfigPage.vue`、`modals/CliConfigSyncModal.vue`、`common/ConfigFileWorkspace.vue`、`views/PluginDetailView.vue`。
+- `src/components/fileTree/`
   项目文件树与文件操作模块，负责重命名、移动、删除、上下文菜单等。
+  关键文件：`FileTree.vue`、`FileTreeContextMenu.vue`、`FileTreeCreateDialog.vue`、`FileTreeRenameDialog.vue`。
 - `src/components/agent/`
   智能体配置与模型管理模块，负责 Agent 表单、模型编辑、Claude 配置扫描等。
 - `src/components/project/`
@@ -50,6 +112,7 @@
   通用 UI 组件库，如按钮、输入框、弹窗、选择器、图标、骨架屏、进度条、提示组件。
 - `src/modules/file-editor/`
   文件编辑子系统。基于 Monaco，负责编辑器工作区、语言策略、文件编辑服务、LSP 接入。
+  关键文件：`components/FileEditorWorkspace.vue`、`components/MonacoCodeEditor.vue`、`services/fileEditorService.ts`、`services/lspService.ts`。
 - `src/stores/`
   Pinia 状态管理层。覆盖项目、会话、消息、计划、任务、任务执行、设置、主题、窗口状态、记忆、Marketplace、Agent 配置、Provider Profile、应用更新、无人值守渠道、CLI 用量统计等状态。
 - `src/services/appUpdate/`
@@ -83,20 +146,29 @@
 - 主会话
   位于主页工作台，核心由 `MainLayout`、`PanelContainer`、`SessionTabs`、`MessageArea` 组成，用于项目上下文下的多会话对话、消息展示和文件编辑切换。
   同时负责专家切换、运行时提示、动态表单渲染、记忆引用、压缩提示与 token 展示。
+  关键文件：`src/components/layout/SessionPanel.vue`、`src/components/layout/ConversationComposer.vue`、`src/components/layout/MessageArea.vue`。
 - 菜单设置
   入口在顶部 `AppHeader` 设置按钮，进入 `SettingsView`。设置导航由 `SettingsNav` 和 `settingsTabs.ts` 管理，当前覆盖通用设置、Agent 配置、无人值守、技能市场、Provider Switch、会话管理、主题、LSP、数据管理、日志管理、软件更新、Token 统计等页签。
 - 计划拆分
   从计划列表进入，核心弹窗为 `TaskSplitDialog`。该流程负责 AI 拆分、表单补充、停止 / 继续拆分、拆分预览、二次拆分、确认生成任务。
+  关键文件：`src/components/plan/TaskSplitDialog.vue`、`src/components/plan/taskSplitDialog/useTaskSplitDialog.ts`。
 - 计划执行
   由 `TaskBoard`、`KanbanColumn`、`TaskExecutionLog`、`PlanProgressDetail` 组成。支持待办执行、一键执行、暂停、恢复、失败重试、日志查看，以及任务改派专家 / 模型后的继续执行。
+  关键文件：`src/components/plan/TaskBoard.vue`、`src/components/plan/TaskExecutionLog.vue`、`src/components/plan/TaskEditModal.vue`。
 - 记忆管理
   由 `MemoryModePanel` 负责，支持记忆库维护、原始记忆筛选、批量删除、AI 合并入库。
+  关键文件：`src/components/memory/MemoryModePanel.vue`、`src/components/memory/memoryModePanel/useMemoryModePanel.ts`。
 - 无人值守
   入口在设置中心 `UnattendedSettings`。核心由 `UnattendedPanel` 组成，负责微信渠道创建、扫码登录、默认项目 / Agent / 模型绑定、监听状态控制、线程日志回看。
+  关键文件：`src/components/unattended/UnattendedPanel.vue`、`src/components/settings/tabs/UnattendedSettings.vue`。
+- SOLO 单兵执行
+  入口在工作台的 SOLO 模式区域，核心由 `SoloModePanel`、`SoloRunList`、`SoloExecutionLogPanel` 组成，负责单兵运行的创建、调度、时间线和日志查看。
+  关键文件：`src/components/solo/SoloModePanel.vue`、`src/components/solo/SoloRunCreateDialog.vue`、`src/components/solo/SoloExecutionLogPanel.vue`。
 - 软件更新
   入口在设置中心 `AppUpdateSettings`。负责读取当前版本、检查 GitHub Release 更新、展示下载进度并触发安装。
 - Token 统计
   入口在设置中心 `AgentCliUsageSettings`。负责聚合 Claude CLI / Codex CLI 的调用次数、输入输出 Token、费用估算与趋势排行。
+  关键文件：`src/components/settings/tabs/AgentCliUsageSettings.vue`、`src/components/settings/tabs/agentCliUsageSettings/useAgentCliUsageSettings.ts`、`src/components/settings/tabs/agentCliUsageSettings/chartUtils.ts`。
 
 ### 后端模块
 `src-tauri/src/` 为 Tauri 2 Rust 后端。

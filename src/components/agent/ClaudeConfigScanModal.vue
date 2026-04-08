@@ -3,12 +3,12 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { EaButton, EaIcon } from '@/components/common'
-import ClaudeScanMcpList from '@/components/agent/claude-scan/ClaudeScanMcpList.vue'
-import ClaudeScanPluginsList from '@/components/agent/claude-scan/ClaudeScanPluginsList.vue'
-import ClaudeScanSkillsList from '@/components/agent/claude-scan/ClaudeScanSkillsList.vue'
-import ClaudeScanTabs from '@/components/agent/claude-scan/ClaudeScanTabs.vue'
+import ClaudeScanMcpList from '@/components/agent/claudeScan/ClaudeScanMcpList.vue'
+import ClaudeScanPluginsList from '@/components/agent/claudeScan/ClaudeScanPluginsList.vue'
+import ClaudeScanSkillsList from '@/components/agent/claudeScan/ClaudeScanSkillsList.vue'
+import ClaudeScanTabs from '@/components/agent/claudeScan/ClaudeScanTabs.vue'
 import type { ClaudeConfigScanResult } from '@/stores/skillConfigShared'
-import type { ClaudeScanTab, SelectedItems } from '@/components/agent/claude-scan/shared'
+import type { ClaudeScanTab, SelectedItems } from '@/components/agent/claudeScan/shared'
 
 const emit = defineEmits<{
   close: []

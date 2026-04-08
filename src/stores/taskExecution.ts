@@ -1277,7 +1277,6 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
   }
 
   async function pausePlanExecutionFlow(planId: string): Promise<void> {
-    const taskStore = useTaskStore()
     const queue = getOrCreateQueue(planId)
     queue.isPaused = true
 
@@ -1297,7 +1296,7 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
       const state = executionStates.value.get(taskId)
       if (state) {
         state.status = 'idle'
-        state.completedAt = undefined
+        state.completedAt = null
       }
     }
     queue.pendingTaskIds = []

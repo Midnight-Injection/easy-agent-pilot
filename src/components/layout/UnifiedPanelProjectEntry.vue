@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FileTree } from '@/components/file-tree'
+import { FileTree } from '@/components/fileTree'
 import type { Project } from '@/stores/project'
 import type { Session } from '@/stores/session'
 import type { ProjectTabType } from '@/stores/layout'
