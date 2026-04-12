@@ -191,10 +191,10 @@ fn normalize_optional_text(value: Option<String>) -> Option<String> {
 
 fn normalize_provider(value: &str) -> String {
     let normalized = value.trim().to_lowercase();
-    if normalized == "codex" {
-        "codex".to_string()
-    } else {
-        "claude".to_string()
+    match normalized.as_str() {
+        "codex" => "codex".to_string(),
+        "opencode" => "opencode".to_string(),
+        _ => "claude".to_string(),
     }
 }
 
@@ -222,6 +222,7 @@ fn normalize_provider_filter(value: Option<String>) -> String {
     {
         "claude" => "claude".to_string(),
         "codex" => "codex".to_string(),
+        "opencode" => "opencode".to_string(),
         _ => "all".to_string(),
     }
 }

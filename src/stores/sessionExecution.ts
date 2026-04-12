@@ -78,6 +78,16 @@ export interface SessionExecutionState {
   queuedMessages: QueuedMessageDraft[]
 }
 
+interface ComposerStateSnapshot {
+  inputText: string
+  fileMentions: ComposerFileMention[]
+  memoryReferences: ComposerMemoryReference[]
+  dismissedMemorySuggestionKeys: string[]
+  lastMemoryQuery: string
+  memorySuggestions: SearchMemorySuggestionsResult
+  pendingImages: PendingImageAttachment[]
+}
+
 /**
  * 会话执行状态管理 Store
  *
@@ -295,6 +305,39 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
   function clearPendingImages(sessionId: string) {
     const state = getExecutionState(sessionId)
     state.pendingImages = []
+  }
+
+  /**
+   * 复制会话编辑器草稿态到另一个会话。
+   * 用于压缩后切换新会话时，保留用户当前未发送的输入上下文。
+   */
+  function copyComposerState(sourceSessionId: string, targetSessionId: string) {
+    if (!sourceSessionId || !targetSessionId || sourceSessionId === targetSessionId) {
+      return
+    }
+
+    const sourceState = getExecutionState(sourceSessionId)
+    const targetState = getExecutionState(targetSessionId)
+    const snapshot: ComposerStateSnapshot = {
+      inputText: sourceState.inputText,
+      fileMentions: [...sourceState.fileMentions],
+      memoryReferences: dedupeMemoryReferences(sourceState.memoryReferences),
+      dismissedMemorySuggestionKeys: [...sourceState.dismissedMemorySuggestionKeys],
+      lastMemoryQuery: sourceState.lastMemoryQuery,
+      memorySuggestions: {
+        librarySuggestions: [...sourceState.memorySuggestions.librarySuggestions],
+        rawSuggestions: [...sourceState.memorySuggestions.rawSuggestions]
+      },
+      pendingImages: [...sourceState.pendingImages]
+    }
+
+    targetState.inputText = snapshot.inputText
+    targetState.fileMentions = snapshot.fileMentions
+    targetState.memoryReferences = snapshot.memoryReferences
+    targetState.dismissedMemorySuggestionKeys = snapshot.dismissedMemorySuggestionKeys
+    targetState.lastMemoryQuery = snapshot.lastMemoryQuery
+    targetState.memorySuggestions = snapshot.memorySuggestions
+    targetState.pendingImages = snapshot.pendingImages
   }
 
   function queueMessage(
@@ -553,6 +596,7 @@ export const useSessionExecutionStore = defineStore('sessionExecution', () => {
     appendPendingImages,
     removePendingImage,
     clearPendingImages,
+    copyComposerState,
     queueMessage,
     removeQueuedMessage,
     restoreQueuedMessage,

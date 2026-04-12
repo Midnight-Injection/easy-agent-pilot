@@ -139,6 +139,8 @@ const zhCN = {
     sendingInProgress: '正在发送消息，请稍后再试',
     agentNotFound: '未找到可用智能体',
     summaryGenerationFailed: '生成摘要失败',
+    continuationSessionSuffix: '· 压缩续聊',
+    sourceSessionMissing: '原会话不存在，无法创建压缩续聊会话',
     expand: '展开',
     collapse: '收起'
   },

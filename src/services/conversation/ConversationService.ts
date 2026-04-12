@@ -338,11 +338,9 @@ export class ConversationService {
       const executionMessages = existingUserMessageId
         ? this.sliceMessagesForRetry(sessionMessages, targetUserMessage.id)
         : sessionMessages
-      const hasCompressionMessage = sessionMessages.some(message => message.role === 'compression')
       const reusableCliSessionId = await this.resolveReusableCliSessionId(
         session,
-        executionAgent,
-        hasCompressionMessage
+        executionAgent
       )
       const fullMessages = this.buildExecutionMessages(
         executionMessages,
@@ -565,10 +563,9 @@ export class ConversationService {
 
   private async resolveReusableCliSessionId(
     session: Session | undefined,
-    agent: AgentConfig,
-    hasCompressionMessage: boolean
+    agent: AgentConfig
   ): Promise<string | undefined> {
-    if (!session || agent.type !== 'cli' || hasCompressionMessage) {
+    if (!session || agent.type !== 'cli') {
       return undefined
     }
 

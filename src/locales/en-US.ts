@@ -212,6 +212,8 @@ export default {
     sendingInProgress: 'A message is still being sent. Try again later.',
     agentNotFound: 'No available agent found',
     summaryGenerationFailed: 'Failed to generate summary',
+    continuationSessionSuffix: '· Compressed Continuation',
+    sourceSessionMissing: 'The source session no longer exists, so a continuation session cannot be created.',
     expand: 'Expand',
     collapse: 'Collapse'
   },

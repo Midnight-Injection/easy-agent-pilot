@@ -122,8 +122,12 @@ export const useAgentCliUsageStore = defineStore('agentCliUsage', () => {
     errorMessage.value = ''
 
     try {
+      const repairProvider = filters.value.cliType === 'all'
+        ? undefined
+        : filters.value.cliType
+
       await invoke<RepairAgentCliUsageHistoryResult>('repair_agent_cli_usage_history', {
-        provider: filters.value.cliType === 'codex' ? 'codex' : 'claude'
+        provider: repairProvider
       }).catch((error) => {
         console.warn('[agentCliUsage] Failed to repair historical usage records:', error)
         return null
