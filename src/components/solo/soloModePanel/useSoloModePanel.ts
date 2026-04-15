@@ -51,6 +51,7 @@ export function useSoloModePanel() {
   const currentRun = computed(() => soloRunStore.currentRun)
   const currentSteps = computed(() => currentRun.value ? soloExecutionStore.getSteps(currentRun.value.id) : [])
   const currentExecutionState = computed(() => currentRun.value ? soloExecutionStore.getExecutionState(currentRun.value.id) : undefined)
+  const currentRunLogs = computed(() => currentExecutionState.value?.logs ?? [])
   const selectedStep = computed(() => currentSteps.value.find((step) => step.id === selectedStepId.value) || null)
 
   const builtinExpertPool = computed(() => {
@@ -100,6 +101,55 @@ export function useSoloModePanel() {
   const completedCount = computed(() => currentSteps.value.filter((step) => step.status === 'completed').length)
   const blockedCount = computed(() => currentSteps.value.filter((step) => step.status === 'blocked').length)
   const failedCount = computed(() => currentSteps.value.filter((step) => step.status === 'failed').length)
+  const uniqueResultFiles = computed(() => Array.from(
+    new Set(
+      currentSteps.value.flatMap((step) => step.resultFiles).filter(Boolean)
+    )
+  ))
+  const latestCompletedStep = computed(() => (
+    [...currentSteps.value]
+      .reverse()
+      .find((step) => step.resultSummary || step.summary || step.failReason) || null
+  ))
+  const currentRunHistoryRows = computed(() => {
+    if (!currentRun.value) return []
+
+    return [
+      { label: '创建时间', value: formatFullTime(currentRun.value.createdAt) },
+      { label: '开始执行', value: formatFullTime(currentRun.value.startedAt) },
+      { label: '最后更新', value: formatFullTime(currentRun.value.updatedAt) },
+      { label: '结束时间', value: formatFullTime(currentRun.value.completedAt || currentRun.value.stoppedAt) }
+    ]
+  })
+  const currentRunHistoryMetrics = computed(() => {
+    const stepCount = currentSteps.value.length
+    const logs = currentRunLogs.value
+    const toolCallCount = logs.filter((log) => log.type === 'tool_use').length
+
+    return [
+      { label: '总步骤', value: String(stepCount) },
+      { label: '日志条数', value: String(logs.length) },
+      { label: '工具调用', value: String(toolCallCount) },
+      { label: '变更文件', value: String(uniqueResultFiles.value.length) }
+    ]
+  })
+  const currentRunDurationLabel = computed(() => {
+    if (!currentRun.value?.startedAt) return '尚未开始'
+    const endAt = currentRun.value.completedAt || currentRun.value.stoppedAt || currentRun.value.updatedAt
+    return formatDuration(currentRun.value.startedAt, endAt)
+  })
+  const currentRunHistorySummary = computed(() => {
+    if (latestCompletedStep.value?.resultSummary) {
+      return latestCompletedStep.value.resultSummary
+    }
+    if (latestCompletedStep.value?.summary) {
+      return latestCompletedStep.value.summary
+    }
+    if (currentRun.value?.lastError) {
+      return currentRun.value.lastError
+    }
+    return '当前运行还没有形成可回看的阶段结论。'
+  })
 
   const canCreate = computed(() =>
     Boolean(
@@ -146,6 +196,38 @@ export function useSoloModePanel() {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  function formatFullTime(value?: string): string {
+    if (!value) return '暂无'
+    const date = new Date(value)
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  function formatDuration(start?: string, end?: string): string {
+    if (!start || !end) return '暂无'
+
+    const diff = Math.max(0, new Date(end).getTime() - new Date(start).getTime())
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(minutes / 60)
+    const days = Math.floor(hours / 24)
+
+    if (days > 0) {
+      return `${days} 天 ${hours % 24} 小时`
+    }
+    if (hours > 0) {
+      return `${hours} 小时 ${minutes % 60} 分钟`
+    }
+    if (minutes > 0) {
+      return `${minutes} 分钟`
+    }
+    return '1 分钟内'
   }
 
   function getDefaultParticipantExpertIds(): string[] {
@@ -468,6 +550,10 @@ export function useSoloModePanel() {
     createDialogModelOptions,
     createForm,
     currentExecutionState,
+    currentRunDurationLabel,
+    currentRunHistoryMetrics,
+    currentRunHistoryRows,
+    currentRunHistorySummary,
     currentRun,
     currentRunCoordinatorLabel,
     currentRunParticipants,

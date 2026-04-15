@@ -12,9 +12,10 @@ use uuid::Uuid;
 use super::cli_common::{
     build_content_event, build_error_event, build_execution_summary, build_system_event,
     build_timeout_error_message, describe_timeout_config, detect_cli_timeout, emit_cli_event,
-    extract_error_from_json_blob, extract_result_content_from_json_blob, extract_runtime_system_notice,
-    extract_structured_output_from_json_blob, parse_json_blob_with_fallback, preview_text,
-    render_cli_message, shell_escape, timeout_config_for_execution_mode, CliExecutionMonitor,
+    extract_error_from_json_blob, extract_result_content_from_json_blob,
+    extract_runtime_system_notice, extract_structured_output_from_json_blob,
+    parse_json_blob_with_fallback, preview_text, render_cli_message, shell_escape,
+    timeout_config_for_execution_mode, CliExecutionMonitor,
 };
 use crate::commands::cli_support::{build_cli_launch_error_message, build_tokio_cli_command};
 use crate::commands::conversation::abort::{
@@ -354,7 +355,11 @@ impl AgentExecutionStrategy for ClaudeCliStrategy {
             .map(ToOwned::to_owned);
 
         // Claude Code 支持 `echo "..." | claude -p`，统一走 stdin 可避免 Windows 206 长命令问题。
-        let mut args = vec!["-p".to_string(), "--output-format".to_string(), cli_output_format.clone()];
+        let mut args = vec![
+            "-p".to_string(),
+            "--output-format".to_string(),
+            cli_output_format.clone(),
+        ];
         args.push("--dangerously-skip-permissions".to_string());
 
         // 非流式 JSON 输出时禁用 verbose，避免 stdout 里出现大段事件数组影响结构化提取

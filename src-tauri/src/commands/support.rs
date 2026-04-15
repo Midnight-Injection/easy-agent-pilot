@@ -310,7 +310,9 @@ mod tests {
             .expect("delete raw memory record");
 
         let remaining: i64 = conn
-            .query_row("SELECT COUNT(*) FROM raw_memory_records", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM raw_memory_records", [], |row| {
+                row.get(0)
+            })
             .expect("count remaining raw records");
         assert_eq!(remaining, 0);
     }
@@ -326,7 +328,9 @@ mod tests {
             .expect("delete session");
 
         let session_raw_count: i64 = session_conn
-            .query_row("SELECT COUNT(*) FROM raw_memory_records", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM raw_memory_records", [], |row| {
+                row.get(0)
+            })
             .expect("count raw records after session delete");
         assert_eq!(session_raw_count, 0);
 
@@ -345,7 +349,9 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
             .expect("count sessions after project delete");
         let remaining_raw_records: i64 = project_conn
-            .query_row("SELECT COUNT(*) FROM raw_memory_records", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM raw_memory_records", [], |row| {
+                row.get(0)
+            })
             .expect("count raw records after project delete");
 
         assert_eq!(remaining_projects, 0);

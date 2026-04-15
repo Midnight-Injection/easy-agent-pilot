@@ -469,6 +469,20 @@ fn parse_plugin_json(plugin_json_path: &Path) -> (Option<String>, Option<String>
     (None, None, None)
 }
 
+fn plugin_manifest_dir_candidates(cli_name: &str) -> &'static [&'static str] {
+    match cli_name {
+        "codex" => &[".codex-plugin", ".claude-plugin"],
+        _ => &[".claude-plugin", ".codex-plugin"],
+    }
+}
+
+fn resolve_plugin_manifest_path(plugin_path: &Path, cli_name: &str) -> Option<PathBuf> {
+    plugin_manifest_dir_candidates(cli_name)
+        .iter()
+        .map(|dir_name| plugin_path.join(dir_name).join("plugin.json"))
+        .find(|candidate| candidate.exists())
+}
+
 /// 检查 Plugin 目录的子目录结构
 fn check_plugin_subdirectories(plugin_path: &Path) -> PluginSubdirectories {
     PluginSubdirectories {
@@ -480,9 +494,15 @@ fn check_plugin_subdirectories(plugin_path: &Path) -> PluginSubdirectories {
     }
 }
 
-fn build_scanned_plugin(plugin_path: &Path, name: String, enabled: bool) -> ScannedPlugin {
-    let plugin_json_path = plugin_path.join(".claude-plugin").join("plugin.json");
-    let (version, description, author) = parse_plugin_json(&plugin_json_path);
+fn build_scanned_plugin(
+    plugin_path: &Path,
+    name: String,
+    enabled: bool,
+    cli_name: &str,
+) -> ScannedPlugin {
+    let (version, description, author) = resolve_plugin_manifest_path(plugin_path, cli_name)
+        .map(|plugin_json_path| parse_plugin_json(&plugin_json_path))
+        .unwrap_or((None, None, None));
 
     ScannedPlugin {
         name,
@@ -495,7 +515,7 @@ fn build_scanned_plugin(plugin_path: &Path, name: String, enabled: bool) -> Scan
     }
 }
 
-fn scan_installed_plugins_file(plugins_dir: &Path) -> Vec<ScannedPlugin> {
+fn scan_installed_plugins_file(plugins_dir: &Path, cli_name: &str) -> Vec<ScannedPlugin> {
     let installed_plugins_path = plugins_dir.join("installed_plugins.json");
     let Ok(content) = fs::read_to_string(installed_plugins_path) else {
         return Vec::new();
@@ -538,13 +558,18 @@ fn scan_installed_plugins_file(plugins_dir: &Path) -> Vec<ScannedPlugin> {
             .map(|scope| scope == "user")
             .unwrap_or(true);
 
-        plugins.push(build_scanned_plugin(&install_path, display_name, enabled));
+        plugins.push(build_scanned_plugin(
+            &install_path,
+            display_name,
+            enabled,
+            cli_name,
+        ));
     }
 
     plugins
 }
 
-fn scan_plugin_directories(plugins_dir: &Path) -> Result<Vec<ScannedPlugin>> {
+fn scan_plugin_directories(plugins_dir: &Path, cli_name: &str) -> Result<Vec<ScannedPlugin>> {
     let mut plugins = Vec::new();
 
     for entry in fs::read_dir(plugins_dir)? {
@@ -556,28 +581,40 @@ fn scan_plugin_directories(plugins_dir: &Path) -> Result<Vec<ScannedPlugin>> {
             continue;
         }
 
+        let has_manifest = resolve_plugin_manifest_path(&path, cli_name).is_some();
+        let subdirectories = check_plugin_subdirectories(&path);
+        if !has_manifest
+            && !subdirectories.has_agents
+            && !subdirectories.has_commands
+            && !subdirectories.has_skills
+            && !subdirectories.has_hooks
+            && !subdirectories.has_scripts
+        {
+            continue;
+        }
+
         let name = path
             .file_name()
             .map(|value| value.to_string_lossy().to_string())
             .unwrap_or_default();
         let enabled = !path.join(".disabled").exists();
-        plugins.push(build_scanned_plugin(&path, name, enabled));
+        plugins.push(build_scanned_plugin(&path, name, enabled, cli_name));
     }
 
     Ok(plugins)
 }
 
 /// 扫描 Plugins 目录
-fn scan_plugins_directory(claude_dir: &Path) -> Result<Vec<ScannedPlugin>> {
-    let plugins_dir = claude_dir.join("plugins");
+fn scan_plugins_directory(config_dir: &Path, cli_name: &str) -> Result<Vec<ScannedPlugin>> {
+    let plugins_dir = config_dir.join("plugins");
 
     if !plugins_dir.exists() {
         return Ok(Vec::new());
     }
 
-    let plugins = scan_installed_plugins_file(&plugins_dir);
+    let plugins = scan_installed_plugins_file(&plugins_dir, cli_name);
     if plugins.is_empty() {
-        return scan_plugin_directories(&plugins_dir);
+        return scan_plugin_directories(&plugins_dir, cli_name);
     }
 
     Ok(plugins)
@@ -611,7 +648,7 @@ pub fn scan_cli_config(
 
     let mcp_servers = scan_mcp_config(&config_dir, &config_file).unwrap_or_default();
     let skills = scan_skills_directory(&config_dir).unwrap_or_default();
-    let plugins = scan_plugins_directory(&config_dir).unwrap_or_default();
+    let plugins = scan_plugins_directory(&config_dir, &cli_name).unwrap_or_default();
 
     Ok(build_cli_config_scan_result(
         config_dir_str,

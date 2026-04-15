@@ -401,6 +401,7 @@ const INIT_SQL: &str = r#"
     -- 任务�?(Plan Mode)
     CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
+        project_id TEXT,
         plan_id TEXT NOT NULL,
         parent_id TEXT,
         title TEXT NOT NULL,
@@ -1038,6 +1039,7 @@ pub fn init_database() -> Result<()> {
 
     // tasks 表添加新字段（重试计数��最大重试��错误信息��实现步骤��测试步骤��验收标准）
     let tasks_migrations = [
+        "ALTER TABLE tasks ADD COLUMN project_id TEXT",
         "ALTER TABLE tasks ADD COLUMN agent_id TEXT",
         "ALTER TABLE tasks ADD COLUMN model_id TEXT",
         "ALTER TABLE tasks ADD COLUMN expert_id TEXT",
@@ -1065,6 +1067,57 @@ pub fn init_database() -> Result<()> {
             if !err_str.contains("duplicate column name") {
                 println!("Tasks migration warning: {}", e);
             }
+        }
+    }
+
+    if let Err(e) = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id, task_order, created_at)",
+        [],
+    ) {
+        println!("Tasks project index migration warning: {}", e);
+    }
+
+    if table_has_column(&conn, "tasks", "project_id")? {
+        if let Err(e) = conn.execute(
+            r#"
+            UPDATE tasks
+            SET project_id = (
+                SELECT plans.project_id
+                FROM plans
+                WHERE plans.id = tasks.plan_id
+            )
+            WHERE (project_id IS NULL OR trim(project_id) = '')
+              AND EXISTS (
+                SELECT 1
+                FROM plans
+                WHERE plans.id = tasks.plan_id
+              )
+            "#,
+            [],
+        ) {
+            println!("Tasks project backfill from plans warning: {}", e);
+        }
+
+        if let Err(e) = conn.execute(
+            r#"
+            UPDATE tasks
+            SET project_id = (
+                SELECT sessions.project_id
+                FROM sessions
+                WHERE sessions.id = tasks.session_id
+            )
+            WHERE (project_id IS NULL OR trim(project_id) = '')
+              AND session_id IS NOT NULL
+              AND trim(session_id) != ''
+              AND EXISTS (
+                SELECT 1
+                FROM sessions
+                WHERE sessions.id = tasks.session_id
+              )
+            "#,
+            [],
+        ) {
+            println!("Tasks project backfill from sessions warning: {}", e);
         }
     }
 
@@ -1492,7 +1545,10 @@ pub fn init_database() -> Result<()> {
         )
     "#;
     if let Err(e) = conn.execute(session_memory_reference_history_table_sql, []) {
-        println!("Session memory reference history table migration warning: {}", e);
+        println!(
+            "Session memory reference history table migration warning: {}",
+            e
+        );
     }
 
     let raw_memory_records_fts_sql = r#"
@@ -1602,7 +1658,9 @@ pub fn init_database() -> Result<()> {
     if let Err(e) = maybe_rebuild_fts_index(&conn, "raw_memory_records_fts", "raw_memory_records") {
         println!("Raw memory FTS rebuild warning: {}", e);
     }
-    if let Err(e) = maybe_rebuild_fts_index(&conn, "memory_library_chunks_fts", "memory_library_chunks") {
+    if let Err(e) =
+        maybe_rebuild_fts_index(&conn, "memory_library_chunks_fts", "memory_library_chunks")
+    {
         println!("Memory chunk FTS rebuild warning: {}", e);
     }
 

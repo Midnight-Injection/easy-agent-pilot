@@ -103,7 +103,7 @@ const isSoloModeActive = () => {
       <!-- 计划模式按钮 -->
       <button
         :class="['nav-item', 'nav-item--plan', { 'nav-item--active': isPlanModeActive() }]"
-        title="计划模式"
+        :title="t('panel.planMode')"
         @click="togglePlanMode"
       >
         <EaIcon
@@ -111,7 +111,7 @@ const isSoloModeActive = () => {
           :size="20"
           class="nav-item__icon"
         />
-        <span class="nav-item__label">计划</span>
+        <span class="nav-item__label">{{ t('panel.plan') }}</span>
         <!-- 激活指示器 -->
         <span
           v-if="isPlanModeActive()"
@@ -121,7 +121,7 @@ const isSoloModeActive = () => {
 
       <button
         :class="['nav-item', 'nav-item--solo', { 'nav-item--active': isSoloModeActive() }]"
-        title="SOLO 模式"
+        :title="t('panel.soloMode')"
         @click="toggleSoloMode"
       >
         <EaIcon
@@ -129,7 +129,7 @@ const isSoloModeActive = () => {
           :size="20"
           class="nav-item__icon"
         />
-        <span class="nav-item__label">SOLO</span>
+        <span class="nav-item__label">{{ t('panel.solo') }}</span>
         <span
           v-if="isSoloModeActive()"
           class="nav-item__indicator"
@@ -139,7 +139,7 @@ const isSoloModeActive = () => {
       <!-- 记忆模式按钮 -->
       <button
         :class="['nav-item', 'nav-item--memory', { 'nav-item--active': isMemoryModeActive() }]"
-        title="记忆管理"
+        :title="t('panel.memoryManagement')"
         @click="toggleMemoryMode"
       >
         <EaIcon
@@ -147,7 +147,7 @@ const isSoloModeActive = () => {
           :size="20"
           class="nav-item__icon"
         />
-        <span class="nav-item__label">记忆</span>
+        <span class="nav-item__label">{{ t('panel.memory') }}</span>
         <!-- 激活指示器 -->
         <span
           v-if="isMemoryModeActive()"
@@ -161,7 +161,7 @@ const isSoloModeActive = () => {
       <!-- 返回欢迎页 -->
       <button
         class="nav-stats nav-stats--button"
-        title="返回项目列表"
+        :title="t('panel.backToProjectList')"
         @click="projectStore.setCurrentProject(null)"
       >
         <EaIcon

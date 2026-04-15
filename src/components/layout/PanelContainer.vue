@@ -7,11 +7,11 @@ const layoutStore = useLayoutStore()
 
 <template>
   <div
-    v-if="layoutStore.isPanelOpen"
+    v-show="layoutStore.isPanelOpen"
     class="panel-container"
   >
     <UnifiedPanel
-      v-if="layoutStore.activePanel === 'unified'"
+      v-show="layoutStore.activePanel === 'unified'"
       :collapsed="false"
       :show-header-toggle="true"
       @toggle="layoutStore.closePanel"

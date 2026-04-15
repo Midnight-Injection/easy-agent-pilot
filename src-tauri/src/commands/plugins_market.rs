@@ -454,14 +454,28 @@ async fn load_plugin_install_payload(
     ))
 }
 
-fn plugin_manifest_path(plugin_dir: &Path) -> PathBuf {
-    plugin_dir.join(".claude-plugin").join("plugin.json")
+fn plugin_manifest_dir_candidates(cli_type: &str) -> &'static [&'static str] {
+    match cli_type.to_lowercase().as_str() {
+        "codex" => &[".codex-plugin", ".claude-plugin"],
+        _ => &[".claude-plugin", ".codex-plugin"],
+    }
+}
+
+fn resolve_plugin_manifest_path(plugin_dir: &Path, cli_type: &str) -> Option<PathBuf> {
+    plugin_manifest_dir_candidates(cli_type)
+        .iter()
+        .map(|dir_name| plugin_dir.join(dir_name).join("plugin.json"))
+        .find(|candidate| candidate.exists())
 }
 
 fn parse_plugin_directory_metadata(
     plugin_dir: &Path,
+    cli_type: &str,
 ) -> Result<(Option<String>, Option<String>, Option<String>), String> {
-    let manifest_path = plugin_manifest_path(plugin_dir);
+    let manifest_path = match resolve_plugin_manifest_path(plugin_dir, cli_type) {
+        Some(path) => path,
+        None => return Ok((None, None, None)),
+    };
     if !manifest_path.exists() {
         return Ok((None, None, None));
     }
@@ -487,14 +501,15 @@ fn parse_plugin_directory_metadata(
     Ok((name, version, description))
 }
 
-fn has_plugin_manifest(plugin_dir: &Path) -> bool {
-    plugin_manifest_path(plugin_dir).exists()
+fn has_plugin_manifest(plugin_dir: &Path, cli_type: &str) -> bool {
+    resolve_plugin_manifest_path(plugin_dir, cli_type).is_some()
 }
 
 fn collect_plugin_candidate_dirs(
     current_dir: &Path,
     depth: usize,
     candidates: &mut Vec<PathBuf>,
+    cli_type: &str,
 ) -> Result<(), String> {
     if depth > 6 {
         return Ok(());
@@ -522,24 +537,28 @@ fn collect_plugin_candidate_dirs(
             continue;
         }
 
-        if has_plugin_manifest(&path) {
+        if has_plugin_manifest(&path, cli_type) {
             candidates.push(path.clone());
         }
 
-        collect_plugin_candidate_dirs(&path, depth + 1, candidates)?;
+        collect_plugin_candidate_dirs(&path, depth + 1, candidates, cli_type)?;
     }
 
     Ok(())
 }
 
-fn find_matching_plugin_directory(repo_dir: &Path, plugin_name: &str) -> Result<PathBuf, String> {
+fn find_matching_plugin_directory(
+    repo_dir: &Path,
+    plugin_name: &str,
+    cli_type: &str,
+) -> Result<PathBuf, String> {
     let expected_name = normalize_lookup_name(plugin_name);
     if expected_name.is_empty() {
         return Err("Plugin 名称不能为空".to_string());
     }
 
     let mut candidates = Vec::new();
-    collect_plugin_candidate_dirs(repo_dir, 0, &mut candidates)?;
+    collect_plugin_candidate_dirs(repo_dir, 0, &mut candidates, cli_type)?;
 
     let mut matched_paths = candidates
         .into_iter()
@@ -549,7 +568,7 @@ fn find_matching_plugin_directory(repo_dir: &Path, plugin_name: &str) -> Result<
                 .and_then(|name| name.to_str())
                 .map(normalize_lookup_name)
                 .unwrap_or_default();
-            let manifest_name = parse_plugin_directory_metadata(candidate)
+            let manifest_name = parse_plugin_directory_metadata(candidate, cli_type)
                 .ok()
                 .and_then(|(name, _, _)| name)
                 .map(|name| normalize_lookup_name(&name))
@@ -578,6 +597,151 @@ fn get_cli_plugins_dir(cli_type: &str) -> Result<PathBuf, String> {
         "opencode" => Ok(home_dir.join(".config").join("opencode").join("plugins")),
         other => Err(format!("Unsupported CLI type for plugins: {}", other)),
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CodexMarketplaceSource {
+    source: String,
+    path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CodexMarketplacePolicy {
+    installation: String,
+    authentication: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CodexMarketplacePluginEntry {
+    name: String,
+    source: CodexMarketplaceSource,
+    policy: CodexMarketplacePolicy,
+    category: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CodexMarketplaceInterface {
+    display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CodexMarketplaceFile {
+    name: String,
+    interface: CodexMarketplaceInterface,
+    plugins: Vec<CodexMarketplacePluginEntry>,
+}
+
+fn get_codex_personal_marketplace_path() -> Result<PathBuf, String> {
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+    Ok(home_dir
+        .join(".agents")
+        .join("plugins")
+        .join("marketplace.json"))
+}
+
+fn codex_marketplace_relative_path(plugin_dir: &Path) -> Result<String, String> {
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let relative = plugin_dir
+        .strip_prefix(&home_dir)
+        .map_err(|_| "Codex 插件目录必须位于用户目录下".to_string())?;
+    let normalized = relative
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_start_matches('/')
+        .to_string();
+
+    Ok(format!("./{}", normalized))
+}
+
+fn load_codex_personal_marketplace() -> Result<CodexMarketplaceFile, String> {
+    let marketplace_path = get_codex_personal_marketplace_path()?;
+    if !marketplace_path.exists() {
+        return Ok(CodexMarketplaceFile {
+            name: "local-personal".to_string(),
+            interface: CodexMarketplaceInterface {
+                display_name: "Local Personal Plugins".to_string(),
+            },
+            plugins: Vec::new(),
+        });
+    }
+
+    let content = fs::read_to_string(&marketplace_path)
+        .map_err(|error| format!("Failed to read Codex marketplace file: {}", error))?;
+    serde_json::from_str::<CodexMarketplaceFile>(&content)
+        .map_err(|error| format!("Failed to parse Codex marketplace file: {}", error))
+}
+
+fn save_codex_personal_marketplace(file: &CodexMarketplaceFile) -> Result<PathBuf, String> {
+    let marketplace_path = get_codex_personal_marketplace_path()?;
+    if let Some(parent) = marketplace_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create Codex marketplace dir: {}", error))?;
+    }
+
+    let content = serde_json::to_string_pretty(file)
+        .map_err(|error| format!("Failed to serialize Codex marketplace file: {}", error))?;
+    fs::write(&marketplace_path, format!("{}\n", content))
+        .map_err(|error| format!("Failed to write Codex marketplace file: {}", error))?;
+
+    Ok(marketplace_path)
+}
+
+fn upsert_codex_personal_marketplace_plugin(
+    plugin_name: &str,
+    plugin_dir: &Path,
+) -> Result<PathBuf, String> {
+    let mut marketplace = load_codex_personal_marketplace()?;
+    let relative_path = codex_marketplace_relative_path(plugin_dir)?;
+
+    let entry = CodexMarketplacePluginEntry {
+        name: plugin_name.to_string(),
+        source: CodexMarketplaceSource {
+            source: "local".to_string(),
+            path: relative_path,
+        },
+        policy: CodexMarketplacePolicy {
+            installation: "AVAILABLE".to_string(),
+            authentication: "ON_INSTALL".to_string(),
+        },
+        category: Some("Productivity".to_string()),
+    };
+
+    if let Some(existing) = marketplace
+        .plugins
+        .iter_mut()
+        .find(|item| item.name == plugin_name)
+    {
+        *existing = entry;
+    } else {
+        marketplace.plugins.push(entry);
+        marketplace
+            .plugins
+            .sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    }
+
+    save_codex_personal_marketplace(&marketplace)
+}
+
+pub(crate) fn remove_codex_personal_marketplace_plugin(plugin_name: &str) -> Result<(), String> {
+    let marketplace_path = get_codex_personal_marketplace_path()?;
+    if !marketplace_path.exists() {
+        return Ok(());
+    }
+
+    let mut marketplace = load_codex_personal_marketplace()?;
+    let original_len = marketplace.plugins.len();
+    marketplace.plugins.retain(|item| item.name != plugin_name);
+
+    if marketplace.plugins.len() == original_len {
+        return Ok(());
+    }
+
+    save_codex_personal_marketplace(&marketplace).map(|_| ())
 }
 
 fn build_plugin_backup_path(plugin_dir: &Path) -> PathBuf {
@@ -822,11 +986,11 @@ fn install_plugin_directory_to_cli(
         });
     }
 
-    if !has_plugin_manifest(&target_dir) {
+    if !has_plugin_manifest(&target_dir, &input.cli_type) {
         restore_plugin_backup(&target_dir, &backup_path)?;
         return Ok(PluginInstallResult {
             success: false,
-            message: "仓库中的插件目录未包含 .claude-plugin/plugin.json".to_string(),
+            message: "仓库中的插件目录未包含受支持的 plugin manifest（.claude-plugin/plugin.json 或 .codex-plugin/plugin.json）".to_string(),
             plugin_id: String::new(),
             installed_components: Vec::new(),
             backup_path: None,
@@ -834,7 +998,8 @@ fn install_plugin_directory_to_cli(
         });
     }
 
-    let (display_name, version, description) = parse_plugin_directory_metadata(&target_dir)?;
+    let (display_name, version, description) =
+        parse_plugin_directory_metadata(&target_dir, &input.cli_type)?;
     let installed_name = display_name.unwrap_or_else(|| input.plugin_name.clone());
     let installed_components = vec![InstalledPluginComponent {
         name: installed_name.clone(),
@@ -890,6 +1055,9 @@ fn install_plugin_directory_to_cli(
     }
 
     let plugins_json_path = save_installed_plugins(&plugins)?;
+    if input.cli_type.eq_ignore_ascii_case("codex") {
+        upsert_codex_personal_marketplace_plugin(&installed_name, &target_dir)?;
+    }
     finalize_plugin_backup(&backup_path);
 
     Ok(PluginInstallResult {
@@ -1067,7 +1235,11 @@ pub async fn install_plugin_from_git(
 ) -> Result<PluginInstallResult, String> {
     let checkout = clone_repository(&input.repository_url, input.git_ref.as_deref())?;
     let result = (|| {
-        let source_dir = find_matching_plugin_directory(&checkout.repo_dir, &input.plugin_name)?;
+        let source_dir = find_matching_plugin_directory(
+            &checkout.repo_dir,
+            &input.plugin_name,
+            &input.cli_type,
+        )?;
         install_plugin_directory_to_cli(&source_dir, &input)
     })();
     cleanup_checkout(&checkout);

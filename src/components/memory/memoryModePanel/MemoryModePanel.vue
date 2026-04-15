@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { EaButton, EaInput } from '@/components/common'
-import EaSelect from '@/components/common/EaSelect.vue'
+import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { EaButton, EaIcon, EaInput } from '@/components/common'
+import { useSafeOutsideClick } from '@/composables/useSafeOutsideClick'
+import MemoryMarkdownEditor from '../MemoryMarkdownEditor.vue'
 import MemoryLibraryModal from '../MemoryLibraryModal.vue'
 import RawMemoryModal from '../RawMemoryModal.vue'
 import MemoryMergeModal from '../MemoryMergeModal.vue'
 import MemoryBatchDeleteModal from '../MemoryBatchDeleteModal.vue'
+import MemoryAuthoringDialog from '../MemoryAuthoringDialog.vue'
 import { useMemoryModePanel } from './useMemoryModePanel'
+
+const { t } = useI18n()
+const createLibraryMenuRef = ref<HTMLElement | null>(null)
+const createLibraryMenuVisible = ref(false)
 
 const {
   memoryStore,
@@ -17,6 +25,7 @@ const {
   currentProjectLabel,
   sortedLibraries,
   canSaveLibrary,
+  canExportLibrary,
   libraryModalVisible,
   libraryEditing,
   rawModalVisible,
@@ -24,9 +33,11 @@ const {
   mergeModalVisible,
   batchDeleteModalVisible,
   libraryContentDraft,
-  libraryContentDirty,
+  memoryAuthoringDialog,
   reloadRawRecords,
   openLibraryCreate,
+  openAiLibraryCreate,
+  openAiLibraryCreateFromSelection,
   openLibraryEdit,
   openRawCreate,
   openRawEdit,
@@ -36,41 +47,94 @@ const {
   handleDeleteRecord,
   handleBatchDeleteConfirm,
   handleSaveLibrary,
+  importLibraryMarkdown,
+  exportLibraryMarkdown,
   handleMergeConfirm
 } = useMemoryModePanel()
+
+function handleCreateLibraryAction(action: 'manual' | 'ai') {
+  createLibraryMenuVisible.value = false
+  if (action === 'manual') {
+    openLibraryCreate()
+    return
+  }
+
+  void openAiLibraryCreate()
+}
+
+function toggleCreateLibraryMenu() {
+  createLibraryMenuVisible.value = !createLibraryMenuVisible.value
+}
+
+useSafeOutsideClick(
+  () => [createLibraryMenuRef.value],
+  () => {
+    createLibraryMenuVisible.value = false
+  }
+)
 </script>
 
 <template>
   <div class="memory-mode">
     <aside class="memory-mode__libraries">
       <div class="memory-panel-heading">
-        <div>
+        <div class="memory-panel-heading__content">
           <p class="memory-panel-heading__eyebrow">
-            Memory Libraries
+            {{ t('memory.workspace.librariesEyebrow') }}
           </p>
-          <h2>记忆库</h2>
+          <h2>{{ t('memory.workspace.librariesTitle') }}</h2>
         </div>
-        <EaButton
-          type="secondary"
-          size="small"
-          @click="openLibraryCreate"
+        <div
+          ref="createLibraryMenuRef"
+          class="memory-create-menu"
         >
-          新建
-        </EaButton>
+          <button
+            type="button"
+            class="memory-create-button"
+            :aria-label="t('memory.workspace.createLibrary')"
+            :aria-expanded="createLibraryMenuVisible"
+            @click="toggleCreateLibraryMenu"
+          >
+            <EaIcon
+              name="plus"
+              :size="16"
+            />
+          </button>
+
+          <div
+            v-if="createLibraryMenuVisible"
+            class="memory-create-menu__dropdown"
+          >
+            <button
+              type="button"
+              class="memory-create-menu__item"
+              @click="handleCreateLibraryAction('manual')"
+            >
+              {{ t('memory.workspace.createManual') }}
+            </button>
+            <button
+              type="button"
+              class="memory-create-menu__item"
+              @click="handleCreateLibraryAction('ai')"
+            >
+              {{ t('memory.workspace.createAi') }}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div
         v-if="memoryStore.isLoadingLibraries && !memoryStore.libraries.length"
         class="memory-empty"
       >
-        正在加载记忆库...
+        {{ t('memory.workspace.librariesLoading') }}
       </div>
 
       <div
         v-else-if="!sortedLibraries.length"
         class="memory-empty"
       >
-        还没有记忆库，先创建一个 Markdown 记忆库。
+        {{ t('memory.workspace.librariesEmpty') }}
       </div>
 
       <div
@@ -88,7 +152,7 @@ const {
           <div class="memory-library-card__head">
             <div>
               <strong>{{ library.name }}</strong>
-              <p>{{ library.description || '未填写说明' }}</p>
+              <p>{{ library.description || t('memory.workspace.emptyDescription') }}</p>
             </div>
             <span>{{ new Date(library.updatedAt).toLocaleDateString() }}</span>
           </div>
@@ -98,14 +162,14 @@ const {
               class="memory-inline-action"
               @click.stop="openLibraryEdit(library)"
             >
-              编辑
+              {{ t('memory.workspace.edit') }}
             </button>
             <button
               type="button"
               class="memory-inline-action memory-inline-action--danger"
               @click.stop="handleDeleteLibrary(library)"
             >
-              删除
+              {{ t('memory.workspace.delete') }}
             </button>
           </div>
         </button>
@@ -116,9 +180,9 @@ const {
       <div class="memory-panel-heading">
         <div>
           <p class="memory-panel-heading__eyebrow">
-            Raw Memory Pool
+            {{ t('memory.workspace.recordsEyebrow') }}
           </p>
-          <h2>原始记忆数据</h2>
+          <h2>{{ t('memory.workspace.recordsTitle') }}</h2>
         </div>
         <div class="memory-toolbar__actions">
           <EaButton
@@ -126,21 +190,21 @@ const {
             size="small"
             @click="openRawCreate"
           >
-            手动添加
+            {{ t('memory.workspace.addRaw') }}
           </EaButton>
           <EaButton
             type="secondary"
             size="small"
             @click="reloadRawRecords"
           >
-            刷新
+            {{ t('memory.workspace.refresh') }}
           </EaButton>
           <EaButton
             type="danger"
             size="small"
             @click="batchDeleteModalVisible = true"
           >
-            批量删除
+            {{ t('memory.workspace.batchDelete') }}
           </EaButton>
         </div>
       </div>
@@ -148,7 +212,7 @@ const {
       <div class="memory-filters">
         <EaInput
           v-model="search"
-          placeholder="搜索原始记忆内容"
+          :placeholder="t('memory.workspace.searchRawPlaceholder')"
         />
         <EaSelect
           v-model="projectFilter"
@@ -158,8 +222,8 @@ const {
 
       <div class="memory-records-toolbar">
         <div class="memory-records-toolbar__summary">
-          <span>共 {{ memoryStore.rawRecords.length }} 条</span>
-          <span v-if="memoryStore.selectedRecordIds.length">已勾选 {{ memoryStore.selectedRecordIds.length }} 条</span>
+          <span>{{ t('memory.workspace.totalRecords', { count: memoryStore.rawRecords.length }) }}</span>
+          <span v-if="memoryStore.selectedRecordIds.length">{{ t('memory.workspace.selectedRecords', { count: memoryStore.selectedRecordIds.length }) }}</span>
         </div>
         <div class="memory-toolbar__actions">
           <EaButton
@@ -168,7 +232,15 @@ const {
             :disabled="memoryStore.selectedRecordIds.length === 0"
             @click="memoryStore.clearSelectedRecords()"
           >
-            清空勾选
+            {{ t('memory.workspace.clearSelected') }}
+          </EaButton>
+          <EaButton
+            type="secondary"
+            size="small"
+            :disabled="memoryStore.selectedRecordIds.length === 0"
+            @click="openAiLibraryCreateFromSelection"
+          >
+            {{ t('memory.workspace.createFromSelection') }}
           </EaButton>
           <EaButton
             size="small"
@@ -176,7 +248,7 @@ const {
             :loading="memoryStore.isMerging"
             @click="mergeModalVisible = true"
           >
-            AI 压缩到记忆库
+            {{ t('memory.workspace.mergeToLibrary') }}
           </EaButton>
         </div>
       </div>
@@ -187,8 +259,8 @@ const {
       >
         <div class="memory-record-preview__head">
           <div>
-            <strong>当前查看</strong>
-            <span>{{ selectedRecord.projectName || '未关联项目' }} / {{ selectedRecord.sessionName || '未关联会话' }}</span>
+            <strong>{{ t('memory.workspace.currentPreview') }}</strong>
+            <span>{{ selectedRecord.projectName || t('memory.workspace.unlinkedProject') }} / {{ selectedRecord.sessionName || t('memory.workspace.unlinkedSession') }}</span>
           </div>
           <div class="memory-toolbar__actions">
             <EaButton
@@ -196,14 +268,14 @@ const {
               size="small"
               @click="openRawEdit(selectedRecord)"
             >
-              编辑
+              {{ t('memory.workspace.edit') }}
             </EaButton>
             <EaButton
               type="danger"
               size="small"
               @click="handleDeleteRecord(selectedRecord)"
             >
-              删除
+              {{ t('memory.workspace.delete') }}
             </EaButton>
           </div>
         </div>
@@ -214,14 +286,14 @@ const {
         v-if="memoryStore.isLoadingRecords && !memoryStore.rawRecords.length"
         class="memory-empty"
       >
-        正在加载原始记忆...
+        {{ t('memory.workspace.recordsLoading') }}
       </div>
 
       <div
         v-else-if="!memoryStore.rawRecords.length"
         class="memory-empty"
       >
-        还没有原始记忆数据。你在会话面板发送的用户消息会自动进入这里。
+        {{ t('memory.workspace.recordsEmpty') }}
       </div>
 
       <div
@@ -252,8 +324,8 @@ const {
           </div>
 
           <div class="memory-record-card__meta">
-            <span>{{ record.projectName || '未关联项目' }}</span>
-            <span>{{ record.sessionName || '未关联会话' }}</span>
+            <span>{{ record.projectName || t('memory.workspace.unlinkedProject') }}</span>
+            <span>{{ record.sessionName || t('memory.workspace.unlinkedSession') }}</span>
           </div>
         </article>
       </div>
@@ -263,11 +335,11 @@ const {
       <div class="memory-panel-heading">
         <div>
           <p class="memory-panel-heading__eyebrow">
-            Markdown Library
+            {{ t('memory.workspace.editorEyebrow') }}
           </p>
-          <h2>{{ memoryStore.activeLibrary?.name || '选择记忆库' }}</h2>
+          <h2>{{ memoryStore.activeLibrary?.name || t('memory.workspace.selectLibrary') }}</h2>
           <p class="memory-library-editor__desc">
-            {{ memoryStore.activeLibrary?.description || '记忆库是一篇持续维护的 Markdown 文档。' }}
+            {{ memoryStore.activeLibrary?.description || t('memory.workspace.libraryEditorFallback') }}
           </p>
         </div>
       </div>
@@ -276,40 +348,55 @@ const {
         v-if="!memoryStore.activeLibrary"
         class="memory-empty"
       >
-        从左侧选择一个记忆库，或先创建新的记忆库。
+        {{ t('memory.workspace.editorEmpty') }}
       </div>
 
       <template v-else>
         <div class="memory-library-editor__toolbar">
-          <span>最后更新 {{ new Date(memoryStore.activeLibrary.updatedAt).toLocaleString() }}</span>
-          <EaButton
-            size="small"
-            :disabled="!canSaveLibrary"
-            :loading="memoryStore.isSavingLibrary"
-            @click="handleSaveLibrary"
-          >
-            保存 Markdown
-          </EaButton>
+          <span>{{ t('memory.workspace.updatedAt', { time: new Date(memoryStore.activeLibrary.updatedAt).toLocaleString() }) }}</span>
+          <div class="memory-toolbar__actions">
+            <EaButton
+              type="secondary"
+              size="small"
+              @click="importLibraryMarkdown"
+            >
+              {{ t('memory.workspace.importMarkdown') }}
+            </EaButton>
+            <EaButton
+              type="secondary"
+              size="small"
+              :disabled="!canExportLibrary"
+              @click="exportLibraryMarkdown"
+            >
+              {{ t('memory.workspace.exportMarkdown') }}
+            </EaButton>
+            <EaButton
+              size="small"
+              :disabled="!canSaveLibrary"
+              :loading="memoryStore.isSavingLibrary"
+              @click="handleSaveLibrary"
+            >
+              {{ t('memory.workspace.saveMarkdown') }}
+            </EaButton>
+          </div>
         </div>
 
-        <textarea
+        <MemoryMarkdownEditor
           v-model="libraryContentDraft"
-          class="memory-library-editor__textarea"
-          placeholder="这里是记忆库的完整 Markdown 内容"
-          @input="libraryContentDirty = true"
+          :placeholder="t('memory.workspace.textareaPlaceholder')"
         />
 
         <section class="memory-merge-history">
           <div class="memory-merge-history__head">
-            <strong>最近压缩记录</strong>
-            <span v-if="memoryStore.isLoadingMergeRuns">加载中...</span>
+            <strong>{{ t('memory.workspace.mergeHistory') }}</strong>
+            <span v-if="memoryStore.isLoadingMergeRuns">{{ t('memory.workspace.loading') }}</span>
           </div>
 
           <div
             v-if="!memoryStore.mergeRuns.length"
             class="memory-merge-history__empty"
           >
-            还没有压缩记录。
+            {{ t('memory.workspace.mergeHistoryEmpty') }}
           </div>
 
           <div
@@ -323,9 +410,9 @@ const {
             >
               <div class="memory-merge-history__meta">
                 <span>{{ new Date(run.createdAt).toLocaleString() }}</span>
-                <span>{{ run.sourceRecordCount }} 条原始记忆</span>
+                <span>{{ t('memory.workspace.sourceRecordsCount', { count: run.sourceRecordCount }) }}</span>
               </div>
-              <p>{{ run.agentId || '未记录智能体' }} / {{ run.modelId || '默认模型' }}</p>
+              <p>{{ run.agentId || t('memory.workspace.agentFallback') }} / {{ run.modelId || t('memory.workspace.modelFallback') }}</p>
             </article>
           </div>
         </section>
@@ -362,6 +449,8 @@ const {
       :loading="memoryStore.isDeletingRecords"
       @confirm="handleBatchDeleteConfirm"
     />
+
+    <MemoryAuthoringDialog :dialog="memoryAuthoringDialog" />
   </div>
 </template>
 <style scoped src="./styles.css"></style>

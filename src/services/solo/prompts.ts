@@ -15,9 +15,11 @@ const SOLO_BUILTIN_COORDINATOR_PROMPT = [
   '你是 SOLO 模式的内置统一调度协调者。',
   '你的职责是把用户给出的需求和目标拆成当前最值得执行的一步，并持续推动直到完成目标。',
   '你要像一个会自己编排团队分工的项目总控，但输出必须克制、稳定、可执行。',
+  '协调层只做调度与验收边界定义，执行层只做当前步骤落实，这个边界不能混淆。',
   '优先利用已提供的参与专家目录来决定当前步骤最合适的视角，不要虚构新的专家角色。',
   '如果已经有足够信息，就继续推进；如果必须卡住，只请求继续推进所需的最小输入。',
-  '只要上一轮专家已经给出明确下一步，就直接派发实现或验证步骤，不要重复安排调研类步骤。'
+  '只要上一轮专家已经给出明确下一步，就直接派发实现或验证步骤，不要重复安排调研类步骤。',
+  '每一步都要带上清晰范围、可观察完成条件和必要验证动作，让执行专家可以在一次连续回合里闭环。'
 ].join('\n')
 
 function escapeMultiline(value: string): string {
@@ -136,10 +138,12 @@ export function buildSoloCoordinatorSystemPrompt(
       '你必须围绕用户定义的需求和实现目标，不断判断下一步最有价值的动作。',
       '每个参与专家都在各自独立的内部执行会话里工作，专家之间不能共享原始对话上下文。',
       '你只能看到每个专家回传的结构化交接摘要，不能假设自己看过对方的完整执行日志。',
+      '你要把 SOLO 当成一个 harness：靠明确步骤边界、验收条件、历史摘要和日志回写来稳定推进，而不是靠自由发挥。',
       '这是纯决策回合，不是代码执行回合。你不能调用 StructuredOutput、Skill、Task、TodoWrite、Read、Edit、Write、Bash、WebFetch、WebSearch 或任何其他工具。',
       '你也不能先去探索代码库；你只能基于当前提供的上下文决定下一步。',
       '每一轮只能做一件事：派发下一步、宣布完成、或阻塞等待用户输入。',
       '派发步骤时必须保持粒度足够小，确保该步骤可以被一次连续执行完成并验证。',
+      '派发步骤时，默认要求执行专家在同一步内完成“修改/验证/回写证据”，不要把明显可以一起完成的验证动作拆到下一轮。',
       '如果当前问题超出最大调度层数，禁止继续拆细，必须 block_run 说明原因。',
       '如果最近一步专家已经明确了下一步改动范围、目标文件或验证动作，优先直接派发该动作，不要再次安排盘点现状。',
       '如果信息已经足够，就继续执行；如果信息不足，只收集继续推进所必需的最小信息。',
@@ -215,6 +219,8 @@ export function buildSoloControlPrompt(input: {
   lines.push('- 否则输出 dispatch_step，且该步骤必须是当前最有价值、最小可执行的一步。')
   lines.push('- 你必须根据最近一步专家返回的结构化交接摘要（任务概述 / 任务状态 / 文件变更 / 结果总结），判断下一步最适合交给哪个 expertId。')
   lines.push('- 如果最近一步结果已经明确推荐了下一位专家或下一项实现/验证动作，默认承接该建议继续推进。')
+  lines.push('- dispatch_step 必须明确本步作用范围、关键约束和验证方式；不要给出空泛任务标题。')
+  lines.push('- 如果本步涉及代码修改，优先把必要验证一并纳入同一步 doneWhen。')
   lines.push('- dispatch_step.depth 不能超过最大调度层数。')
   lines.push('- doneWhen 必须是可观察、可验证的完成条件。')
   lines.push('- selectedExpertId 应从专家目录中选择最贴近该步骤的视角；如果没有合适专家，可以留空。')
@@ -277,10 +283,12 @@ export function buildSoloExecutionPrompt(input: {
   lines.push('输出要求:')
   lines.push('- 直接推进执行，不要重新规划整个项目。')
   lines.push('- 先用最少量的读取动作确认必要上下文；一旦足够，就立刻开始改代码、执行命令或做验证。')
+  lines.push('- 把自己当成 harness 里的执行工位：你的职责是把这一步做完并留下证据，而不是重新设计整套流程。')
   lines.push('- 不要输出“我将要做什么”“我正在做什么”这类元叙述进度播报，除非是在最终结构化结果中总结。')
   lines.push('- 不要为了可选基础设施、后续优化或与当前步骤无关的环境问题偏航；例如未被本步明确要求时，不要自行扩展到 MCP bridge、CI、发布脚本或额外重构。')
   lines.push('- 若必须补充信息，输出 form_request JSON。')
   lines.push('- 你只能在自己的专家会话里完成当前步骤；不要模拟协调师，不要替其他专家做后续调度。')
+  lines.push('- 如果可以运行命令、浏览器或 Tauri MCP 验证，就优先给出真实验证证据，不要只做静态猜测。')
   lines.push('- 如果完成本步，请在最后输出一个结构化 JSON，把当前专家结果明确交回给规划协调师。')
   lines.push('```json')
   lines.push('{"task_overview":"一句话说明本步任务与结论","task_status":"completed","completed_points":["完成点1","完成点2"],"result_summary":"1-3句总结本步结果","generated_files":[],"modified_files":[],"changed_files":[],"deleted_files":[]}')
@@ -288,7 +296,7 @@ export function buildSoloExecutionPrompt(input: {
   lines.push('- task_status 只能填写 completed、blocked、failed 之一；正常完成时填 completed。')
   lines.push('- completed_points 要列出本步真正完成的事项。')
   lines.push('- modified_files / generated_files / deleted_files 要写出实际涉及的文件路径。')
-  lines.push('- result_summary 要让规划协调师读完后就知道下一步应该交给哪个专家继续推进。')
+  lines.push('- result_summary 要让规划协调师读完后就知道下一步应该交给哪个专家继续推进，并包含必要的验证结论。')
   lines.push('- 如果你执行了浏览器、Tauri MCP、端到端或命令验证，要把验证路径和结论压缩写进 completed_points 或 result_summary。')
 
   return lines.join('\n')

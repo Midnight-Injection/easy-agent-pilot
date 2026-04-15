@@ -5,14 +5,11 @@ import { usePlanStore } from '@/stores/plan'
 import { useAgentStore } from '@/stores/agent'
 import { useAgentConfigStore } from '@/stores/agentConfig'
 import type { TimelineEntry } from '@/types/timeline'
-import type { TaskExecutionResultRecord } from '@/types/taskExecution'
 import { buildToolCallMapFromLogs } from '@/utils/toolCallLog'
 import {
   containsFormSchema,
-  extractExecutionResult,
   stripExecutionResultFromContent
 } from '@/utils/structuredContent'
-import { buildStructuredResultContentFromRecord } from '@/utils/taskExecutionResult'
 import { getTaskExecutionStatusMeta, resolveTaskExecutionStatus } from '@/utils/taskExecutionStatus'
 import {
   extractTodoSnapshotFromToolCalls,
@@ -51,7 +48,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
   const logContainerRef = ref<HTMLElement | null>(null)
 
   const autoScroll = ref(true)
-  const resultRecord = ref<TaskExecutionResultRecord | null>(null)
 
   const task = computed(() => {
     return taskStore.tasks.find(t => t.id === props.taskId)
@@ -167,31 +163,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
     return effectiveStatus.value === 'running'
   })
 
-  const structuredResultContent = computed(() => {
-    if (resultRecord.value) {
-      return buildStructuredResultContentFromRecord(resultRecord.value)
-    }
-
-    // 当 resultRecord 尚未加载时，尝试从累积内容中提取 result_summary
-    if (isRunning.value || !executionState.value?.accumulatedContent) return ''
-    const extracted = extractExecutionResult(executionState.value.accumulatedContent)
-    if (!extracted) return ''
-
-    const hasFiles = extracted.generatedFiles.length > 0
-      || extracted.modifiedFiles.length > 0
-      || extracted.changedFiles.length > 0
-      || extracted.deletedFiles.length > 0
-    if (!extracted.summary && !hasFiles) return ''
-
-    return JSON.stringify({
-      result_summary: extracted.summary,
-      generated_files: extracted.generatedFiles,
-      modified_files: extracted.modifiedFiles,
-      changed_files: extracted.changedFiles,
-      deleted_files: extracted.deletedFiles
-    }, null, 2)
-  })
-
   const statusText = computed(() => {
     return getTaskExecutionStatusMeta(effectiveStatus.value).label
   })
@@ -230,17 +201,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
 
   async function handleSkip() {
     await taskExecutionStore.skipBlockedTask(props.taskId)
-  }
-
-  async function loadResultRecord(taskId: string) {
-    const currentTask = taskStore.tasks.find(item => item.id === taskId)
-    if (!currentTask) {
-      resultRecord.value = null
-      return
-    }
-
-    const records = await taskExecutionStore.listRecentPlanResults(currentTask.planId, 200)
-    resultRecord.value = records.find(record => record.task_id === taskId) ?? null
   }
 
   function scrollToBottom() {
@@ -383,14 +343,12 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
 
   onMounted(async () => {
     await taskExecutionStore.loadTaskLogs(props.taskId)
-    await loadResultRecord(props.taskId)
     scrollToBottom()
 
     // 兜底：如果首次加载后日志仍为空，延迟重试一次从后端加载
     if (logs.value.length === 0) {
       retryTimer = setTimeout(async () => {
         await taskExecutionStore.loadTaskLogs(props.taskId)
-        await loadResultRecord(props.taskId)
         scrollToBottom()
       }, 1500)
     }
@@ -411,7 +369,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
         retryTimer = null
       }
       await taskExecutionStore.loadTaskLogs(taskId)
-      await loadResultRecord(taskId)
       scrollToBottom()
     }
   )
@@ -420,7 +377,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
     () => `${task.value?.status || ''}:${task.value?.updatedAt || ''}`,
     async () => {
       await taskExecutionStore.loadTaskLogs(props.taskId)
-      await loadResultRecord(props.taskId)
       scrollToBottom()
     }
   )
@@ -434,7 +390,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
     agentConfigStore,
     logContainerRef,
     autoScroll,
-    resultRecord,
     task,
     executionState,
     tokenUsageWindow,
@@ -454,7 +409,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
     isWaitingInput,
     effectiveStatus,
     isRunning,
-    structuredResultContent,
     statusText,
     statusColor,
     handleStop,
@@ -462,7 +416,6 @@ export function useTaskExecutionLog(options: UseTaskExecutionLogOptions) {
     handleClearLogs,
     handleInputSubmit,
     handleSkip,
-    loadResultRecord,
     scrollToBottom,
     handleScroll,
     timelineEntries,

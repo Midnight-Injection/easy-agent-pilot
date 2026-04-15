@@ -14,6 +14,7 @@ export { default as EaJsonViewer } from './EaJsonViewer.vue'
 export { default as EaInput } from './EaInput.vue'
 export { default as EaTag } from './EaTag.vue'
 export { default as EaStateBlock } from './EaStateBlock.vue'
+export { default as ImageHoverPreview } from './ImageHoverPreview.vue'
 
 // 组件类型导出
 export type { EaButtonProps, ButtonType, ButtonSize } from './EaButton.vue'

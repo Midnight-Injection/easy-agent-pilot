@@ -185,6 +185,37 @@ pub struct SendUnattendedTextInput {
     pub correlation_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessUnattendedStructuredIntentInput {
+    pub thread_id: String,
+    pub raw_text: String,
+    pub intent_type: String,
+    pub target_name: Option<String>,
+    pub project_hint: Option<String>,
+    pub plan_name: Option<String>,
+    pub task_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessUnattendedStructuredIntentAction {
+    pub action_type: String,
+    pub plan_id: Option<String>,
+    pub task_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessUnattendedStructuredIntentResult {
+    pub handled: bool,
+    pub reply: String,
+    pub active_project_id: Option<String>,
+    pub active_plan_id: Option<String>,
+    pub active_task_id: Option<String>,
+    pub follow_up_action: Option<ProcessUnattendedStructuredIntentAction>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WeixinMessage {

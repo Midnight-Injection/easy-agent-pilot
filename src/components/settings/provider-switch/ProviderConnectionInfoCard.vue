@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import { EaIcon } from '@/components/common'
 import type { CliConnectionInfo } from '@/stores/providerProfile'
 import { useI18n } from 'vue-i18n'
-import type { DefaultCliConfigLocateTarget } from '@/composables/useDefaultCliConfigEditor'
 
-const props = defineProps<{
+defineProps<{
   loading: boolean
   connection: CliConnectionInfo | null
   showApiKey: boolean
@@ -13,43 +11,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   toggleApiKey: []
-  openConfigEditor: [target?: DefaultCliConfigLocateTarget]
+  openConfigEditor: []
 }>()
 
 const { t } = useI18n()
-
-const locateActions = computed(() => {
-  if (!props.connection) {
-    return []
-  }
-
-  const actions: Array<DefaultCliConfigLocateTarget & { key: string }> = []
-  const providerOrBaseUrl = props.connection.cliType === 'opencode'
-    ? props.connection.providerName?.trim()
-    : props.connection.baseUrl?.trim()
-  const providerOrBaseUrlLabel = props.connection.cliType === 'opencode'
-    ? t('settings.providerSwitch.form.providerName')
-    : t('settings.providerSwitch.form.baseUrl')
-  const mainModel = props.connection.mainModel?.trim()
-
-  if (providerOrBaseUrl) {
-    actions.push({
-      key: 'provider-or-base-url',
-      label: providerOrBaseUrlLabel,
-      query: providerOrBaseUrl
-    })
-  }
-
-  if (mainModel) {
-    actions.push({
-      key: 'main-model',
-      label: t('settings.providerSwitch.form.mainModel'),
-      query: mainModel
-    })
-  }
-
-  return actions
-})
 </script>
 
 <template>
@@ -98,18 +63,6 @@ const locateActions = computed(() => {
             :size="14"
           />
           {{ t('settings.providerSwitch.openDefaultConfig') }}
-        </button>
-        <button
-          v-for="action in locateActions"
-          :key="action.key"
-          class="connection-open-btn connection-open-btn--secondary"
-          @click="emit('openConfigEditor', action)"
-        >
-          <EaIcon
-            name="crosshair"
-            :size="14"
-          />
-          {{ t('settings.providerSwitch.locateInConfig', { field: action.label }) }}
         </button>
       </div>
       <div class="connection-body">

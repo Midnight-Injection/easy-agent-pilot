@@ -33,6 +33,9 @@ export function useMonacoCodeEditor(
   let completionProviderDisposable: monaco.IDisposable | null = null
   let decorationCollection: monaco.editor.IEditorDecorationsCollection | null = null
   let sendSelectionActionDisposable: monaco.IDisposable | null = null
+  let findActionDisposable: monaco.IDisposable | null = null
+  let findNextMatchActionDisposable: monaco.IDisposable | null = null
+  let findPreviousMatchActionDisposable: monaco.IDisposable | null = null
   let isSyncingFromOutside = false
   let searchHighlightRange: EditorHighlightRange | null = null
 
@@ -146,6 +149,35 @@ export function useMonacoCodeEditor(
       }
     })
 
+    findActionDisposable = editor.addAction({
+      id: 'easy-agent.find-in-current-file',
+      label: '在当前文件中查找',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyF],
+      run: async currentEditor => {
+        await currentEditor.getAction('actions.find')?.run()
+      }
+    })
+
+    findNextMatchActionDisposable = editor.addAction({
+      id: 'easy-agent.find-next-match-with-down-arrow',
+      label: '下一个匹配',
+      precondition: 'findInputFocussed',
+      keybindings: [monaco.KeyCode.DownArrow],
+      run: async currentEditor => {
+        await currentEditor.getAction('editor.action.nextMatchFindAction')?.run()
+      }
+    })
+
+    findPreviousMatchActionDisposable = editor.addAction({
+      id: 'easy-agent.find-previous-match-with-up-arrow',
+      label: '上一个匹配',
+      precondition: 'findInputFocussed',
+      keybindings: [monaco.KeyCode.UpArrow],
+      run: async currentEditor => {
+        await currentEditor.getAction('editor.action.previousMatchFindAction')?.run()
+      }
+    })
+
     editor.onDidChangeModelContent(() => {
       if (isSyncingFromOutside || !model) {
         return
@@ -238,6 +270,12 @@ export function useMonacoCodeEditor(
     completionProviderDisposable = null
     sendSelectionActionDisposable?.dispose()
     sendSelectionActionDisposable = null
+    findActionDisposable?.dispose()
+    findActionDisposable = null
+    findNextMatchActionDisposable?.dispose()
+    findNextMatchActionDisposable = null
+    findPreviousMatchActionDisposable?.dispose()
+    findPreviousMatchActionDisposable = null
     searchHighlightRange = null
 
     editor?.dispose()

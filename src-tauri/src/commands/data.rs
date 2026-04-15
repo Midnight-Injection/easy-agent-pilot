@@ -781,7 +781,9 @@ fn export_app_settings(conn: &Connection) -> Result<Vec<AppSettingExport>, Strin
     Ok(app_settings)
 }
 
-fn export_agent_cli_usage_records(conn: &Connection) -> Result<Vec<AgentCliUsageRecordExport>, String> {
+fn export_agent_cli_usage_records(
+    conn: &Connection,
+) -> Result<Vec<AgentCliUsageRecordExport>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT execution_id, execution_mode, provider, agent_id, agent_name_snapshot, model_id,
@@ -862,8 +864,7 @@ pub fn clear_all_data() -> Result<(), String> {
     let db_path = get_db_path().map_err(|e| e.to_string())?;
     let mut conn = Connection::open(&db_path).map_err(|e| e.to_string())?;
 
-    repair_memory_search_indexes(&conn)
-        .map_err(|e| format!("修复记忆搜索索引失败: {}", e))?;
+    repair_memory_search_indexes(&conn).map_err(|e| format!("修复记忆搜索索引失败: {}", e))?;
 
     // 开启事务
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -878,7 +879,10 @@ pub fn clear_all_data() -> Result<(), String> {
             "DELETE FROM task_execution_results",
         ),
         ("plan_split_logs", "DELETE FROM plan_split_logs"),
-        ("agent_cli_usage_records", "DELETE FROM agent_cli_usage_records"),
+        (
+            "agent_cli_usage_records",
+            "DELETE FROM agent_cli_usage_records",
+        ),
         ("task_split_sessions", "DELETE FROM task_split_sessions"),
         ("window_session_locks", "DELETE FROM window_session_locks"),
         ("tasks", "DELETE FROM tasks"),

@@ -1,4 +1,5 @@
 import i18n from '@/i18n'
+import type { McpServerConfig } from './strategies/types'
 
 export function buildMainConversationFormRequestPrompt(): string {
   const locale = i18n.mode === 'legacy'
@@ -48,4 +49,62 @@ Valid shape example:
 
 合法结构示例：
 {"type":"form_request","question":"请确认缺失参数","forms":[{"formId":"deployment","title":"部署形态","fields":[{"name":"interface","label":"交互形式","type":"radio","options":[{"label":"CLI 命令行","value":"cli"},{"label":"Web 应用","value":"web"}]}]}]}`
+}
+
+interface ImageAttachmentFallbackPromptOptions {
+  runtimeName: string
+  mcpServers?: McpServerConfig[]
+}
+
+function formatMcpServerNames(mcpServers?: McpServerConfig[]): string {
+  const names = (mcpServers ?? [])
+    .map(server => server.name.trim())
+    .filter(Boolean)
+
+  return Array.from(new Set(names)).join(', ')
+}
+
+/**
+ * 为图片附件提供通用的视觉降级策略提示。
+ * 仅描述处理原则，不绑定具体模型名称，允许运行时按能力自行选择直读图片或改走 MCP。
+ */
+export function buildImageAttachmentFallbackPrompt(
+  options: ImageAttachmentFallbackPromptOptions
+): string {
+  const locale = i18n.mode === 'legacy'
+    ? String((i18n.global as any).locale)
+    : String((i18n.global.locale as any).value)
+  const mcpServerList = formatMcpServerNames(options.mcpServers)
+
+  if (locale === 'en-US') {
+    const lines = [
+      `Image attachment handling for ${options.runtimeName}:`,
+      '1. If the current model/runtime can directly inspect attached images, do that first.',
+      '2. If the current model/runtime cannot inspect images directly, do not stop at saying you cannot view the screenshot.',
+      '3. Immediately inspect the available MCP tools in this run and prefer tools/servers that support image understanding, OCR, screenshot analysis, multimodal reading, or visual extraction.',
+      '4. Treat the MCP result as the image observation source, cite it explicitly, and continue the task based on that result.',
+      '5. Never invent visual details. If no suitable MCP tool exists, explicitly say that no vision-capable tool is currently configured and state what is missing.'
+    ]
+
+    if (mcpServerList) {
+      lines.push(`Enabled MCP servers for this run: ${mcpServerList}.`)
+    }
+
+    return lines.join('\n')
+  }
+
+  const lines = [
+    `图片附件处理策略（${options.runtimeName}）:`,
+    '1. 如果当前模型或运行时本身能直接读取图片附件，优先直接读取。',
+    '2. 如果当前模型或运行时不能直接看图，不要停留在“无法查看截图”这一步。',
+    '3. 立即检查本轮可用的 MCP 工具，优先选择具备图片理解、OCR、截图分析、多模态读取或视觉提取能力的工具或服务。',
+    '4. 将 MCP 的返回结果作为图片观察依据，明确说明信息来源，再继续完成用户任务。',
+    '5. 严禁编造视觉细节；如果当前没有合适的视觉工具，就明确说明缺少可用的视觉能力，并指出需要什么能力。'
+  ]
+
+  if (mcpServerList) {
+    lines.push(`本轮已启用的 MCP 服务: ${mcpServerList}。`)
+  }
+
+  return lines.join('\n')
 }

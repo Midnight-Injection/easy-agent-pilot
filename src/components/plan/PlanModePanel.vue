@@ -41,6 +41,11 @@ watch(
   (planId) => {
     if (planId) {
       void taskStore.loadTasks(planId)
+      return
+    }
+
+    if (projectStore.currentProjectId) {
+      void taskStore.loadProjectLooseTasks(projectStore.currentProjectId)
     }
   }
 )
@@ -48,11 +53,15 @@ watch(
 // 监听项目切换，清除选中状态
 watch(
   () => projectStore.currentProjectId,
-  () => {
+  (projectId) => {
     planStore.setCurrentPlan(null)
     selectedPlanId.value = null
     selectedTaskId.value = null
     rightPanelOpen.value = false
+
+    if (projectId) {
+      void taskStore.loadProjectLooseTasks(projectId)
+    }
   }
 )
 
@@ -65,10 +74,11 @@ function handlePlanClick(plan: Plan) {
 }
 
 function handleTaskClick(task: Task) {
-  planStore.setCurrentPlan(task.planId)
+  const relatedPlan = planStore.plans.find(plan => plan.id === task.planId) || null
+  planStore.setCurrentPlan(relatedPlan?.id ?? null)
   rightPanelOpen.value = true
   selectedTaskId.value = task.id
-  selectedPlanId.value = task.planId
+  selectedPlanId.value = relatedPlan?.id ?? null
   taskExecutionStore.setCurrentViewingTask(task.id)
 
   // 根据任务状态决定右侧面板视图
@@ -119,6 +129,9 @@ function stopResize() {
 
 // 添加和移除全局事件监听
 onMounted(() => {
+  if (!planStore.currentPlanId && projectStore.currentProjectId) {
+    void taskStore.loadProjectLooseTasks(projectStore.currentProjectId)
+  }
   document.addEventListener('mousemove', handleResize)
   document.addEventListener('mouseup', stopResize)
 })

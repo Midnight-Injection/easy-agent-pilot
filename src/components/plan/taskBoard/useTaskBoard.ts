@@ -1,14 +1,12 @@
 import { ref, computed, watch, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePlanStore } from '@/stores/plan'
+import { useProjectStore } from '@/stores/project'
 import { useTaskStore } from '@/stores/task'
 import { useTaskExecutionStore } from '@/stores/taskExecution'
-import { useAgentTeamsStore } from '@/stores/agentTeams'
 import { useNotificationStore } from '@/stores/notification'
 import { useConfirmDialog } from '@/composables'
 import type { Task, TaskStatus, TaskOrderItem } from '@/types/plan'
-import type { PlanExecutionProgress, PlanExecutionTaskProgress } from '@/types/taskExecution'
-import { groupTaskResultFiles } from '@/utils/taskExecutionResult'
 
 interface UseTaskBoardOptions {
   emit: (event: 'task-click', task: Task) => void
@@ -16,9 +14,9 @@ interface UseTaskBoardOptions {
 
 export function useTaskBoard(options: UseTaskBoardOptions) {
   const planStore = usePlanStore()
+  const projectStore = useProjectStore()
   const taskStore = useTaskStore()
   const taskExecutionStore = useTaskExecutionStore()
-  const agentTeamsStore = useAgentTeamsStore()
   const notificationStore = useNotificationStore()
   const confirmDialog = useConfirmDialog()
   const { t } = useI18n()
@@ -30,10 +28,8 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
   const showCreateModal = ref(false)
   const createMode = ref<'create' | 'edit'>('create')
 
-  const planProgress = ref<PlanExecutionProgress | null>(null)
-  const showPlanOverview = ref(true)
-
   const currentPlanId = computed(() => planStore.currentPlanId)
+  const currentProjectId = computed(() => projectStore.currentProjectId)
 
   const currentPlan = computed(() => planStore.currentPlan)
 
@@ -86,12 +82,21 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
   }
 
   const tasks = computed(() => {
-    if (!currentPlanId.value) return []
-    return taskStore.tasks.filter(t => t.planId === currentPlanId.value)
+    if (currentPlanId.value) {
+      return taskStore.tasks.filter(t => t.planId === currentPlanId.value)
+    }
+
+    if (!currentProjectId.value) {
+      return []
+    }
+
+    return taskStore.getProjectLooseTasks(currentProjectId.value)
   })
 
   const tasksByStatus = computed(() => {
-    if (!currentPlanId.value) return emptyTasksByStatus
+    if (tasks.value.length === 0) {
+      return emptyTasksByStatus
+    }
 
     const result: Record<TaskStatus, Task[]> = {
       pending: [],
@@ -102,29 +107,31 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
       cancelled: []
     }
 
-    tasks.value.forEach(t => {
-      if (result[t.status]) {
-        result[t.status].push(t)
+    tasks.value.forEach(task => {
+      if (result[task.status]) {
+        result[task.status].push(task)
       }
     })
 
     Object.keys(result).forEach(status => {
       if (status === 'in_progress') {
-        // 执行中列：正在执行的任务在顶部，其余按 order 排在底部
         result[status as TaskStatus].sort((a, b) => {
-          const aRunning = taskExecutionStore.isTaskRunning(a.id) ? 0 : 1
-          const bRunning = taskExecutionStore.isTaskRunning(b.id) ? 0 : 1
+          const aRunning = currentPlanId.value && taskExecutionStore.isTaskRunning(a.id) ? 0 : 1
+          const bRunning = currentPlanId.value && taskExecutionStore.isTaskRunning(b.id) ? 0 : 1
           if (aRunning !== bRunning) return aRunning - bRunning
           return a.order - b.order
         })
-      } else if (status === 'completed') {
-        // 已完成列：按完成时间降序（最近完成在顶部，最早完成在底部）
+        return
+      }
+
+      if (status === 'completed') {
         result[status as TaskStatus].sort((a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
         )
-      } else {
-        result[status as TaskStatus].sort((a, b) => a.order - b.order)
+        return
       }
+
+      result[status as TaskStatus].sort((a, b) => a.order - b.order)
     })
 
     return result
@@ -140,57 +147,6 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
     failed: tasks.value.filter(t => t.status === 'failed').length
   }))
 
-  // 计划概览数据
-  interface PlanOverviewTask {
-    title: string
-    status: string
-    expertName: string
-    summary: string
-    files: string[]
-    failReason: string
-  }
-
-  const planOverviewTasks = computed<PlanOverviewTask[]>(() => {
-    if (!planProgress.value) return []
-    return planProgress.value.tasks.map((task: PlanExecutionTaskProgress) => {
-      const expert = agentTeamsStore.experts.find(e => e.id === task.expert_id)
-      const fileGroups = groupTaskResultFiles(task.last_result_files ?? [])
-      const allFiles = [...fileGroups.generatedFiles, ...fileGroups.modifiedFiles, ...fileGroups.changedFiles, ...fileGroups.deletedFiles]
-      return {
-        title: task.title,
-        status: task.status,
-        expertName: expert?.name || task.expert_id || '',
-        summary: task.last_result_summary || '',
-        files: allFiles,
-        failReason: task.last_fail_reason || ''
-      }
-    })
-  })
-
-  const hasPlanResults = computed(() =>
-    planOverviewTasks.value.some(task => task.summary || task.files.length > 0 || task.failReason)
-  )
-
-  function resolveTaskStatusClass(status: string): string {
-    switch (status) {
-      case 'completed': return 'status-completed'
-      case 'failed': return 'status-failed'
-      case 'in_progress': return 'status-running'
-      case 'blocked': return 'status-blocked'
-      default: return 'status-pending'
-    }
-  }
-
-  function resolveTaskStatusLabel(status: string): string {
-    switch (status) {
-      case 'completed': return t('taskBoard.planOverview.statusCompleted')
-      case 'failed': return t('taskBoard.planOverview.statusFailed')
-      case 'in_progress': return t('taskBoard.planOverview.statusRunning')
-      case 'blocked': return t('taskBoard.planOverview.statusBlocked')
-      default: return t('taskBoard.planOverview.statusPending')
-    }
-  }
-
   const columns = computed<Array<{ status: TaskStatus; label: string; color: string }>>(() => [
     { status: 'pending', label: t('taskBoard.columns.pending'), color: 'gray' },
     { status: 'in_progress', label: t('taskBoard.columns.in_progress'), color: 'blue' },
@@ -198,6 +154,10 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
     { status: 'blocked', label: t('taskBoard.columns.blocked'), color: 'yellow' },
     { status: 'failed', label: t('taskBoard.columns.failed'), color: 'red' }
   ])
+
+  function warnDetachedTaskExecutionUnsupported(): void {
+    notificationStore.warning('无法直接执行', '当前任务未绑定到有效计划，请先挂载到计划后再启动执行。')
+  }
 
   function isTaskTrackedByExecution(taskId: string): boolean {
     const state = taskExecutionStore.getExecutionState(taskId)
@@ -240,35 +200,17 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
   async function loadTasks() {
     if (currentPlanId.value) {
       await taskStore.loadTasks(currentPlanId.value)
-      await loadPlanProgress()
-    }
-  }
-
-  async function loadPlanProgress() {
-    if (!currentPlanId.value) {
-      planProgress.value = null
       return
     }
-    try {
-      await agentTeamsStore.loadExperts()
-      planProgress.value = await taskExecutionStore.getPlanExecutionProgress(currentPlanId.value)
-    } catch {
-      planProgress.value = null
+
+    if (currentProjectId.value) {
+      await taskStore.loadProjectLooseTasks(currentProjectId.value)
     }
   }
 
-  watch(currentPlanId, (newPlanId) => {
-    if (newPlanId) {
-      loadTasks()
-    }
+  watch([currentPlanId, currentProjectId], () => {
+    void loadTasks()
   }, { immediate: true })
-
-  // 任务状态变化时刷新概览
-  watch(() => tasks.value.map(t => `${t.id}:${t.status}`).join(','), () => {
-    if (currentPlanId.value && hasPlanResults.value) {
-      void loadPlanProgress()
-    }
-  })
 
   async function handleTaskDrop(taskId: string, newStatus: TaskStatus) {
     const task = tasks.value.find(t => t.id === taskId)
@@ -303,6 +245,13 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
     }
 
     if (newStatus === 'in_progress' && oldStatus === 'pending') {
+      if (!currentPlanId.value) {
+        task.status = oldStatus
+        task.order = oldOrder
+        warnDetachedTaskExecutionUnsupported()
+        return
+      }
+
       try {
         await taskStore.updateTask(taskId, {
           status: newStatus,
@@ -425,6 +374,11 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
   }
 
   async function handleTaskStart(task: Task) {
+    if (!currentPlanId.value) {
+      warnDetachedTaskExecutionUnsupported()
+      return
+    }
+
     if (!taskStore.areDependenciesMet(task.id)) {
       await showUnmetDependencyDialog(task)
       return
@@ -438,6 +392,11 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
   }
 
   async function handleTaskResume(task: Task) {
+    if (!currentPlanId.value) {
+      warnDetachedTaskExecutionUnsupported()
+      return
+    }
+
     try {
       await taskExecutionStore.resumeTaskExecution(task.id)
       if (currentPlanId.value) {
@@ -449,18 +408,21 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
   }
 
   async function handleTaskRetry(task: Task) {
+    if (!currentPlanId.value) {
+      warnDetachedTaskExecutionUnsupported()
+      return
+    }
+
     try {
-      if (currentPlanId.value) {
-        // 先清除持久化日志
-        await taskExecutionStore.clearTaskLogs(task.id)
+      // 先清除持久化日志
+      await taskExecutionStore.clearTaskLogs(task.id)
 
-        await taskStore.updateTask(task.id, {
-          status: 'in_progress',
-          errorMessage: undefined
-        })
+      await taskStore.updateTask(task.id, {
+        status: 'in_progress',
+        errorMessage: undefined
+      })
 
-        await taskExecutionStore.startTaskExecution(task.id)
-      }
+      await taskExecutionStore.startTaskExecution(task.id)
     } catch (error) {
       console.error('Failed to retry task:', error)
     }
@@ -599,16 +561,14 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
     planStore,
     taskStore,
     taskExecutionStore,
-    agentTeamsStore,
     notificationStore,
     confirmDialog,
     showEditModal,
     editingTask,
     showCreateModal,
     createMode,
-    planProgress,
-    showPlanOverview,
     currentPlanId,
+    currentProjectId,
     currentPlan,
     currentExecutionQueue,
     hasInterruptedTasksAwaitingResume,
@@ -618,15 +578,10 @@ export function useTaskBoard(options: UseTaskBoardOptions) {
     tasks,
     tasksByStatus,
     taskStats,
-    planOverviewTasks,
-    hasPlanResults,
-    resolveTaskStatusClass,
-    resolveTaskStatusLabel,
     columns,
     isTaskTrackedByExecution,
     showUnmetDependencyDialog,
     loadTasks,
-    loadPlanProgress,
     handleTaskDrop,
     collectTaskAndDescendantIds,
     handleTaskReorder,

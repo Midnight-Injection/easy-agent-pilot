@@ -363,6 +363,17 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
       .map(task => task.id)
   }
 
+  function getOrderedAutoExecutionTaskIds(planId: string): string[] {
+    const taskStore = useTaskStore()
+    return taskStore.tasks
+      .filter(task => (
+        task.planId === planId
+        && (task.status === 'pending' || task.status === 'in_progress')
+      ))
+      .sort((a, b) => a.order - b.order)
+      .map(task => task.id)
+  }
+
   function removeTaskFromQueue(queue: ExecutionQueue, taskId: string): void {
     if (queue.currentTaskId === taskId) {
       queue.currentTaskId = null
@@ -484,6 +495,7 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
   /**
    */
   async function enqueueTask(planId: string, taskId: string): Promise<void> {
+    const taskStore = useTaskStore()
     await markTaskInProgress(taskId)
 
     const queue = getOrCreateQueue(planId)
@@ -524,6 +536,14 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
         state.status = 'queued'
       }
       await syncPlanRuntimeState(planId)
+      return
+    }
+
+    if (!taskStore.areDependenciesMet(taskId)) {
+      queue.pendingTaskIds.push(taskId)
+      state.status = 'queued'
+      await syncPlanRuntimeState(planId)
+      void processNextInQueue(planId)
       return
     }
 
@@ -1271,6 +1291,7 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
 
     if (nextTaskId) {
       removeTaskFromQueue(queue, nextTaskId)
+      await markTaskInProgress(nextTaskId)
       queue.currentTaskId = nextTaskId
       queue.lastInterruptedTaskId = null
 
@@ -1379,7 +1400,6 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
 
   async function resumePlanExecutionFlow(planId: string): Promise<void> {
     const queue = getOrCreateQueue(planId)
-    const taskStore = useTaskStore()
     const currentTaskId = queue.currentTaskId
     const currentState = currentTaskId
       ? executionStates.value.get(currentTaskId)
@@ -1391,31 +1411,22 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
     }
 
     queue.isPaused = false
+    queue.currentTaskId = null
+    queue.pendingTaskIds = []
+    queue.lastInterruptedTaskId = null
 
-    const inProgressTaskIds = getOrderedInProgressTaskIds(planId)
-    if (inProgressTaskIds.length > 0) {
-      const [firstTaskId, ...queuedTaskIds] = inProgressTaskIds
-
-      queue.currentTaskId = firstTaskId
-      queue.pendingTaskIds = [...queuedTaskIds]
-      queue.lastInterruptedTaskId = null
-
-      queuedTaskIds.forEach((taskId) => {
-        initExecutionState(taskId).status = 'queued'
-      })
-
-      const firstTask = taskStore.tasks.find(item => item.id === firstTaskId)
-      const shouldResume = firstTask?.status === 'in_progress'
-        ? await prepareInterruptedTaskForResume(firstTaskId)
-        : false
-
+    const candidateTaskIds = getOrderedAutoExecutionTaskIds(planId)
+    if (candidateTaskIds.length === 0) {
       normalizePlanExecutionStates(planId)
       await syncPlanRuntimeState(planId)
-      void executeTask(planId, firstTaskId, { resume: shouldResume })
       return
     }
 
-    await processNextInQueue(planId)
+    normalizePlanExecutionStates(planId)
+
+    for (const taskId of candidateTaskIds) {
+      await enqueueTask(planId, taskId)
+    }
   }
 
   async function detachTaskFromExecution(taskId: string): Promise<void> {
@@ -1558,32 +1569,6 @@ export const useTaskExecutionStore = defineStore('taskExecution', () => {
     } catch (error) {
       console.warn('[TaskExecution] Failed to load logs:', error)
     }
-  }
-
-  async function prepareInterruptedTaskForResume(taskId: string): Promise<boolean> {
-    const taskStore = useTaskStore()
-    const task = taskStore.tasks.find(item => item.id === taskId)
-    if (!task || task.status !== 'in_progress') {
-      return false
-    }
-
-    const state = initExecutionState(taskId)
-    if (state.logs.length === 0) {
-      const rustLogs = await loadTaskLogsFromBackend(taskId)
-      hydrateTaskLogs(state, rustLogs, task)
-      syncExecutionStateWithTask(taskId)
-    }
-
-    if (state.status === 'running' || state.status === 'queued' || state.status === 'idle') {
-      state.status = 'stopped'
-    }
-
-    if (!state.startedAt) {
-      state.startedAt = state.logs[0]?.timestamp ?? task.updatedAt ?? new Date().toISOString()
-    }
-    state.completedAt = null
-
-    return state.logs.length > 0
   }
 
   /**

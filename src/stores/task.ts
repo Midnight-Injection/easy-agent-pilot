@@ -16,6 +16,7 @@ import type {
 // Rust 后端返回的 snake_case 结构
 interface RustTask {
   id: string
+  project_id?: string
   plan_id: string
   parent_id?: string
   title: string
@@ -95,6 +96,7 @@ function transformTask(rustTask: RustTask): Task {
 
   return {
     id: rustTask.id,
+    projectId: rustTask.project_id,
     planId: rustTask.plan_id,
     parentId: rustTask.parent_id,
     title: rustTask.title,
@@ -145,6 +147,7 @@ function collectTaskAndDescendantIds(taskId: string, taskList: Task[]): Set<stri
 export const useTaskStore = defineStore('task', () => {
   // State
   const tasks = ref<Task[]>([])
+  const looseTaskIdsByProject = ref<Map<string, string[]>>(new Map())
   const currentTaskId = ref<string | null>(null)
   const isLoading = ref(false)
   const loadError = ref<string | null>(null)
@@ -239,6 +242,23 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  function replaceProjectLooseTasks(projectId: string, nextTasks: Task[]): void {
+    const previousLooseIds = new Set(looseTaskIdsByProject.value.get(projectId) ?? [])
+
+    tasks.value = tasks.value.filter(task => !previousLooseIds.has(task.id))
+    nextTasks.forEach(upsertTask)
+    looseTaskIdsByProject.value.set(projectId, nextTasks.map(task => task.id))
+    sortTasks()
+
+    if (currentTaskId.value && !tasks.value.some(task => task.id === currentTaskId.value)) {
+      currentTaskId.value = null
+    }
+
+    if (editingTask.value && !tasks.value.some(task => task.id === editingTask.value?.id)) {
+      closeEditDialog()
+    }
+  }
+
   // Actions
   async function loadTasks(planId: string) {
     isLoading.value = true
@@ -254,6 +274,27 @@ export const useTaskStore = defineStore('task', () => {
         '加载任务列表',
         getErrorMessage(error),
         () => loadTasks(planId)
+      )
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function loadProjectLooseTasks(projectId: string) {
+    isLoading.value = true
+    loadError.value = null
+    const notificationStore = useNotificationStore()
+
+    try {
+      const rustTasks = await invoke<RustTask[]>('list_project_unplanned_tasks', { projectId })
+      replaceProjectLooseTasks(projectId, rustTasks.map(transformTask))
+    } catch (error) {
+      console.error('Failed to load detached project tasks:', error)
+      loadError.value = getErrorMessage(error)
+      notificationStore.networkError(
+        '加载项目待办任务',
+        getErrorMessage(error),
+        () => loadProjectLooseTasks(projectId)
       )
     } finally {
       isLoading.value = false
@@ -750,6 +791,13 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  function getProjectLooseTasks(projectId: string): Task[] {
+    const looseIds = new Set(looseTaskIdsByProject.value.get(projectId) ?? [])
+    return tasks.value
+      .filter(task => looseIds.has(task.id))
+      .sort((a, b) => a.order - b.order)
+  }
+
   return {
     // State
     tasks,
@@ -765,6 +813,7 @@ export const useTaskStore = defineStore('task', () => {
     subtasks,
     // Actions
     loadTasks,
+    loadProjectLooseTasks,
     getTask,
     getTaskBySessionId,
     createTask,
@@ -786,6 +835,7 @@ export const useTaskStore = defineStore('task', () => {
     // 清理操作
     clearPlanTasks,
     clearPlansTasks,
+    getProjectLooseTasks,
     // 编辑对话框
     editDialogVisible,
     editingTask,

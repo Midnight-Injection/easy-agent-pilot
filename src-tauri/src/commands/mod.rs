@@ -1,7 +1,7 @@
 pub mod agent;
-pub mod agent_team;
 pub mod agent_cli_usage;
 pub mod agent_config;
+pub mod agent_team;
 pub mod app_state;
 pub mod builtin_mcp;
 pub mod cli;
@@ -72,7 +72,9 @@ fn get_prod_default_persistence_path() -> Result<PathBuf> {
 
 /// 获取持久化目录路径
 pub fn get_persistence_dir_path() -> Result<PathBuf> {
-    let custom = CUSTOM_PERSISTENCE_PATH.lock().expect("persistence path poisoned");
+    let custom = CUSTOM_PERSISTENCE_PATH
+        .lock()
+        .expect("persistence path poisoned");
     if let Some(ref path) = *custom {
         return Ok(path.clone());
     }
@@ -90,7 +92,9 @@ pub fn get_persistence_dir_path() -> Result<PathBuf> {
 
 /// 设置自定义持久化路径（仅在运行时切换）
 pub fn set_persistence_dir_path(path: &PathBuf) {
-    let mut custom = CUSTOM_PERSISTENCE_PATH.lock().expect("persistence path poisoned");
+    let mut custom = CUSTOM_PERSISTENCE_PATH
+        .lock()
+        .expect("persistence path poisoned");
     *custom = Some(path.clone());
 }
 
@@ -189,7 +193,10 @@ pub fn migrate_persistence_path(new_path: String) -> Result<PersistenceMigration
     crate::logging::write_log(
         "INFO",
         "migration",
-        &format!("Persistence migrated: {} -> {}, {} files", old_dir_str, new_dir_str, migrated),
+        &format!(
+            "Persistence migrated: {} -> {}, {} files",
+            old_dir_str, new_dir_str, migrated
+        ),
     );
 
     Ok(PersistenceMigrationResult {

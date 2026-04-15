@@ -88,7 +88,9 @@ pub async fn kill_session_process(session_id: &str) {
             // Windows 上使用 taskkill 命令强制终止进程树
             let mut command = Command::new("taskkill");
             configure_windows_std_command(&mut command);
-            let output = command.args(["/F", "/T", "/PID", &pid.to_string()]).output();
+            let output = command
+                .args(["/F", "/T", "/PID", &pid.to_string()])
+                .output();
 
             match output {
                 Ok(output) => {

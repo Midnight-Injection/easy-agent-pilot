@@ -10,7 +10,6 @@ import {
 import {
   detectUnattendedIntent,
   extractTaskExecutionDraft,
-  extractTaskCreateDraft,
   extractTaskUpdateDraft,
   parseStructuredFormResponse,
   type UnattendedIntent
@@ -36,6 +35,8 @@ import { useMessageStore } from '@/stores/message'
 import { conversationService } from '@/services/conversation/ConversationService'
 import type { AgentConfig } from '@/stores/agent'
 import type { DynamicFormSchema, Plan, Task, TaskPriority, TaskStatus, UpdateTaskInput } from '@/types/plan'
+import { getErrorMessage } from '@/utils/api'
+import type { ProcessUnattendedStructuredIntentAction } from '@/services/unattended/types'
 
 interface WeixinLoginSession {
   qrcode: string
@@ -47,6 +48,21 @@ const INCOMING_EVENT = 'unattended:incoming-message'
 const STATUS_EVENT = 'unattended:runtime-status'
 const LOGIN_POLL_INTERVAL_MS = 2500
 const PROCESSING_NOTICE_DELAY_MS = 1200
+const BACKEND_STRUCTURED_INTENT_TYPES = new Set([
+  'list_projects',
+  'switch_project',
+  'create_plan',
+  'query_plan_progress',
+  'query_task_status',
+  'query_execution',
+  'create_task',
+  'update_task',
+  'stop_task',
+  'start_task',
+  'start_plan',
+  'pause_plan',
+  'resume_plan'
+])
 
 function compactText(value: string, fallback: string): string {
   const normalized = value.replace(/\s+/g, ' ').trim()
@@ -191,6 +207,40 @@ function translateTaskStatus(status?: TaskStatus): string | null {
       return '已取消'
     default:
       return null
+  }
+}
+
+async function runBackendStructuredFollowUpAction(
+  action: ProcessUnattendedStructuredIntentAction,
+  taskExecutionStore: ReturnType<typeof useTaskExecutionStore>
+): Promise<void> {
+  switch (action.actionType) {
+    case 'start_task_execution':
+      if (!action.taskId) {
+        throw new Error('后端未返回要启动的任务 ID')
+      }
+      await taskExecutionStore.startTaskExecution(action.taskId)
+      return
+    case 'start_plan_execution':
+      if (!action.planId) {
+        throw new Error('后端未返回要启动的计划 ID')
+      }
+      await taskExecutionStore.resumePlanExecutionFlow(action.planId)
+      return
+    case 'pause_plan_execution':
+      if (!action.planId) {
+        throw new Error('后端未返回要暂停的计划 ID')
+      }
+      await taskExecutionStore.pausePlanExecutionFlow(action.planId)
+      return
+    case 'resume_plan_execution':
+      if (!action.planId) {
+        throw new Error('后端未返回要恢复的计划 ID')
+      }
+      await taskExecutionStore.resumePlanExecutionFlow(action.planId)
+      return
+    default:
+      return
   }
 }
 
@@ -635,24 +685,6 @@ export const useUnattendedStore = defineStore('unattended', () => {
 
     const intent = detectUnattendedIntent(payload.text)
 
-    if (intent.type === 'list_projects') {
-      return replyWithTranscript(buildProjectSummary(channel, thread, projectStore))
-    }
-
-    if (intent.type === 'switch_project') {
-      const nextProject = resolveProjectFromIntent(intent, projectStore.projects)
-      if (!nextProject) {
-        return '没有匹配到要切换的项目，请在话里带上项目名称。'
-      }
-      projectStore.setCurrentProject(nextProject.id)
-      await unattendedService.updateThreadContext(thread.id, {
-        activeProjectId: nextProject.id
-      })
-      return replyWithTranscript(`后续将默认使用项目“${nextProject.name}”处理这个微信线程。`, {
-        projectId: nextProject.id
-      })
-    }
-
     if (intent.type === 'switch_agent') {
       const agent = resolveAgentFromIntent(intent, agentStore.agents)
       if (!agent) {
@@ -682,6 +714,41 @@ export const useUnattendedStore = defineStore('unattended', () => {
       return replyWithTranscript(`后续将默认使用模型“${modelId}”处理这个微信线程。`)
     }
 
+    if (BACKEND_STRUCTURED_INTENT_TYPES.has(intent.type)) {
+      const result = await unattendedService.processStructuredIntent({
+        threadId: thread.id,
+        rawText: payload.text,
+        intentType: intent.type,
+        targetName: intent.targetName,
+        projectHint: intent.projectHint,
+        planName: intent.planName,
+        taskHint: intent.taskHint
+      })
+
+      if (result.handled) {
+        if (result.followUpAction) {
+          try {
+            await runBackendStructuredFollowUpAction(result.followUpAction, taskExecutionStore)
+          } catch (error) {
+            await loadAll()
+            return replyWithTranscript(
+              `已定位到目标，但执行失败：${getErrorMessage(error)}`,
+              { projectId: result.activeProjectId }
+            )
+          }
+        }
+
+        if (result.activeProjectId) {
+          projectStore.setCurrentProject(result.activeProjectId)
+          await syncVisiblePlanTaskState(result.activeProjectId, result.activePlanId)
+        }
+        await loadAll()
+        return replyWithTranscript(result.reply, {
+          projectId: result.activeProjectId
+        })
+      }
+    }
+
     const projectContext = resolveProjectContext(thread, channel, projectStore)
     if (!projectContext.projectId || !projectContext.project) {
       return '当前还没有可用项目，请先在软件里创建项目，或在微信里发送“切换到项目 xxx”。'
@@ -697,113 +764,6 @@ export const useUnattendedStore = defineStore('unattended', () => {
     }
 
     await planStore.loadPlans(projectId)
-
-    if (intent.type === 'create_plan') {
-      const activeAgent = resolveActiveAgent(thread, channel, agentStore.agents)
-      if (!activeAgent) {
-        return '当前线程没有可用 Agent，请先在设置页绑定默认 Agent。'
-      }
-      const modelId = await resolveModelId(
-        agentConfigStore,
-        activeAgent,
-        thread.activeModelId || (activeAgent.id === channel.defaultAgentId ? channel.defaultModelId : undefined)
-      )
-      const planName = compactText(intent.planName || intent.rawText, '新建计划')
-      const newPlan = await planStore.createPlan({
-        projectId,
-        name: planName,
-        description: payload.text,
-        splitMode: 'ai',
-        splitAgentId: activeAgent.id,
-        splitModelId: modelId
-      })
-      await unattendedService.updateThreadContext(thread.id, {
-        activeProjectId: projectId,
-        activeAgentId: activeAgent.id,
-        activeModelId: modelId,
-        lastPlanId: newPlan.id
-      })
-
-      if (intent.executeAfterCreate) {
-        await taskSplitStore.initSession({
-          planId: newPlan.id,
-          planName: newPlan.name,
-          planDescription: newPlan.description,
-          granularity: newPlan.granularity,
-          agentId: activeAgent.id,
-          modelId: modelId || '',
-          workingDirectory: project.path
-        })
-        return replyWithTranscript(`计划“${newPlan.name}”已创建，并开始进入拆分流程。`, {
-          projectId
-        })
-      }
-
-      return replyWithTranscript(`计划“${newPlan.name}”已创建完成。`, {
-        projectId
-      })
-    }
-
-    if (intent.type === 'query_plan_progress') {
-      return replyWithTranscript(await buildPlanSummary(projectId), { projectId })
-    }
-
-    if (intent.type === 'query_execution') {
-      return replyWithTranscript(await buildExecutionSummary(projectId), { projectId })
-    }
-
-    if (intent.type === 'query_task_status') {
-      return replyWithTranscript(await buildTaskSummary(projectId, intent), { projectId })
-    }
-
-    if (intent.type === 'create_task') {
-      const projectPlans = planStore.plans.filter(item => item.projectId === projectId)
-      const taskDraft = extractTaskCreateDraft(payload.text)
-      const targetPlan = resolvePlanByText(taskDraft.planHint || intent.planName || intent.rawText, projectPlans)
-        || (thread.lastPlanId ? projectPlans.find(item => item.id === thread.lastPlanId) : undefined)
-        || projectPlans.find(item => item.status === 'executing' || item.executionStatus === 'running')
-        || projectPlans[0]
-
-      if (!targetPlan) {
-        return '当前项目下还没有可承载任务的计划，请先创建计划。'
-      }
-
-      const title = normalizeTaskTitle(taskDraft.title)
-      if (!title || title.length < 2) {
-        return `要创建任务的话，请至少告诉我任务标题。当前可用计划是“${targetPlan.name}”。`
-      }
-
-      const activeAgent = resolveActiveAgent(thread, channel, agentStore.agents)
-      const modelId = activeAgent
-        ? await resolveModelId(
-          agentConfigStore,
-          activeAgent,
-          thread.activeModelId || (activeAgent.id === channel.defaultAgentId ? channel.defaultModelId : undefined)
-        )
-        : undefined
-
-      const createdTask = await taskStore.createTask({
-        planId: targetPlan.id,
-        title,
-        description: payload.text,
-        priority: taskDraft.priority,
-        agentId: activeAgent?.id,
-        modelId
-      })
-
-      await unattendedService.updateThreadContext(thread.id, {
-        lastPlanId: targetPlan.id,
-        lastTaskId: createdTask.id
-      })
-      await syncVisiblePlanTaskState(projectId, targetPlan.id)
-
-      const priorityLabel = translateTaskPriority(createdTask.priority)
-      const prioritySummary = priorityLabel ? `，优先级 ${priorityLabel}` : ''
-      return replyWithTranscript(
-        `已在计划“${targetPlan.name}”下创建任务“${createdTask.title}”${prioritySummary}。`,
-        { projectId }
-      )
-    }
 
     if (intent.type === 'start_task' || intent.type === 'update_task' || intent.type === 'stop_task') {
       const projectPlans = planStore.plans.filter(item => item.projectId === projectId)
@@ -918,45 +878,6 @@ export const useUnattendedStore = defineStore('unattended', () => {
         `任务“${targetTask.title}”已更新：${updatedFields.join('，')}。`,
         { projectId }
       )
-    }
-
-    if (intent.type === 'start_plan' || intent.type === 'pause_plan' || intent.type === 'resume_plan') {
-      const plan = resolvePlanFromIntent(intent, planStore.plans.filter(item => item.projectId === projectId))
-      if (!plan) {
-        return '没有找到对应的计划，请在对话里带上计划名称。'
-      }
-      await taskStore.loadTasks(plan.id)
-
-      if (intent.type === 'start_plan') {
-        const readyTasks = taskStore.getReadyTasks(plan.id)
-        await planStore.startPlanExecution(plan.id)
-        for (const task of readyTasks) {
-          await taskExecutionStore.enqueueTask(plan.id, task.id)
-        }
-        await unattendedService.updateThreadContext(thread.id, { lastPlanId: plan.id })
-        await syncVisiblePlanTaskState(projectId, plan.id)
-        return replyWithTranscript(`计划“${plan.name}”已开始执行。当前待执行任务 ${readyTasks.length} 个。`, {
-          projectId
-        })
-      }
-
-      if (intent.type === 'pause_plan') {
-        await taskExecutionStore.pausePlanExecutionFlow(plan.id)
-        await planStore.pausePlanExecution(plan.id)
-        await unattendedService.updateThreadContext(thread.id, { lastPlanId: plan.id })
-        await syncVisiblePlanTaskState(projectId, plan.id)
-        return replyWithTranscript(`计划“${plan.name}”已暂停。`, {
-          projectId
-        })
-      }
-
-      await taskExecutionStore.resumePlanExecutionFlow(plan.id)
-      await planStore.resumePlanExecution(plan.id)
-      await unattendedService.updateThreadContext(thread.id, { lastPlanId: plan.id })
-      await syncVisiblePlanTaskState(projectId, plan.id)
-      return replyWithTranscript(`计划“${plan.name}”已恢复执行。`, {
-        projectId
-      })
     }
 
     if (intent.type === 'start_split' || intent.type === 'continue_split' || intent.type === 'form_response') {
@@ -1185,16 +1106,6 @@ export const useUnattendedStore = defineStore('unattended', () => {
     }
   }
 
-  function resolveProjectFromIntent(
-    intent: UnattendedIntent,
-    projects: Project[]
-  ) {
-    const hint = (intent.projectHint || intent.rawText).toLowerCase()
-    return projects.find(project => hint.includes(project.name.toLowerCase()))
-      || projects.find(project => hint.includes(project.id.toLowerCase()))
-      || projects.find(project => hint.includes(project.path.toLowerCase()))
-  }
-
   function resolvePlanFromIntent(intent: UnattendedIntent, plans: Plan[]) {
     const target = intent.targetName || intent.rawText
     return plans.find(plan => target.includes(plan.name))
@@ -1220,16 +1131,6 @@ export const useUnattendedStore = defineStore('unattended', () => {
 
       return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime()
     })
-  }
-
-  function resolvePlanByText(hint: string | undefined, plans: Plan[]): Plan | undefined {
-    const normalizedHint = hint?.trim().toLowerCase()
-    if (!normalizedHint) {
-      return undefined
-    }
-
-    return plans.find(plan => normalizedHint.includes(plan.name.toLowerCase()))
-      || plans.find(plan => normalizedHint.includes(plan.id.toLowerCase()))
   }
 
   function resolveTaskFromText(hint: string | undefined, tasks: Task[], thread: UnattendedThread): Task | undefined {
@@ -1333,89 +1234,6 @@ export const useUnattendedStore = defineStore('unattended', () => {
       activeAgentId: agentId
     })
     return session.id
-  }
-
-  async function buildPlanSummary(projectId: string): Promise<string> {
-    const planStore = usePlanStore()
-    const plans = planStore.plans.filter(item => item.projectId === projectId)
-    if (plans.length === 0) {
-      return '当前项目下还没有计划。'
-    }
-    return [
-      `当前项目共有 ${plans.length} 个计划：`,
-      ...plans.slice(0, 8).map(plan =>
-        `- ${plan.name}：${plan.status}${plan.executionStatus ? ` / ${plan.executionStatus}` : ''}`
-      )
-    ].join('\n')
-  }
-
-  function buildProjectSummary(
-    channel: UnattendedChannel,
-    thread: UnattendedThread,
-    projectStore: ReturnType<typeof useProjectStore>
-  ): string {
-    if (projectStore.projects.length === 0) {
-      return '当前工作区还没有导入项目。'
-    }
-
-    const activeProjectId = thread.activeProjectId || channel.defaultProjectId
-    return [
-      `当前工作区共导入 ${projectStore.projects.length} 个项目：`,
-      ...projectStore.projects.slice(0, 8).map(project =>
-        `- ${project.name}${project.id === activeProjectId ? '（当前线程项目）' : ''}：${project.path}`
-      )
-    ].join('\n')
-  }
-
-  async function buildExecutionSummary(projectId: string): Promise<string> {
-    const planStore = usePlanStore()
-    const taskExecutionStore = useTaskExecutionStore()
-    const executingPlans = planStore.plans.filter(plan =>
-      plan.projectId === projectId && (plan.status === 'executing' || plan.executionStatus === 'running')
-    )
-    if (executingPlans.length === 0) {
-      return '当前没有正在执行的计划。'
-    }
-    const summaries = await Promise.all(executingPlans.slice(0, 4).map(async plan => {
-      const progress = await taskExecutionStore.getPlanExecutionProgress(plan.id)
-      if (!progress) {
-        return `- ${plan.name}：执行中，暂时还没有进度快照`
-      }
-      const activeTasks = progress.tasks
-        .filter(task => task.status === 'in_progress' || task.status === 'blocked' || task.status === 'failed')
-        .slice(0, 3)
-        .map(task => `${task.title}(${task.status})`)
-      const activeTaskSummary = activeTasks.length > 0
-        ? `；重点任务：${activeTasks.join('、')}`
-        : ''
-      return `- ${plan.name}：总任务 ${progress.total_tasks}，待办 ${progress.pending_count}，进行中 ${progress.in_progress_count}，完成 ${progress.completed_count}，失败 ${progress.failed_count}`
-        + activeTaskSummary
-    }))
-    return ['当前执行进度：', ...summaries].join('\n')
-  }
-
-  async function buildTaskSummary(projectId: string, intent?: UnattendedIntent): Promise<string> {
-    const planStore = usePlanStore()
-    const taskStore = useTaskStore()
-    const projectPlans = planStore.plans.filter(plan => plan.projectId === projectId)
-    const targetPlan = (intent ? resolvePlanFromIntent(intent, projectPlans) : undefined)
-      || projectPlans.find(plan => plan.status === 'executing' || plan.executionStatus === 'running')
-      || projectPlans[0]
-
-    if (!targetPlan) {
-      return '当前项目下还没有计划任务。'
-    }
-
-    await taskStore.loadTasks(targetPlan.id)
-    const tasks = taskStore.tasks.filter(task => task.planId === targetPlan.id)
-    if (tasks.length === 0) {
-      return `计划“${targetPlan.name}”还没有任务。`
-    }
-
-    return [
-      `计划“${targetPlan.name}”任务概览：`,
-      ...tasks.slice(0, 8).map(task => `- ${task.title}：${task.status}${task.errorMessage ? ` / ${compactText(task.errorMessage, '')}` : ''}`)
-    ].join('\n')
   }
 
   async function buildUnattendedContextSnapshot(

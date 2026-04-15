@@ -6,11 +6,14 @@ use super::channels::weixin::api::WeixinClient;
 use super::constants::CHANNEL_TYPE_WEIXIN;
 use super::repository;
 use super::runtime;
+use super::structured;
 use super::types::{
-    CreateUnattendedChannelInput, ListUnattendedEventsInput, RecordUnattendedEventInput,
-    RuntimeStatusSummary, SendUnattendedTextInput, UnattendedChannel, UnattendedChannelAccount,
-    UnattendedEventRecord, UnattendedThread, UpdateUnattendedChannelInput,
-    UpdateUnattendedThreadContextInput, WeixinLoginQrCode, WeixinLoginStatus,
+    CreateUnattendedChannelInput, ListUnattendedEventsInput,
+    ProcessUnattendedStructuredIntentInput, ProcessUnattendedStructuredIntentResult,
+    RecordUnattendedEventInput, RuntimeStatusSummary, SendUnattendedTextInput, UnattendedChannel,
+    UnattendedChannelAccount, UnattendedEventRecord, UnattendedThread,
+    UpdateUnattendedChannelInput, UpdateUnattendedThreadContextInput, WeixinLoginQrCode,
+    WeixinLoginStatus,
 };
 
 const LOGIN_LOG_TARGET: &str = "unattended.weixin.login";
@@ -255,4 +258,16 @@ pub async fn send_unattended_text(
         input.correlation_id.as_deref(),
     )
     .await
+}
+
+/// 在后端执行无人值守结构化意图。
+///
+/// 用途：
+/// - 将项目切换、计划/任务查询与基础增改逻辑下沉到后端
+/// - 让无人值守线程在前端未持有完整业务状态时仍可依赖后端执行结构化动作
+#[tauri::command]
+pub fn process_unattended_structured_intent(
+    input: ProcessUnattendedStructuredIntentInput,
+) -> Result<ProcessUnattendedStructuredIntentResult, String> {
+    structured::process_structured_intent(input)
 }

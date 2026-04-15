@@ -15,9 +15,14 @@ export function buildEditorOptions(
     wordWrap: props.wordWrap ? 'on' : 'off',
     readOnly: props.readOnly,
     minimap: { enabled: false },
+    glyphMargin: !isLargeFile,
+    lineNumbers: 'on',
+    lineNumbersMinChars: 4,
+    lineDecorationsWidth: 16,
     scrollBeyondLastLine: false,
     automaticLayout: true,
     smoothScrolling: !isLargeFile,
+    matchBrackets: isLargeFile ? 'never' : 'always',
     quickSuggestions: isLargeFile
       ? false
       : {
@@ -30,9 +35,22 @@ export function buildEditorOptions(
     occurrencesHighlight: isLargeFile ? 'off' : 'singleFile',
     selectionHighlight: !isLargeFile,
     folding: !isLargeFile,
+    foldingStrategy: 'auto',
+    foldingHighlight: !isLargeFile,
+    showFoldingControls: isLargeFile ? 'mouseover' : 'always',
+    unfoldOnClickAfterEndOfLine: false,
+    bracketPairColorization: {
+      enabled: !isLargeFile
+    },
+    stickyScroll: {
+      enabled: !isLargeFile
+    },
     guides: {
       bracketPairs: !isLargeFile,
-      indentation: !isLargeFile
+      bracketPairsHorizontal: !isLargeFile,
+      highlightActiveBracketPair: !isLargeFile,
+      indentation: !isLargeFile,
+      highlightActiveIndentation: !isLargeFile
     }
   }
 }

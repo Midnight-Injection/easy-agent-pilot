@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
-use super::conversation::executor::get_registry;
+use super::conversation::executor::{get_registry, is_execution_session_active_internal};
 use super::conversation::set_abort_flag;
 use super::conversation::types::{ExecutionRequest, MessageInput};
 use super::support::{now_rfc3339, open_db_connection};
@@ -289,7 +289,10 @@ fn trim_messages_after_last_user<T, F>(messages: &mut Vec<T>, get_role: F)
 where
     F: Fn(&T) -> &str,
 {
-    let Some(last_user_index) = messages.iter().rposition(|message| get_role(message) == "user") else {
+    let Some(last_user_index) = messages
+        .iter()
+        .rposition(|message| get_role(message) == "user")
+    else {
         return;
     };
 
@@ -501,18 +504,14 @@ fn normalize_task(task: &Value) -> Result<Value, String> {
         "acceptanceCriteria".to_string(),
         Value::Array(acceptance_criteria.into_iter().map(Value::String).collect()),
     );
-    if let Some(agent_id) = as_non_empty_string(
-        task_obj
-            .get("agentId")
-            .or_else(|| task_obj.get("agent_id")),
-    ) {
+    if let Some(agent_id) =
+        as_non_empty_string(task_obj.get("agentId").or_else(|| task_obj.get("agent_id")))
+    {
         normalized.insert("agentId".to_string(), Value::String(agent_id));
     }
-    if let Some(model_id) = as_non_empty_string(
-        task_obj
-            .get("modelId")
-            .or_else(|| task_obj.get("model_id")),
-    ) {
+    if let Some(model_id) =
+        as_non_empty_string(task_obj.get("modelId").or_else(|| task_obj.get("model_id")))
+    {
         normalized.insert("modelId".to_string(), Value::String(model_id));
     }
     if let Some(depends_on) = task_obj
@@ -836,7 +835,8 @@ fn finalize_session_from_structured_output(
         return Ok(false);
     }
 
-    let output = match parse_split_output(raw_output, session.granularity, &session.task_count_mode) {
+    let output = match parse_split_output(raw_output, session.granularity, &session.task_count_mode)
+    {
         Ok(output) => output,
         Err(_) => return Ok(false),
     };
@@ -867,19 +867,20 @@ fn refresh_session_after_turn(
     }
 
     let raw_content = load_content_logs(&conn, session_id)?;
-    let parsed = match parse_split_output(&raw_content, session.granularity, &session.task_count_mode) {
-        Ok(output) => Ok((output, raw_content.clone())),
-        Err(content_error) => {
-            let structured_outputs = load_structured_output_logs(&conn, session_id)?;
-            let parsed_from_tool = structured_outputs.iter().rev().find_map(|candidate| {
-                parse_split_output(candidate, session.granularity, &session.task_count_mode)
-                    .ok()
-                    .map(|output| (output, candidate.clone()))
-            });
+    let parsed =
+        match parse_split_output(&raw_content, session.granularity, &session.task_count_mode) {
+            Ok(output) => Ok((output, raw_content.clone())),
+            Err(content_error) => {
+                let structured_outputs = load_structured_output_logs(&conn, session_id)?;
+                let parsed_from_tool = structured_outputs.iter().rev().find_map(|candidate| {
+                    parse_split_output(candidate, session.granularity, &session.task_count_mode)
+                        .ok()
+                        .map(|output| (output, candidate.clone()))
+                });
 
-            parsed_from_tool.ok_or(content_error)
-        }
-    };
+                parsed_from_tool.ok_or(content_error)
+            }
+        };
     let now = now_rfc3339();
     session.raw_content = Some(raw_content.clone());
     session.updated_at = now.clone();
@@ -1120,11 +1121,29 @@ pub fn list_plan_split_logs(plan_id: String) -> Result<Vec<PlanSplitLog>, String
 }
 
 #[tauri::command]
-pub fn start_plan_split(
+pub async fn start_plan_split(
     app: AppHandle,
     input: StartPlanSplitInput,
 ) -> Result<PlanSplitSession, String> {
     let conn = open_db_connection().map_err(|error| error.to_string())?;
+
+    if let Some(existing_session) = read_session(&conn, &input.plan_id)? {
+        if existing_session.status == "running" {
+            let execution_session_id = existing_session
+                .execution_session_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+
+            if let Some(execution_session_id) = execution_session_id {
+                if is_execution_session_active_internal(&execution_session_id).await {
+                    emit_session_updated(&app, &existing_session);
+                    return Ok(existing_session);
+                }
+            }
+        }
+    }
 
     let mut request = input.execution_request.clone();
     request.plan_id = Some(input.plan_id.clone());

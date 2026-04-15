@@ -9,6 +9,8 @@ defineProps<{
   isReadOnly: boolean
   isLoading: boolean
   canSync?: boolean
+  canRefresh?: boolean
+  canOpenFile?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -47,8 +49,9 @@ const { t } = useI18n()
           <EaIcon name="lucide:plus" />
           {{ t('settings.sdkConfig.mcp.add') }}
         </EaButton>
-        <template v-if="isReadOnly">
+        <template v-if="canRefresh || canOpenFile">
           <EaButton
+            v-if="canRefresh"
             size="small"
             type="secondary"
             @click="emit('refresh')"
@@ -57,6 +60,7 @@ const { t } = useI18n()
             {{ t('common.refresh') }}
           </EaButton>
           <EaButton
+            v-if="canOpenFile"
             size="small"
             type="secondary"
             @click="emit('open-file')"

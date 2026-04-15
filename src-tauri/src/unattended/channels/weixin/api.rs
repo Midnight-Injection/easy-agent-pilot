@@ -1,8 +1,8 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
-use qrcode::QrCode;
 use qrcode::render::svg;
+use qrcode::QrCode;
 use reqwest::{Client, RequestBuilder};
 use serde_json::json;
 use thiserror::Error;

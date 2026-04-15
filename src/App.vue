@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NMessageProvider } from 'naive-ui'
 import { useThemeStore } from './stores/theme'
 import { useSettingsStore } from './stores/settings'
@@ -35,6 +36,7 @@ const taskExecutionStore = useTaskExecutionStore()
 const unattendedStore = useUnattendedStore()
 const confirmDialog = useConfirmDialog()
 const confirmDialogState = confirmDialog.state
+const { t, locale } = useI18n()
 
 useWindowEvents()
 useMiniPanelShortcut()
@@ -183,10 +185,13 @@ async function promptInterruptedPlanRecovery(projectId: string | null) {
 
     const confirmed = await confirmDialog.show({
       type: 'info',
-      title: '检测到中断的计划执行',
-      message: `计划“${plan.name}”在 ${new Date(plan.updatedAt).toLocaleString('zh-CN')} 前仍有执行中的任务。是否跳转到计划面板继续查看？`,
-      confirmLabel: '继续查看',
-      cancelLabel: '暂不处理',
+      title: t('planRecovery.title'),
+      message: t('planRecovery.message', {
+        name: plan.name,
+        time: new Date(plan.updatedAt).toLocaleString(locale.value === 'zh-CN' ? 'zh-CN' : 'en-US')
+      }),
+      confirmLabel: t('planRecovery.confirm'),
+      cancelLabel: t('planRecovery.cancel'),
       confirmButtonType: 'primary'
     })
 

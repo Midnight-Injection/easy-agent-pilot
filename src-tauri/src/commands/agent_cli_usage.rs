@@ -315,7 +315,12 @@ fn resolve_model_pricing(provider: &str, model_id: Option<&str>) -> Option<Model
     None
 }
 
-fn estimate_pricing(provider: &str, model_id: Option<&str>, input_tokens: i64, output_tokens: i64) -> PricingEstimate {
+fn estimate_pricing(
+    provider: &str,
+    model_id: Option<&str>,
+    input_tokens: i64,
+    output_tokens: i64,
+) -> PricingEstimate {
     if input_tokens == 0 && output_tokens == 0 {
         return PricingEstimate {
             estimated_input_cost_usd: None,
@@ -574,7 +579,9 @@ fn repair_claude_usage_history(
 /// 返回值：返回已写入或已更新的统计记录。
 /// 关键副作用：写入本地 SQLite 统计表；同一 execution_id 会执行幂等更新。
 #[tauri::command]
-pub fn record_agent_cli_usage(input: RecordAgentCliUsageInput) -> Result<AgentCliUsageRecord, String> {
+pub fn record_agent_cli_usage(
+    input: RecordAgentCliUsageInput,
+) -> Result<AgentCliUsageRecord, String> {
     let conn = open_db_connection().map_err(|error| error.to_string())?;
     let now = now_rfc3339();
     let RecordAgentCliUsageInput {
@@ -711,7 +718,9 @@ pub fn record_agent_cli_usage(input: RecordAgentCliUsageInput) -> Result<AgentCl
 /// 返回值：返回汇总、趋势、分组明细和图表堆叠序列。
 /// 关键副作用：无，仅执行只读查询。
 #[tauri::command]
-pub fn query_agent_cli_usage_stats(input: QueryAgentCliUsageStatsInput) -> Result<AgentCliUsageStatsResponse, String> {
+pub fn query_agent_cli_usage_stats(
+    input: QueryAgentCliUsageStatsInput,
+) -> Result<AgentCliUsageStatsResponse, String> {
     let conn = open_db_connection().map_err(|error| error.to_string())?;
     let granularity = normalize_granularity(&input.granularity);
     let dimension = normalize_dimension(&input.dimension);
@@ -766,7 +775,9 @@ pub fn query_agent_cli_usage_stats(input: QueryAgentCliUsageStatsInput) -> Resul
         "#
     );
 
-    let mut timeline_stmt = conn.prepare(&timeline_sql).map_err(|error| error.to_string())?;
+    let mut timeline_stmt = conn
+        .prepare(&timeline_sql)
+        .map_err(|error| error.to_string())?;
     let timeline = timeline_stmt
         .query_map(params_from_iter(params.iter()), |row| {
             let bucket: String = row.get(0)?;
@@ -803,7 +814,9 @@ pub fn query_agent_cli_usage_stats(input: QueryAgentCliUsageStatsInput) -> Resul
         "#
     );
 
-    let mut breakdown_stmt = conn.prepare(&breakdown_sql).map_err(|error| error.to_string())?;
+    let mut breakdown_stmt = conn
+        .prepare(&breakdown_sql)
+        .map_err(|error| error.to_string())?;
     let breakdown = breakdown_stmt
         .query_map(params_from_iter(params.iter()), |row| {
             Ok(AgentCliUsageBreakdownRow {
@@ -841,7 +854,9 @@ pub fn query_agent_cli_usage_stats(input: QueryAgentCliUsageStatsInput) -> Resul
         "#
     );
 
-    let mut stacked_stmt = conn.prepare(&stacked_sql).map_err(|error| error.to_string())?;
+    let mut stacked_stmt = conn
+        .prepare(&stacked_sql)
+        .map_err(|error| error.to_string())?;
     let stacked_timeline = stacked_stmt
         .query_map(params_from_iter(params.iter()), |row| {
             let bucket: String = row.get(0)?;

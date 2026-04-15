@@ -1,6 +1,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { open, save } from '@tauri-apps/plugin-dialog'
+import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
+import i18n from '@/i18n'
 import type { SelectOption } from '@/components/common/EaSelect.vue'
 import { useMemoryStore } from '@/stores/memory'
+import { useNotificationStore } from '@/stores/notification'
 import { useProjectStore } from '@/stores/project'
 import type {
   CreateMemoryLibraryInput,
@@ -10,6 +14,12 @@ import type {
   UpdateMemoryLibraryInput,
   UpdateRawMemoryRecordInput
 } from '@/types/memory'
+import { getErrorMessage } from '@/utils/api'
+import { useMemoryAuthoringDialog } from '../memoryAuthoringDialog/useMemoryAuthoringDialog'
+
+function translate(key: string, params?: Record<string, unknown>): string {
+  return params ? i18n.global.t(key, params) as string : i18n.global.t(key) as string
+}
 
 /**
  * 记忆模式面板逻辑。
@@ -18,6 +28,8 @@ import type {
 export function useMemoryModePanel() {
   const memoryStore = useMemoryStore()
   const projectStore = useProjectStore()
+  const notificationStore = useNotificationStore()
+  const memoryAuthoringDialog = useMemoryAuthoringDialog()
 
   const search = ref('')
   const projectFilter = ref<string>('all')
@@ -38,7 +50,7 @@ export function useMemoryModePanel() {
   ))
 
   const projectOptions = computed<SelectOption[]>(() => [
-    { value: 'all', label: '全部项目' },
+    { value: 'all', label: translate('memory.workspace.allProjects') },
     ...projectStore.projects.map(project => ({
       value: project.id,
       label: project.name
@@ -46,7 +58,7 @@ export function useMemoryModePanel() {
   ])
 
   const currentProjectLabel = computed(() => (
-    projectOptions.value.find(option => option.value === projectFilter.value)?.label ?? '全部项目'
+    projectOptions.value.find(option => option.value === projectFilter.value)?.label ?? translate('memory.workspace.allProjects')
   ))
 
   const sortedLibraries = computed(() => (
@@ -56,6 +68,9 @@ export function useMemoryModePanel() {
   ))
 
   const canSaveLibrary = computed(() => Boolean(memoryStore.activeLibrary && libraryContentDirty.value))
+  const canExportLibrary = computed(() => Boolean(
+    memoryStore.activeLibrary && libraryContentDraft.value.trim()
+  ))
 
   watch(
     () => memoryStore.activeLibrary,
@@ -64,6 +79,18 @@ export function useMemoryModePanel() {
       libraryContentDirty.value = false
     },
     { immediate: true }
+  )
+
+  watch(
+    [() => memoryStore.activeLibrary?.contentMd, libraryContentDraft],
+    ([contentMd, draft]) => {
+      if (!memoryStore.activeLibrary) {
+        libraryContentDirty.value = false
+        return
+      }
+
+      libraryContentDirty.value = draft !== (contentMd ?? '')
+    }
   )
 
   watch(search, triggerReload)
@@ -89,6 +116,25 @@ export function useMemoryModePanel() {
   function openLibraryCreate() {
     libraryEditing.value = null
     libraryModalVisible.value = true
+  }
+
+  async function openAiLibraryCreate() {
+    await memoryAuthoringDialog.openDialog()
+  }
+
+  async function openAiLibraryCreateFromSelection() {
+    if (memoryStore.selectedRecordIds.length === 0) {
+      notificationStore.warning(
+        translate('memory.workspace.selectRecordsFirst'),
+        translate('memory.workspace.selectRecordsFirstMessage')
+      )
+      return
+    }
+
+    await memoryAuthoringDialog.openDialog({
+      autoGenerate: true,
+      initialRecordIds: memoryStore.selectedRecordIds
+    })
   }
 
   function openLibraryEdit(library: MemoryLibrary) {
@@ -136,7 +182,7 @@ export function useMemoryModePanel() {
   }
 
   async function handleDeleteLibrary(library: MemoryLibrary) {
-    if (!window.confirm(`确定删除记忆库「${library.name}」吗？`)) {
+    if (!window.confirm(translate('memory.workspace.deleteLibraryConfirm', { name: library.name }))) {
       return
     }
 
@@ -144,7 +190,7 @@ export function useMemoryModePanel() {
   }
 
   async function handleDeleteRecord(record: RawMemoryRecord) {
-    if (!window.confirm('确定删除这条原始记忆吗？')) {
+    if (!window.confirm(translate('memory.workspace.deleteRawConfirm'))) {
       return
     }
 
@@ -161,15 +207,22 @@ export function useMemoryModePanel() {
     deleteOrder?: 'oldest' | 'latest'
   }) {
     const scopeText = [
-      currentProjectLabel.value !== '全部项目' ? `项目：${currentProjectLabel.value}` : '',
-      search.value.trim() ? `搜索：${search.value.trim()}` : ''
+      currentProjectLabel.value !== translate('memory.workspace.allProjects')
+        ? translate('memory.workspace.batchDeleteProjectScope', { name: currentProjectLabel.value })
+        : '',
+      search.value.trim()
+        ? translate('memory.workspace.batchDeleteSearchScope', { keyword: search.value.trim() })
+        : ''
     ].filter(Boolean).join('，')
 
     const actionText = payload.limit
-      ? `按条件批量删除 ${payload.limit} 条原始记忆`
-      : '按时间范围批量删除原始记忆'
+      ? translate('memory.workspace.batchDeleteLimited', { count: payload.limit })
+      : translate('memory.workspace.batchDeleteRange')
 
-    if (!window.confirm(`${actionText}${scopeText ? `（${scopeText}）` : ''}，确认继续吗？`)) {
+    if (!window.confirm(translate('memory.workspace.batchDeleteConfirm', {
+      action: actionText,
+      scope: scopeText ? `（${scopeText}）` : ''
+    }))) {
       return
     }
 
@@ -191,6 +244,67 @@ export function useMemoryModePanel() {
     })
     libraryContentDraft.value = updated.contentMd
     libraryContentDirty.value = false
+  }
+
+  async function importLibraryMarkdown() {
+    const library = memoryStore.activeLibrary
+    if (!library) {
+      notificationStore.warning(
+        translate('memory.workspace.selectLibraryBeforeImport'),
+        translate('memory.workspace.selectLibraryBeforeImportMessage')
+      )
+      return
+    }
+
+    try {
+      const selected = await open({
+        multiple: false,
+        title: translate('memory.workspace.importLibraryTitle'),
+        filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }]
+      })
+
+      const filePath = typeof selected === 'string' ? selected : null
+      if (!filePath) {
+        return
+      }
+
+      libraryContentDraft.value = await readTextFile(filePath)
+      notificationStore.success(translate('memory.workspace.importLibrarySuccess', { name: library.name }))
+    } catch (error) {
+      notificationStore.error(translate('memory.workspace.importLibraryFailed'), getErrorMessage(error))
+    }
+  }
+
+  async function exportLibraryMarkdown() {
+    const library = memoryStore.activeLibrary
+    const content = libraryContentDraft.value.trim()
+
+    if (!library || !content) {
+      notificationStore.warning(
+        translate('memory.workspace.exportEmpty'),
+        translate('memory.workspace.exportEmptyMessage')
+      )
+      return
+    }
+
+    try {
+      const safeName = library.name.trim().replace(/[\\/:*?"<>|]/g, '-') || 'memory-library'
+      const defaultPath = `${safeName}.md`
+      const filePath = await save({
+        defaultPath,
+        title: translate('memory.workspace.exportLibraryTitle'),
+        filters: [{ name: 'Markdown', extensions: ['md'] }]
+      })
+
+      if (!filePath) {
+        return
+      }
+
+      await writeTextFile(filePath, content)
+      notificationStore.success(translate('memory.workspace.exportLibrarySuccess', { name: library.name }))
+    } catch (error) {
+      notificationStore.error(translate('memory.workspace.exportLibraryFailed'), getErrorMessage(error))
+    }
   }
 
   async function handleMergeConfirm(payload: { libraryId: string; agentId?: string }) {
@@ -227,6 +341,7 @@ export function useMemoryModePanel() {
     currentProjectLabel,
     sortedLibraries,
     canSaveLibrary,
+    canExportLibrary,
     libraryModalVisible,
     libraryEditing,
     rawModalVisible,
@@ -235,8 +350,11 @@ export function useMemoryModePanel() {
     batchDeleteModalVisible,
     libraryContentDraft,
     libraryContentDirty,
+    memoryAuthoringDialog,
     reloadRawRecords,
     openLibraryCreate,
+    openAiLibraryCreate,
+    openAiLibraryCreateFromSelection,
     openLibraryEdit,
     openRawCreate,
     openRawEdit,
@@ -246,6 +364,8 @@ export function useMemoryModePanel() {
     handleDeleteRecord,
     handleBatchDeleteConfirm,
     handleSaveLibrary,
+    importLibraryMarkdown,
+    exportLibraryMarkdown,
     handleMergeConfirm
   }
 }

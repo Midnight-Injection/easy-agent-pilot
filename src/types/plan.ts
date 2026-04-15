@@ -61,6 +61,7 @@ export interface Plan {
 // 任务接口
 export interface Task {
   id: string
+  projectId?: string
   planId: string
   parentId?: string
   title: string

@@ -69,7 +69,7 @@ export const builtinLanguageStrategies: LanguageStrategy[] = [
   }),
   createStrategy({
     id: 'vue',
-    monacoLanguageId: 'html',
+    monacoLanguageId: 'vue',
     supportsCompletion: true,
     match: ({ extension }) => extension === 'vue',
     getCompletions: () => [

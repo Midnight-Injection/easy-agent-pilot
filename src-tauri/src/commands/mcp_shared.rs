@@ -96,7 +96,8 @@ pub fn build_platform_command(command: &str, args: &[String]) -> TokioCommand {
             .unwrap_or_default()
             .to_ascii_lowercase();
 
-        if script_commands.contains(&command) || matches!(resolved_extension.as_str(), "cmd" | "bat")
+        if script_commands.contains(&command)
+            || matches!(resolved_extension.as_str(), "cmd" | "bat")
         {
             let mut cmd = TokioCommand::new("cmd");
             configure_windows_tokio_command(&mut cmd);

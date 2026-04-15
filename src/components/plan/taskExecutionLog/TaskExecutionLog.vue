@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import ExecutionTimeline from '@/components/message/ExecutionTimeline.vue'
-import StructuredContentRenderer from '@/components/message/StructuredContentRenderer.vue'
 import DynamicForm from '@/components/plan/dynamicForm/DynamicForm.vue'
 import { EaIcon } from '@/components/common'
 import { formatTokenCount } from '@/stores/token'
@@ -31,7 +30,6 @@ const {
   isWaitingInput,
   effectiveStatus,
   isRunning,
-  structuredResultContent,
   statusText,
   statusColor,
   handleStop,
@@ -267,13 +265,6 @@ const {
       class="log-content"
       @scroll="handleScroll"
     >
-      <div
-        v-if="structuredResultContent"
-        class="result-summary"
-      >
-        <StructuredContentRenderer :content="structuredResultContent" />
-      </div>
-
       <div
         v-if="logs.length === 0"
         class="empty-state"

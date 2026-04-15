@@ -478,6 +478,21 @@ fn parse_plugin_json_for_details(
     (None, None, None)
 }
 
+fn resolve_plugin_manifest_path_for_detail(plugin_dir: &Path) -> Option<PathBuf> {
+    let home_dir = dirs::home_dir()?;
+    let codex_plugins_dir = home_dir.join(".codex").join("plugins");
+    let manifest_dirs = if plugin_dir.starts_with(&codex_plugins_dir) {
+        [".codex-plugin", ".claude-plugin"]
+    } else {
+        [".claude-plugin", ".codex-plugin"]
+    };
+
+    manifest_dirs
+        .iter()
+        .map(|dir_name| plugin_dir.join(dir_name).join("plugin.json"))
+        .find(|candidate| candidate.exists())
+}
+
 /// 解析 skill.md 文件获取描述
 fn parse_skill_description(skill_md_path: &PathBuf) -> Option<String> {
     if let Ok(content) = fs::read_to_string(skill_md_path) {
@@ -597,33 +612,32 @@ fn scan_plugin_internal_items(
 
 /// 尝试从 installed_plugins.json 获取安装来源
 fn get_install_source(plugin_name: &str) -> Option<String> {
-    let home_dir = dirs::home_dir()?;
-    let installed_plugins_path = home_dir
-        .join(".claude")
-        .join("plugins")
-        .join("installed_plugins.json");
+    let persistence_dir = crate::commands::get_persistence_dir_path().ok()?;
+    let installed_plugins_path = persistence_dir.join("plugins.json");
 
     if !installed_plugins_path.exists() {
         return None;
     }
 
-    if let Ok(content) = fs::read_to_string(&installed_plugins_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(plugins_obj) = json.get("plugins").and_then(|v| v.as_object()) {
-                // 查找匹配的插件（格式: name@source）
-                for (plugin_key, _) in plugins_obj {
-                    if plugin_key.starts_with(&format!("{}@", plugin_name)) {
-                        // 提取 source 部分
-                        if let Some(source) = plugin_key.split('@').nth(1) {
-                            return Some(source.to_string());
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let content = fs::read_to_string(&installed_plugins_path).ok()?;
+    let plugins = serde_json::from_str::<serde_json::Value>(&content).ok()?;
+    let items = plugins.as_array()?;
 
-    None
+    items.iter().find_map(|item| {
+        let matches_name = item
+            .get("name")
+            .and_then(|value| value.as_str())
+            .map(|value| value == plugin_name)
+            .unwrap_or(false);
+
+        if !matches_name {
+            return None;
+        }
+
+        item.get("source_market")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+    })
 }
 
 /// 获取 Plugin 详细信息
@@ -642,8 +656,9 @@ pub fn get_plugin_details(plugin_path: String) -> Result<PluginDetails, String> 
         .unwrap_or_default();
 
     // 尝试读取 plugin.json
-    let plugin_json_path = plugin_dir.join(".claude-plugin").join("plugin.json");
-    let (version, description, author) = parse_plugin_json_for_details(&plugin_json_path);
+    let (version, description, author) = resolve_plugin_manifest_path_for_detail(&plugin_dir)
+        .map(|plugin_json_path| parse_plugin_json_for_details(&plugin_json_path))
+        .unwrap_or((None, None, None));
 
     // 获取安装来源
     let install_source = get_install_source(&name);
@@ -727,12 +742,20 @@ pub fn delete_plugin_directory(plugin_path: String) -> Result<(), String> {
         );
     }
 
+    let is_codex_plugin = plugin_dir.starts_with(&codex_plugins_dir);
+    let plugin_name = plugin_dir
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+
     // 删除插件目录
     fs::remove_dir_all(&plugin_dir)
         .map_err(|e| format!("Failed to delete plugin directory: {}", e))?;
 
-    // TODO: 同时更新 installed_plugins.json 文件
-    // 这需要更复杂的逻辑来维护 installed_plugins.json 的一致性
+    if is_codex_plugin && !plugin_name.is_empty() {
+        let _ =
+            crate::commands::plugins_market::remove_codex_personal_marketplace_plugin(&plugin_name);
+    }
 
     Ok(())
 }

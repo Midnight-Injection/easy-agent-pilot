@@ -2,11 +2,11 @@ use anyhow::Result;
 use rusqlite::{Connection, Row};
 use serde::{Deserialize, Serialize};
 
+use super::agent_team::ensure_builtin_agent_experts;
 use super::support::{
     bind_optional, bind_optional_mapped, bind_value, bool_from_int, now_rfc3339,
     open_db_connection, UpdateSqlBuilder,
 };
-use super::agent_team::ensure_builtin_agent_experts;
 
 /// 智能体配置数据结构
 /// 统一支持 CLI 和 SDK 两种类型的智能体

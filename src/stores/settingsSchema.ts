@@ -20,6 +20,9 @@ export interface AppSettings {
   compressionStrategy: 'simple' | 'smart' | 'summary'
   compressionThreshold: number
   autoCompressionEnabled: boolean
+  planSplitMaxRetries: number
+  conversationMaxRetries: number
+  retryIntervalMinutes: number
 }
 
 type SettingsValue = AppSettings[keyof AppSettings]
@@ -43,7 +46,10 @@ export const defaultSettings: AppSettings = {
   appUpdateLastCheckedAt: null,
   compressionStrategy: 'summary',
   compressionThreshold: 80,
-  autoCompressionEnabled: true
+  autoCompressionEnabled: true,
+  planSplitMaxRetries: 5,
+  conversationMaxRetries: 5,
+  retryIntervalMinutes: 5
 }
 
 export interface SettingsFieldCodec {
@@ -132,7 +138,10 @@ export const settingsFieldCodecs: SettingsFieldCodec[] = [
   nullableStringCodec('appUpdateLastCheckedAt'),
   enumCodec('compressionStrategy', ['simple', 'smart', 'summary'] as const, defaultSettings.compressionStrategy),
   integerCodec('compressionThreshold', defaultSettings.compressionThreshold),
-  booleanCodec('autoCompressionEnabled')
+  booleanCodec('autoCompressionEnabled'),
+  integerCodec('planSplitMaxRetries', defaultSettings.planSplitMaxRetries),
+  integerCodec('conversationMaxRetries', defaultSettings.conversationMaxRetries),
+  integerCodec('retryIntervalMinutes', defaultSettings.retryIntervalMinutes)
 ]
 
 const settingsFieldCodecMap = new Map(

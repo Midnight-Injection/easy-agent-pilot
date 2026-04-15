@@ -88,6 +88,170 @@ fn parse_json_string_array(value: Option<String>) -> Vec<String> {
     }
 }
 
+fn normalize_overview_text(raw: &str) -> String {
+    raw.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate_overview_text(raw: &str, max_chars: usize) -> String {
+    let normalized = normalize_overview_text(raw);
+    let total_chars = normalized.chars().count();
+    if total_chars <= max_chars {
+        return normalized;
+    }
+
+    let truncated = normalized.chars().take(max_chars).collect::<String>();
+    format!("{}...", truncated)
+}
+
+#[derive(Debug, Clone)]
+struct OverviewFileEntry {
+    path: String,
+    locations: Vec<String>,
+}
+
+fn format_task_overview_item(title: &str, summary: &str) -> String {
+    let compact_summary = truncate_overview_text(summary, 56);
+    if compact_summary.is_empty() {
+        title.to_string()
+    } else {
+        format!("{}（{}）", title, compact_summary)
+    }
+}
+
+fn split_file_reference(raw: &str) -> (String, Option<String>) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return (String::new(), None);
+    }
+
+    if let Some(index) = trimmed.rfind("#L") {
+        let path = trimmed[..index].trim().to_string();
+        let location = trimmed[index + 1..].trim().to_string();
+        if !path.is_empty() && !location.is_empty() {
+            return (path, Some(location));
+        }
+    }
+
+    if let Some(last_colon) = trimmed.rfind(':') {
+        let suffix = trimmed[last_colon + 1..].trim();
+        if !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit()) {
+            let before = &trimmed[..last_colon];
+            if let Some(second_colon) = before.rfind(':') {
+                let column = before[second_colon + 1..].trim();
+                let path = before[..second_colon].trim();
+                if !column.is_empty()
+                    && column.chars().all(|ch| ch.is_ascii_digit())
+                    && (path.contains('/') || path.contains('\\'))
+                {
+                    return (path.to_string(), Some(format!("{}:{}", column, suffix)));
+                }
+            }
+
+            if before.contains('/') || before.contains('\\') {
+                return (before.trim().to_string(), Some(suffix.to_string()));
+            }
+        }
+    }
+
+    (trimmed.to_string(), None)
+}
+
+fn format_location_label(raw: &str) -> String {
+    let trimmed = raw.trim().trim_start_matches('#');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    format!("行 {}", trimmed)
+}
+
+fn push_unique_file_entry(target: &mut Vec<OverviewFileEntry>, value: &str) {
+    let (path, location) = split_file_reference(value);
+    if path.is_empty() {
+        return;
+    }
+
+    if let Some(existing) = target.iter_mut().find(|entry| entry.path == path) {
+        if let Some(location) = location {
+            if !location.is_empty() && !existing.locations.iter().any(|item| item == &location) {
+                existing.locations.push(location);
+            }
+        }
+        return;
+    }
+
+    target.push(OverviewFileEntry {
+        path,
+        locations: location.into_iter().collect(),
+    });
+}
+
+fn summarize_location_list(items: &[String], limit: usize) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+
+    let visible = items
+        .iter()
+        .take(limit)
+        .map(|item| format_location_label(item))
+        .filter(|item| !item.is_empty())
+        .collect::<Vec<_>>();
+
+    if visible.is_empty() {
+        return String::new();
+    }
+
+    if items.len() > limit {
+        format!("{} 等 {} 处", visible.join("、"), items.len())
+    } else {
+        visible.join("、")
+    }
+}
+
+fn format_file_entry(item: &OverviewFileEntry) -> String {
+    if item.locations.is_empty() {
+        return item.path.clone();
+    }
+
+    format!(
+        "{}（{}）",
+        item.path,
+        summarize_location_list(&item.locations, 3)
+    )
+}
+
+fn summarize_file_entries(items: &[OverviewFileEntry], limit: usize) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+
+    let visible = items
+        .iter()
+        .take(limit)
+        .map(format_file_entry)
+        .collect::<Vec<_>>();
+
+    if items.len() > limit {
+        format!("{} 等 {} 项", visible.join("、"), items.len())
+    } else {
+        visible.join("、")
+    }
+}
+
+fn summarize_overview_list(items: &[String], limit: usize) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+
+    let visible = items.iter().take(limit).cloned().collect::<Vec<_>>();
+    if items.len() > limit {
+        format!("{} 等 {} 项", visible.join("、"), items.len())
+    } else {
+        visible.join("、")
+    }
+}
+
 fn build_plan_execution_overview(
     conn: &rusqlite::Connection,
     plan_id: &str,
@@ -104,51 +268,123 @@ fn build_plan_execution_overview(
         )
         .map_err(|e| e.to_string())?;
 
-    let lines = stmt
+    let records = stmt
         .query_map([plan_id], |row| {
             let title: String = row.get(0)?;
             let status: Option<String> = row.get(1)?;
             let summary: Option<String> = row.get(2)?;
             let files_raw: Option<String> = row.get(3)?;
             let fail_reason: Option<String> = row.get(4)?;
-            Ok((title, status, summary, parse_json_string_array(files_raw), fail_reason))
+            Ok((
+                title,
+                status,
+                summary,
+                parse_json_string_array(files_raw),
+                fail_reason,
+            ))
         })
         .map_err(|e| e.to_string())?
         .collect::<std::result::Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|(title, status, summary, files, fail_reason)| {
-            let summary_text = summary.unwrap_or_default().trim().to_string();
-            let files_text = if files.is_empty() {
-                String::new()
-            } else {
-                format!("；文件：{}", files.join("、"))
-            };
-            match status.as_deref() {
-                Some("success") => {
-                    if summary_text.is_empty() {
-                        format!("任务《{}》执行成功{}", title, files_text)
-                    } else {
-                        format!("任务《{}》执行成功：{}{}", title, summary_text, files_text)
-                    }
-                }
-                Some("failed") => {
-                    let reason = fail_reason
-                        .unwrap_or_else(|| summary_text.clone())
-                        .trim()
-                        .to_string();
-                    if reason.is_empty() {
-                        format!("任务《{}》执行失败", title)
-                    } else {
-                        format!("任务《{}》执行失败：{}", title, reason)
-                    }
-                }
-                _ => format!("任务《{}》已记录执行结果", title),
-            }
-        })
-        .collect::<Vec<_>>();
+        .map_err(|e| e.to_string())?;
 
-    Ok(lines.join("\n"))
+    if records.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut success_items: Vec<String> = Vec::new();
+    let mut failed_items: Vec<String> = Vec::new();
+    let mut added_files: Vec<OverviewFileEntry> = Vec::new();
+    let mut modified_files: Vec<OverviewFileEntry> = Vec::new();
+    let mut changed_files: Vec<OverviewFileEntry> = Vec::new();
+    let mut deleted_files: Vec<OverviewFileEntry> = Vec::new();
+
+    for (title, status, summary, files, fail_reason) in records.iter() {
+        let summary_text = summary.as_deref().unwrap_or_default();
+        match status.as_deref() {
+            Some("success") => success_items.push(format_task_overview_item(title, summary_text)),
+            Some("failed") => {
+                let reason =
+                    truncate_overview_text(fail_reason.as_deref().unwrap_or(summary_text), 48);
+                if reason.is_empty() {
+                    failed_items.push(title.clone());
+                } else {
+                    failed_items.push(format!("{}（{}）", title, reason));
+                }
+            }
+            _ => {}
+        }
+
+        for raw_file in files {
+            if let Some(path) = raw_file.strip_prefix("added:") {
+                push_unique_file_entry(&mut added_files, path.trim());
+                continue;
+            }
+            if let Some(path) = raw_file.strip_prefix("modified:") {
+                push_unique_file_entry(&mut modified_files, path.trim());
+                continue;
+            }
+            if let Some(path) = raw_file.strip_prefix("changed:") {
+                push_unique_file_entry(&mut changed_files, path.trim());
+                continue;
+            }
+            if let Some(path) = raw_file.strip_prefix("deleted:") {
+                push_unique_file_entry(&mut deleted_files, path.trim());
+                continue;
+            }
+            push_unique_file_entry(&mut changed_files, raw_file.trim());
+        }
+    }
+
+    let executed_count = success_items.len() + failed_items.len();
+    let mut segments = vec![format!(
+        "已执行 {} 个任务，其中 {} 个完成、{} 个失败",
+        executed_count,
+        success_items.len(),
+        failed_items.len()
+    )];
+
+    if !success_items.is_empty() {
+        segments.push(format!(
+            "完成任务摘要：{}",
+            summarize_overview_list(&success_items, 3)
+        ));
+    }
+
+    if !failed_items.is_empty() {
+        segments.push(format!(
+            "失败任务：{}",
+            summarize_overview_list(&failed_items, 2)
+        ));
+    }
+
+    let mut file_segments: Vec<String> = Vec::new();
+    if !added_files.is_empty() {
+        file_segments.push(format!("新增 {}", summarize_file_entries(&added_files, 3)));
+    }
+    if !modified_files.is_empty() {
+        file_segments.push(format!(
+            "修改 {}",
+            summarize_file_entries(&modified_files, 3)
+        ));
+    }
+    if !changed_files.is_empty() {
+        file_segments.push(format!(
+            "变更 {}",
+            summarize_file_entries(&changed_files, 3)
+        ));
+    }
+    if !deleted_files.is_empty() {
+        file_segments.push(format!(
+            "删除 {}",
+            summarize_file_entries(&deleted_files, 3)
+        ));
+    }
+
+    if !file_segments.is_empty() {
+        segments.push(format!("文件变更：{}", file_segments.join("；")));
+    }
+
+    Ok(format!("{}。", segments.join("；")))
 }
 
 /// 创建任务执行日志
@@ -420,7 +656,18 @@ pub fn list_plan_execution_progress(plan_id: String) -> Result<PlanExecutionProg
         .collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
-    let (execution_overview, execution_overview_updated_at): (
+    let computed_execution_overview = build_plan_execution_overview(&conn, &plan_id)?;
+    let computed_execution_overview = if computed_execution_overview.trim().is_empty() {
+        None
+    } else {
+        Some(computed_execution_overview)
+    };
+    let computed_execution_overview_updated_at = tasks
+        .iter()
+        .filter_map(|task| task.last_result_at.clone())
+        .max();
+
+    let (stored_execution_overview, stored_execution_overview_updated_at): (
         Option<String>,
         Option<String>,
     ) = conn
@@ -431,10 +678,27 @@ pub fn list_plan_execution_progress(plan_id: String) -> Result<PlanExecutionProg
         )
         .map_err(|e| e.to_string())?;
 
+    if stored_execution_overview != computed_execution_overview
+        || stored_execution_overview_updated_at != computed_execution_overview_updated_at
+    {
+        conn.execute(
+            "UPDATE plans
+             SET execution_overview = ?1,
+                 execution_overview_updated_at = ?2
+             WHERE id = ?3",
+            rusqlite::params![
+                &computed_execution_overview,
+                &computed_execution_overview_updated_at,
+                &plan_id
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     let mut progress = PlanExecutionProgress {
         plan_id,
-        execution_overview,
-        execution_overview_updated_at,
+        execution_overview: computed_execution_overview,
+        execution_overview_updated_at: computed_execution_overview_updated_at,
         total_tasks: tasks.len() as i32,
         pending_count: 0,
         in_progress_count: 0,

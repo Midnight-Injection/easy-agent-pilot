@@ -10,6 +10,8 @@ const props = defineProps<{
   isReadOnly: boolean
   isLoading: boolean
   canSync?: boolean
+  canRefresh?: boolean
+  canOpenFile?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -58,6 +60,8 @@ function handleSave(config: Partial<UnifiedMcpConfig>, originalId?: string) {
       :is-read-only="isReadOnly"
       :is-loading="isLoading"
       :can-sync="canSync"
+      :can-refresh="canRefresh"
+      :can-open-file="canOpenFile"
       @add="handleAdd"
       @refresh="emit('refresh')"
       @sync="emit('sync')"

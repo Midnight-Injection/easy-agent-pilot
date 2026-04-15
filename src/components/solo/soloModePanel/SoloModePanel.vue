@@ -14,6 +14,10 @@ const {
   createForm,
   createRun,
   currentExecutionState,
+  currentRunDurationLabel,
+  currentRunHistoryMetrics,
+  currentRunHistoryRows,
+  currentRunHistorySummary,
   currentRun,
   currentRunCoordinatorLabel,
   currentRunParticipants,
@@ -147,6 +151,43 @@ const {
               <strong>{{ failedCount }}</strong>
             </article>
           </div>
+        </div>
+
+        <div class="solo-history-grid">
+          <section class="solo-history-card">
+            <header>
+              <span>历史执行信息</span>
+              <small>{{ currentRunDurationLabel }}</small>
+            </header>
+            <div class="solo-history-card__grid">
+              <article
+                v-for="item in currentRunHistoryRows"
+                :key="item.label"
+                class="solo-history-card__item"
+              >
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="solo-history-card solo-history-card--highlight">
+            <header>
+              <span>本轮历史结论</span>
+              <small>{{ runStatusLabel(currentRun.status) }}</small>
+            </header>
+            <p class="solo-history-card__summary">
+              {{ currentRunHistorySummary }}
+            </p>
+            <div class="solo-history-card__metrics">
+              <span
+                v-for="item in currentRunHistoryMetrics"
+                :key="item.label"
+              >
+                {{ item.label }} {{ item.value }}
+              </span>
+            </div>
+          </section>
         </div>
 
         <div class="solo-brief-grid">

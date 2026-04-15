@@ -24,6 +24,9 @@ export interface ExecutionLogMetadata {
   userMessageCount?: number
   assistantMessageCount?: number
   historyMessageCount?: number
+  hasPlanOverview?: boolean
+  planOverview?: string
+  recentResultsCount?: number
 }
 
 export interface TaskTokenUsageWindow {

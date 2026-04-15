@@ -14,10 +14,7 @@ import ProviderDeleteDialog from '@/components/settings/provider-switch/Provider
 import ProviderProfilesSection from '@/components/settings/provider-switch/ProviderProfilesSection.vue'
 import ProviderSwitchTabs from '@/components/settings/provider-switch/ProviderSwitchTabs.vue'
 import { useNotificationStore } from '@/stores/notification'
-import {
-  useDefaultCliConfigEditor,
-  type DefaultCliConfigLocateTarget
-} from '@/composables/useDefaultCliConfigEditor'
+import { useDefaultCliConfigEditor } from '@/composables/useDefaultCliConfigEditor'
 import ProviderProfileForm from './ProviderProfileForm.vue'
 
 const { t } = useI18n()
@@ -166,8 +163,8 @@ function showError(message: string) {
   notificationStore.error(t('common.error'), message)
 }
 
-async function handleOpenConfigEditor(target?: DefaultCliConfigLocateTarget) {
-  await openConfigEditor(currentCliType.value, target)
+async function handleOpenConfigEditor() {
+  await openConfigEditor(currentCliType.value)
 }
 
 async function handleReloadConfigEditor() {

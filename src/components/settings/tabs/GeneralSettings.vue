@@ -270,6 +270,50 @@ const compressionThresholdOptions = computed(() => [
         </label>
       </div>
     </SettingsSectionCard>
+
+    <SettingsSectionCard :title="t('settings.general.retrySettings')">
+      <div class="settings-item">
+        <div class="settings-item__info">
+          <span class="settings-item__label">{{ t('settings.general.planSplitMaxRetries') }}</span>
+          <span class="settings-item__desc">{{ t('settings.general.planSplitMaxRetriesDesc') }}</span>
+        </div>
+        <input
+          v-model.number="settingsStore.settings.planSplitMaxRetries"
+          type="number"
+          class="settings-input settings-input--small"
+          min="0"
+          max="10"
+        >
+      </div>
+
+      <div class="settings-item">
+        <div class="settings-item__info">
+          <span class="settings-item__label">{{ t('settings.general.conversationMaxRetries') }}</span>
+          <span class="settings-item__desc">{{ t('settings.general.conversationMaxRetriesDesc') }}</span>
+        </div>
+        <input
+          v-model.number="settingsStore.settings.conversationMaxRetries"
+          type="number"
+          class="settings-input settings-input--small"
+          min="0"
+          max="10"
+        >
+      </div>
+
+      <div class="settings-item">
+        <div class="settings-item__info">
+          <span class="settings-item__label">{{ t('settings.general.retryIntervalMinutes') }}</span>
+          <span class="settings-item__desc">{{ t('settings.general.retryIntervalMinutesDesc') }}</span>
+        </div>
+        <input
+          v-model.number="settingsStore.settings.retryIntervalMinutes"
+          type="number"
+          class="settings-input settings-input--small"
+          min="1"
+          max="30"
+        >
+      </div>
+    </SettingsSectionCard>
   </div>
 </template>
 

@@ -21,7 +21,7 @@ interface Props {
   importedTimeLabel: string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
   toggleProject: [project: Project]
@@ -43,6 +43,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const projectItemRef = ref<HTMLElement | null>(null)
 const isCompactMenuOpen = ref(false)
+const fileTreeActivated = ref(props.currentTab === 'files')
 
 function handleStartEditSession(session: Session, event: Event) {
   emit('startEditSession', session, event)
@@ -127,6 +128,15 @@ watch(isCompactMenuOpen, (open) => {
   document.removeEventListener('mousedown', handleDocumentMouseDown)
   document.removeEventListener('keydown', handleDocumentKeydown)
 })
+
+watch(
+  () => props.currentTab,
+  (tab) => {
+    if (tab === 'files') {
+      fileTreeActivated.value = true
+    }
+  }
+)
 </script>
 
 <template>
@@ -294,7 +304,7 @@ watch(isCompactMenuOpen, (open) => {
     </div>
 
     <div
-      v-if="currentTab === 'sessions'"
+      v-show="currentTab === 'sessions'"
       class="tab-content"
     >
       <UnifiedPanelSessionList
@@ -313,7 +323,8 @@ watch(isCompactMenuOpen, (open) => {
     </div>
 
     <div
-      v-else-if="currentTab === 'files'"
+      v-if="fileTreeActivated"
+      v-show="currentTab === 'files'"
       class="tab-content tab-content--files"
     >
       <FileTree

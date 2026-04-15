@@ -6,6 +6,10 @@ import tsWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker'
 import 'monaco-editor/min/vs/editor/editor.main.css'
 
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api'
+import 'monaco-editor/esm/vs/editor/contrib/bracketMatching/browser/bracketMatching'
+import 'monaco-editor/esm/vs/editor/contrib/find/browser/findController'
+import 'monaco-editor/esm/vs/editor/contrib/folding/browser/folding'
+import 'monaco-editor/esm/vs/editor/contrib/stickyScroll/browser/stickyScrollContribution'
 import 'monaco-editor/esm/vs/language/typescript/monaco.contribution'
 import 'monaco-editor/esm/vs/language/json/monaco.contribution'
 import 'monaco-editor/esm/vs/language/css/monaco.contribution'
@@ -22,6 +26,7 @@ import 'monaco-editor/esm/vs/basic-languages/rust/rust.contribution'
 import 'monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution'
 import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution'
 import 'monaco-editor/esm/vs/basic-languages/shell/shell.contribution'
+import { registerVueLanguage } from './vueLanguage'
 
 let initialized = false
 
@@ -153,6 +158,8 @@ export function ensureMonacoSetup(): void {
       noEmit: true
     })
   }
+
+  registerVueLanguage()
 
   applyMonacoTheme(document.documentElement.getAttribute('data-theme') === 'dark')
 

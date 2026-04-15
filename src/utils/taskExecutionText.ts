@@ -31,8 +31,8 @@ function buildFormRequestExample(): string {
 
 function buildResultExample(): string {
   return getCurrentLocale() === 'en-US'
-    ? '{"result_summary":"Summarize the execution result in 1-3 sentences","generated_files":[],"modified_files":[],"deleted_files":[]}'
-    : '{"result_summary":"1-3句总结本次执行结果","generated_files":[],"modified_files":[],"deleted_files":[]}'
+    ? '{"result_summary":"Summarize the execution result in 1-3 sentences","generated_files":["src/new-file.ts"],"modified_files":["src/task.ts:42","src/view.vue#L88"],"deleted_files":[]}'
+    : '{"result_summary":"1-3句总结本次执行结果","generated_files":["src/new-file.ts"],"modified_files":["src/task.ts:42","src/view.vue#L88"],"deleted_files":[]}'
 }
 
 export function parseExecutionResult(content: string): { summary: string; files: string[] } {
@@ -142,6 +142,7 @@ export function buildExecutionPrompt(
   parts.push(buildResultExample())
   parts.push('```')
   parts.push('4. `result_summary` 用 1-3 句话交代结果、关键变更和失败原因。')
+  parts.push('5. `generated_files` / `modified_files` / `changed_files` / `deleted_files` 尽量填写真实文件路径；如果已知修改位置，请把行号一起带上，例如 `src/task.ts:42` 或 `src/view.vue#L88`。')
 
   return parts.join('\n')
 }
@@ -276,7 +277,7 @@ function buildPlanProgressContext(
   }
 
   if (planProgress.execution_overview?.trim()) {
-    lines.push('', getCurrentLocale() === 'en-US' ? 'Plan overview' : '计划概览')
+    lines.push('', t('taskBoard.planOverview.title'))
     lines.push(planProgress.execution_overview.trim())
   }
 

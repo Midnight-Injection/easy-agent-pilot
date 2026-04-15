@@ -425,17 +425,18 @@ fn fetch_first_cli_agent_id(conn: &Connection) -> Result<Option<String>, String>
     .map_err(|error| error.to_string())
 }
 
-fn validate_runtime_agent(conn: &Connection, runtime_agent_id: &Option<String>) -> Result<(), String> {
+fn validate_runtime_agent(
+    conn: &Connection,
+    runtime_agent_id: &Option<String>,
+) -> Result<(), String> {
     let Some(agent_id) = runtime_agent_id else {
         return Ok(());
     };
 
     let agent_type = conn
-        .query_row(
-            "SELECT type FROM agents WHERE id = ?1",
-            [agent_id],
-            |row| row.get::<_, String>(0),
-        )
+        .query_row("SELECT type FROM agents WHERE id = ?1", [agent_id], |row| {
+            row.get::<_, String>(0)
+        })
         .optional()
         .map_err(|error| error.to_string())?;
 
@@ -637,7 +638,10 @@ pub fn create_agent_expert(input: CreateAgentExpertInput) -> Result<AgentExpert,
 }
 
 #[tauri::command]
-pub fn update_agent_expert(id: String, input: UpdateAgentExpertInput) -> Result<AgentExpert, String> {
+pub fn update_agent_expert(
+    id: String,
+    input: UpdateAgentExpertInput,
+) -> Result<AgentExpert, String> {
     let conn = open_db_connection().map_err(|error| error.to_string())?;
     validate_runtime_agent(&conn, &input.runtime_agent_id)?;
 
@@ -654,17 +658,25 @@ pub fn update_agent_expert(id: String, input: UpdateAgentExpertInput) -> Result<
     updates.push("sort_order", input.sort_order.is_some());
 
     let sql = updates.finish("agent_experts", "id");
-    let mut stmt = conn.prepare_cached(&sql).map_err(|error| error.to_string())?;
+    let mut stmt = conn
+        .prepare_cached(&sql)
+        .map_err(|error| error.to_string())?;
     let mut param_count = 1;
     bind_value(&mut stmt, &mut param_count, &now_rfc3339()).map_err(|error| error.to_string())?;
     bind_optional(&mut stmt, &mut param_count, &input.name).map_err(|error| error.to_string())?;
-    bind_optional(&mut stmt, &mut param_count, &input.description).map_err(|error| error.to_string())?;
-    bind_optional(&mut stmt, &mut param_count, &input.prompt).map_err(|error| error.to_string())?;
-    bind_optional(&mut stmt, &mut param_count, &input.runtime_agent_id).map_err(|error| error.to_string())?;
-    bind_optional(&mut stmt, &mut param_count, &input.default_model_id).map_err(|error| error.to_string())?;
-    bind_optional(&mut stmt, &mut param_count, &input.category).map_err(|error| error.to_string())?;
-    bind_optional_mapped(&mut stmt, &mut param_count, &input.tags, |value| to_json_array(value))
+    bind_optional(&mut stmt, &mut param_count, &input.description)
         .map_err(|error| error.to_string())?;
+    bind_optional(&mut stmt, &mut param_count, &input.prompt).map_err(|error| error.to_string())?;
+    bind_optional(&mut stmt, &mut param_count, &input.runtime_agent_id)
+        .map_err(|error| error.to_string())?;
+    bind_optional(&mut stmt, &mut param_count, &input.default_model_id)
+        .map_err(|error| error.to_string())?;
+    bind_optional(&mut stmt, &mut param_count, &input.category)
+        .map_err(|error| error.to_string())?;
+    bind_optional_mapped(&mut stmt, &mut param_count, &input.tags, |value| {
+        to_json_array(value)
+    })
+    .map_err(|error| error.to_string())?;
     bind_optional_mapped(
         &mut stmt,
         &mut param_count,
@@ -672,9 +684,16 @@ pub fn update_agent_expert(id: String, input: UpdateAgentExpertInput) -> Result<
         |value| to_json_array(value),
     )
     .map_err(|error| error.to_string())?;
-    bind_optional_mapped(&mut stmt, &mut param_count, &input.is_enabled, |value| if *value { 1 } else { 0 })
+    bind_optional_mapped(&mut stmt, &mut param_count, &input.is_enabled, |value| {
+        if *value {
+            1
+        } else {
+            0
+        }
+    })
+    .map_err(|error| error.to_string())?;
+    bind_optional(&mut stmt, &mut param_count, &input.sort_order)
         .map_err(|error| error.to_string())?;
-    bind_optional(&mut stmt, &mut param_count, &input.sort_order).map_err(|error| error.to_string())?;
     bind_value(&mut stmt, &mut param_count, &id).map_err(|error| error.to_string())?;
     stmt.raw_execute().map_err(|error| error.to_string())?;
 

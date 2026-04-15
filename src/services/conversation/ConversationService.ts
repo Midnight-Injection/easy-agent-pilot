@@ -8,13 +8,16 @@ import { useTokenStore } from '@/stores/token'
 import { useMemoryStore } from '@/stores/memory'
 import { useAgentTeamsStore } from '@/stores/agentTeams'
 import { agentExecutor } from './AgentExecutor'
-import type { ConversationContext, StreamEvent } from './strategies/types'
+import type { ConversationContext, McpServerConfig, StreamEvent } from './strategies/types'
 import { compressionService } from '@/services/compression/CompressionService'
 import { buildConversationMessages } from './buildConversationMessages'
 import { loadMountedMemoryPrompt } from '@/services/memory/mountedMemoryPrompt'
 import type { FileEditTrace } from '@/types/fileTrace'
 import { FileTraceCollector } from './fileTraceCollector'
-import { buildMainConversationFormRequestPrompt } from './prompts'
+import {
+  buildImageAttachmentFallbackPrompt as buildImageAttachmentFallbackSystemPrompt,
+  buildMainConversationFormRequestPrompt
+} from './prompts'
 import { resolveUsageModelHint } from './usageModelHint'
 import {
   buildCliEnvironmentNotice,
@@ -331,10 +334,16 @@ export class ConversationService {
       const sessionScopedInjectedSystemMessages = options?.dedupeInjectedSystemMessagesBySession
         ? this.filterSessionScopedInjectedMessages(sessionId, rawInjectedSystemMessages)
         : rawInjectedSystemMessages
+      const imageAttachmentFallbackPrompt = this.buildImageAttachmentFallbackPrompt({
+        agent: executionAgent,
+        currentUserMessage: targetUserMessage,
+        mcpServers
+      })
 
       const injectedSystemMessages = [
         ...sessionScopedInjectedSystemMessages,
         ...(projectMemoryPrompt ? [projectMemoryPrompt] : []),
+        ...(imageAttachmentFallbackPrompt ? [imageAttachmentFallbackPrompt] : []),
         buildMainConversationFormRequestPrompt()
       ]
 
@@ -559,6 +568,33 @@ export class ConversationService {
 
   private async buildProjectMemoryPrompt(memoryLibraryIds: string[]): Promise<string | null> {
     return loadMountedMemoryPrompt(memoryLibraryIds)
+  }
+
+  /**
+   * 主会话里用户发送图片时，为具备 MCP 的 CLI 运行时补充视觉降级策略。
+   * 这里不绑定具体模型名，只约束“能直读则直读，不能直读则优先用可用 MCP”。
+   */
+  private buildImageAttachmentFallbackPrompt(input: {
+    agent: AgentConfig
+    currentUserMessage: Message
+    mcpServers: McpServerConfig[]
+  }): string | null {
+    const { agent, currentUserMessage, mcpServers } = input
+    if (agent.provider !== 'opencode' || agent.type !== 'cli') {
+      return null
+    }
+
+    const hasImageAttachments = (currentUserMessage.attachments ?? []).some(attachment =>
+      attachment.mimeType.startsWith('image/') && attachment.path.trim().length > 0
+    )
+    if (!hasImageAttachments) {
+      return null
+    }
+
+    return buildImageAttachmentFallbackSystemPrompt({
+      runtimeName: 'OpenCode CLI',
+      mcpServers
+    })
   }
 
   private resolveCliSessionProvider(agent: AgentConfig): string | undefined {

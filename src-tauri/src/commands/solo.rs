@@ -678,12 +678,7 @@ pub fn update_solo_step(id: String, input: UpdateSoloStepInput) -> Result<SoloSt
     );
     append_optional_i32_update(&mut updates, &mut params, &input.depth, "depth");
     append_optional_text_update(&mut updates, &mut params, &input.title, "title");
-    append_optional_text_update(
-        &mut updates,
-        &mut params,
-        &input.description,
-        "description",
-    );
+    append_optional_text_update(&mut updates, &mut params, &input.description, "description");
     append_optional_text_update(
         &mut updates,
         &mut params,
@@ -710,12 +705,7 @@ pub fn update_solo_step(id: String, input: UpdateSoloStepInput) -> Result<SoloSt
         &input.result_files_json,
         "result_files_json",
     );
-    append_optional_text_update(
-        &mut updates,
-        &mut params,
-        &input.fail_reason,
-        "fail_reason",
-    );
+    append_optional_text_update(&mut updates, &mut params, &input.fail_reason, "fail_reason");
     append_optional_text_update(&mut updates, &mut params, &input.started_at, "started_at");
     append_optional_text_update(
         &mut updates,
@@ -842,13 +832,18 @@ pub fn list_solo_logs(run_id: String, step_id: Option<String>) -> Result<Vec<Sol
 #[tauri::command]
 pub fn clear_solo_run_progress(run_id: String) -> Result<(), String> {
     let conn = open_db_connection_with_foreign_keys().map_err(|error| error.to_string())?;
-    let tx = conn.unchecked_transaction().map_err(|error| error.to_string())?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
     tx.execute("DELETE FROM solo_logs WHERE run_id = ?1", [&run_id])
         .map_err(|error| error.to_string())?;
     tx.execute("DELETE FROM solo_steps WHERE run_id = ?1", [&run_id])
         .map_err(|error| error.to_string())?;
-    tx.execute("DELETE FROM solo_runtime_bindings WHERE run_id = ?1", [&run_id])
-        .map_err(|error| error.to_string())?;
+    tx.execute(
+        "DELETE FROM solo_runtime_bindings WHERE run_id = ?1",
+        [&run_id],
+    )
+    .map_err(|error| error.to_string())?;
     tx.execute(
         r#"
         UPDATE solo_runs

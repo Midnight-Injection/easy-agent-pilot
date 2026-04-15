@@ -214,7 +214,10 @@ fn transform_plan(rust_plan: RustPlan) -> Plan {
     }
 }
 
-fn collect_plan_task_ids(conn: &rusqlite::Connection, plan_id: &str) -> Result<Vec<String>, String> {
+fn collect_plan_task_ids(
+    conn: &rusqlite::Connection,
+    plan_id: &str,
+) -> Result<Vec<String>, String> {
     let mut stmt = conn
         .prepare("SELECT id FROM tasks WHERE plan_id = ?1")
         .map_err(|e| e.to_string())?;
@@ -231,11 +234,12 @@ fn map_plan_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<RustPlan> {
     let plan_id: String = row.get(0)?;
-    let memory_library_ids = list_plan_memory_library_ids(conn, &plan_id)
-        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+    let memory_library_ids = list_plan_memory_library_ids(conn, &plan_id).map_err(|error| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
             error,
-        ))))?;
+        )))
+    })?;
 
     Ok(RustPlan {
         id: plan_id,
@@ -400,14 +404,20 @@ pub fn update_plan(id: String, input: UpdatePlanInput) -> Result<Plan, String> {
     let mut updates: Vec<String> = vec!["updated_at = ?1".to_string()];
     let mut param_index = 2;
 
-    let push_update = |updates: &mut Vec<String>, param_index: &mut usize, column: &str, present: bool| {
-        if present {
-            updates.push(format!("{column} = ?{}", *param_index));
-            *param_index += 1;
-        }
-    };
+    let push_update =
+        |updates: &mut Vec<String>, param_index: &mut usize, column: &str, present: bool| {
+            if present {
+                updates.push(format!("{column} = ?{}", *param_index));
+                *param_index += 1;
+            }
+        };
 
-    push_update(&mut updates, &mut param_index, "name", !matches!(input.name, UpdateField::Missing));
+    push_update(
+        &mut updates,
+        &mut param_index,
+        "name",
+        !matches!(input.name, UpdateField::Missing),
+    );
     push_update(
         &mut updates,
         &mut param_index,
@@ -605,8 +615,11 @@ pub fn delete_plan(id: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM task_split_sessions WHERE plan_id = ?1", [&id])
         .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM task_execution_results WHERE plan_id = ?1", [&id])
-        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM task_execution_results WHERE plan_id = ?1",
+        [&id],
+    )
+    .map_err(|e| e.to_string())?;
 
     if !task_ids.is_empty() {
         let placeholders = (0..task_ids.len())

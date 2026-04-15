@@ -36,6 +36,16 @@ pub struct CliConfigPaths {
     pub skills_dir: String,
 }
 
+/// 默认 CLI 配置编辑文件。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CliConfigEditorFile {
+    pub cli_type: String,
+    pub path: String,
+    pub content: String,
+    pub file_type: String,
+}
+
 /// MCP 服务器配置
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct McpServerConfig {
@@ -276,7 +286,9 @@ fn validate_sync_cli_paths(
     if !is_supported_sync_cli(&source_paths.cli_type)
         || !is_supported_sync_cli(&target_paths.cli_type)
     {
-        return Err("Only Claude CLI, Codex CLI and OpenCode CLI are supported for sync".to_string());
+        return Err(
+            "Only Claude CLI, Codex CLI and OpenCode CLI are supported for sync".to_string(),
+        );
     }
 
     if source_paths.cli_type == target_paths.cli_type {
@@ -582,6 +594,71 @@ pub(crate) fn get_cli_config_paths_internal(
     }
 }
 
+fn resolve_default_cli_config_path(cli_type: &str) -> Result<PathBuf, String> {
+    let home_dir = dirs::home_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
+
+    let path = match cli_type {
+        "claude" => home_dir.join(".claude.json"),
+        "codex" => home_dir.join(".codex").join("config.toml"),
+        "opencode" => home_dir
+            .join(".config")
+            .join("opencode")
+            .join("opencode.json"),
+        _ => return Err(format!("Unsupported cli type: {}", cli_type)),
+    };
+
+    Ok(path)
+}
+
+fn default_cli_config_content(cli_type: &str) -> &'static str {
+    match cli_type {
+        "codex" => "# Codex CLI configuration\n",
+        _ => "{\n}\n",
+    }
+}
+
+fn default_cli_config_file_type(cli_type: &str) -> &'static str {
+    match cli_type {
+        "codex" => "toml",
+        _ => "json",
+    }
+}
+
+fn ensure_default_cli_config_file(cli_type: &str) -> Result<PathBuf, String> {
+    let path = resolve_default_cli_config_path(cli_type)?;
+
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create config directory: {}", error))?;
+        }
+
+        fs::write(&path, default_cli_config_content(cli_type))
+            .map_err(|error| format!("Failed to create config file: {}", error))?;
+    }
+
+    Ok(path)
+}
+
+fn format_cli_config_content_internal(cli_type: &str, content: &str) -> Result<String, String> {
+    match cli_type {
+        "claude" | "opencode" => {
+            let value: JsonValue = serde_json::from_str(content)
+                .map_err(|error| format!("Failed to parse JSON: {}", error))?;
+            let formatted = serde_json::to_string_pretty(&value)
+                .map_err(|error| format!("Failed to serialize JSON: {}", error))?;
+            Ok(format!("{}\n", formatted))
+        }
+        "codex" => {
+            let value: toml::Value = toml::from_str(content)
+                .map_err(|error| format!("Failed to parse TOML: {}", error))?;
+            toml::to_string_pretty(&value)
+                .map_err(|error| format!("Failed to serialize TOML: {}", error))
+        }
+        _ => Err(format!("Unsupported cli type: {}", cli_type)),
+    }
+}
+
 /// 获取 CLI 配置路径信息 (Tauri 命令)
 #[tauri::command]
 pub fn get_cli_config_paths(
@@ -642,8 +719,7 @@ fn read_cli_config_internal(
 fn read_opencode_config(config_file: &Path) -> Result<ClaudeCliConfig, String> {
     let content = fs::read_to_string(config_file)
         .map_err(|e| format!("Failed to read opencode config: {}", e))?;
-    let json: serde_json::Value =
-        serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
+    let json: serde_json::Value = serde_json::from_str(&content).unwrap_or(serde_json::json!({}));
 
     let mut mcp_servers = HashMap::new();
 
@@ -652,15 +728,15 @@ fn read_opencode_config(config_file: &Path) -> Result<ClaudeCliConfig, String> {
             let server_type = val.get("type").and_then(|t| t.as_str()).unwrap_or("local");
 
             let (command, args, env, url, headers, disabled) = if server_type == "remote" {
-                let url = val.get("url").and_then(|u| u.as_str()).map(|s| s.to_string());
-                let headers = val
-                    .get("headers")
-                    .and_then(|h| h.as_object())
-                    .map(|obj| {
-                        obj.iter()
-                            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-                            .collect()
-                    });
+                let url = val
+                    .get("url")
+                    .and_then(|u| u.as_str())
+                    .map(|s| s.to_string());
+                let headers = val.get("headers").and_then(|h| h.as_object()).map(|obj| {
+                    obj.iter()
+                        .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect()
+                });
                 (None, None, None, url, headers, false)
             } else {
                 let cmd_array = val.get("command").and_then(|c| c.as_array());
@@ -719,10 +795,7 @@ fn read_opencode_config(config_file: &Path) -> Result<ClaudeCliConfig, String> {
     })
 }
 
-fn write_opencode_config(
-    config_file: &Path,
-    config: ClaudeCliConfig,
-) -> Result<(), String> {
+fn write_opencode_config(config_file: &Path, config: ClaudeCliConfig) -> Result<(), String> {
     let mut json = if config_file.exists() {
         let content = fs::read_to_string(config_file)
             .map_err(|e| format!("Failed to read opencode config: {}", e))?;
@@ -758,10 +831,7 @@ fn write_opencode_config(
                     entry.insert("environment".to_string(), serde_json::json!(env));
                 }
             }
-            entry.insert(
-                "enabled".to_string(),
-                serde_json::json!(!server.disabled),
-            );
+            entry.insert("enabled".to_string(), serde_json::json!(!server.disabled));
             mcp_obj.insert(name.clone(), serde_json::Value::Object(entry));
         }
         json.as_object_mut()
@@ -926,6 +996,56 @@ pub async fn open_config_file(app: tauri::AppHandle, config_path: String) -> Res
     Ok(())
 }
 
+/// 读取默认 CLI 主配置文件。
+/// 用途：为内置配置编辑弹框加载 Claude/Codex/OpenCode 默认主配置文件内容。
+/// 关键副作用：当目标文件不存在时会自动创建空模板文件。
+#[tauri::command]
+pub fn read_default_cli_config_file(cli_type: String) -> Result<CliConfigEditorFile, String> {
+    let normalized_cli_type = cli_type.trim().to_lowercase();
+    let path = ensure_default_cli_config_file(&normalized_cli_type)?;
+    let content = fs::read_to_string(&path)
+        .map_err(|error| format!("Failed to read config file: {}", error))?;
+
+    Ok(CliConfigEditorFile {
+        cli_type: normalized_cli_type.clone(),
+        path: path.to_string_lossy().to_string(),
+        content,
+        file_type: default_cli_config_file_type(&normalized_cli_type).to_string(),
+    })
+}
+
+/// 写入默认 CLI 主配置文件。
+/// 用途：保存内置配置编辑弹框中的修改结果。
+/// 关键副作用：会直接覆盖默认主配置文件内容。
+#[tauri::command]
+pub fn write_default_cli_config_file(
+    cli_type: String,
+    content: String,
+) -> Result<CliConfigEditorFile, String> {
+    let normalized_cli_type = cli_type.trim().to_lowercase();
+    let path = ensure_default_cli_config_file(&normalized_cli_type)?;
+
+    fs::write(&path, &content)
+        .map_err(|error| format!("Failed to write config file: {}", error))?;
+
+    Ok(CliConfigEditorFile {
+        cli_type: normalized_cli_type.clone(),
+        path: path.to_string_lossy().to_string(),
+        content,
+        file_type: default_cli_config_file_type(&normalized_cli_type).to_string(),
+    })
+}
+
+/// 格式化默认 CLI 主配置文件内容。
+/// 用途：在保存前对 JSON/TOML 内容做标准化排版，减少手工维护成本。
+#[tauri::command]
+pub fn format_default_cli_config_content(
+    cli_type: String,
+    content: String,
+) -> Result<String, String> {
+    format_cli_config_content_internal(&cli_type.trim().to_lowercase(), &content)
+}
+
 /// 获取 CLI 能力信息 (Tauri 命令)
 #[tauri::command]
 pub fn get_cli_capabilities(
@@ -944,7 +1064,7 @@ pub fn get_cli_capabilities(
         "codex" => CliCapabilities {
             supports_mcp: true,
             supports_skills: true,
-            supports_plugins: false,
+            supports_plugins: true,
             mcp_add_command: Some("codex mcp add".to_string()),
         },
         "opencode" => CliCapabilities {

@@ -8,10 +8,14 @@ defineProps<{
   configs: UnifiedPluginConfig[]
   isReadOnly: boolean
   isLoading: boolean
+  canRefresh?: boolean
+  canOpenFile?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'add'): void
+  (e: 'refresh'): void
+  (e: 'open-file'): void
   (e: 'detail', config: UnifiedPluginConfig): void
   (e: 'edit', config: UnifiedPluginConfig): void
   (e: 'delete', config: UnifiedPluginConfig): void
@@ -27,16 +31,36 @@ const { t } = useI18n()
         {{ t('settings.sdkConfig.plugins.title') }}
       </h3>
       <div
-        v-if="!isReadOnly"
         class="plugins-config-tab__actions"
       >
         <EaButton
+          v-if="!isReadOnly"
           size="small"
           @click="emit('add')"
         >
           <EaIcon name="lucide:plus" />
           {{ t('settings.sdkConfig.plugins.add') }}
         </EaButton>
+        <template v-if="canRefresh || canOpenFile">
+          <EaButton
+            v-if="canRefresh"
+            size="small"
+            type="secondary"
+            @click="emit('refresh')"
+          >
+            <EaIcon name="lucide:refresh-cw" />
+            {{ t('common.refresh') }}
+          </EaButton>
+          <EaButton
+            v-if="canOpenFile"
+            size="small"
+            type="secondary"
+            @click="emit('open-file')"
+          >
+            <EaIcon name="lucide:external-link" />
+            {{ t('settings.agentConfig.cliConfigCardTitle') }}
+          </EaButton>
+        </template>
       </div>
     </div>
 

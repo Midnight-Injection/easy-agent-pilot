@@ -144,3 +144,28 @@ export interface RecordUnattendedEventInput {
   payloadJson?: string
   correlationId?: string
 }
+
+export interface ProcessUnattendedStructuredIntentInput {
+  threadId: string
+  rawText: string
+  intentType: string
+  targetName?: string
+  projectHint?: string
+  planName?: string
+  taskHint?: string
+}
+
+export interface ProcessUnattendedStructuredIntentAction {
+  actionType: string
+  planId?: string
+  taskId?: string
+}
+
+export interface ProcessUnattendedStructuredIntentResult {
+  handled: boolean
+  reply: string
+  activeProjectId?: string
+  activePlanId?: string
+  activeTaskId?: string
+  followUpAction?: ProcessUnattendedStructuredIntentAction
+}

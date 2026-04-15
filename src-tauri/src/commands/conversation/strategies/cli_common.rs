@@ -312,7 +312,7 @@ pub fn render_cli_message(message: &MessageInput) -> String {
                 .collect();
             if !image_paths.is_empty() {
                 sections.push(format!(
-                    "Attached images (local file paths, please read them):\n{}",
+                    "Attached image file paths:\n{}",
                     image_paths
                         .iter()
                         .map(|p| format!("- {}", p))

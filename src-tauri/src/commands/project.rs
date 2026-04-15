@@ -478,7 +478,7 @@ pub fn clear_project_runtime_data(
         .map_err(|e| e.to_string())?;
     let cleared_tasks: usize = conn
         .query_row(
-            "SELECT COUNT(*) FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 OR plan_id IN (SELECT id FROM plans WHERE project_id = ?1)",
             [&project_id],
             |row| row.get(0),
         )
@@ -507,7 +507,7 @@ pub fn clear_project_runtime_data(
     let cleared_execution_logs: usize = conn
         .query_row(
             "SELECT COUNT(*) FROM task_execution_logs WHERE task_id IN (
-                SELECT id FROM tasks WHERE plan_id IN (SELECT id FROM plans WHERE project_id = ?1)
+                SELECT id FROM tasks WHERE project_id = ?1 OR plan_id IN (SELECT id FROM plans WHERE project_id = ?1)
             )",
             [&project_id],
             |row| row.get(0),
@@ -524,6 +524,8 @@ pub fn clear_project_runtime_data(
     .map_err(|e| e.to_string())?;
 
     tx.execute("DELETE FROM sessions WHERE project_id = ?1", [&project_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM tasks WHERE project_id = ?1", [&project_id])
         .map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM plans WHERE project_id = ?1", [&project_id])
         .map_err(|e| e.to_string())?;

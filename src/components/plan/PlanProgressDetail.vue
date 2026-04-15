@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useConfirmDialog } from '@/composables'
 import { useAgentStore } from '@/stores/agent'
 import { useAgentTeamsStore } from '@/stores/agentTeams'
@@ -26,6 +27,7 @@ const planStore = usePlanStore()
 const agentStore = useAgentStore()
 const agentTeamsStore = useAgentTeamsStore()
 const confirmDialog = useConfirmDialog()
+const { t, locale } = useI18n()
 
 const isLoading = ref(false)
 const isClearing = ref(false)
@@ -48,31 +50,20 @@ const summaryStats = computed(() => ({
 }))
 
 const statusCards = computed(() => [
-  { key: 'total', label: '总任务', value: summaryStats.value.total, tone: 'neutral' },
-  { key: 'pending', label: '待办', value: summaryStats.value.pending, tone: 'pending' },
-  { key: 'in_progress', label: '进行中', value: summaryStats.value.inProgress, tone: 'progress' },
-  { key: 'completed', label: '已完成', value: summaryStats.value.completed, tone: 'success' },
-  { key: 'blocked', label: '阻塞', value: summaryStats.value.blocked, tone: 'warning' },
-  { key: 'failed', label: '失败', value: summaryStats.value.failed, tone: 'danger' }
+  { key: 'total', label: t('taskBoard.planOverview.totalTasks'), value: summaryStats.value.total, tone: 'neutral' },
+  { key: 'pending', label: t('taskBoard.planOverview.pendingTasks'), value: summaryStats.value.pending, tone: 'pending' },
+  { key: 'in_progress', label: t('taskBoard.planOverview.inProgressTasks'), value: summaryStats.value.inProgress, tone: 'progress' },
+  { key: 'completed', label: t('taskBoard.columns.completed'), value: summaryStats.value.completed, tone: 'success' },
+  { key: 'blocked', label: t('taskBoard.planOverview.blockedTasks'), value: summaryStats.value.blocked, tone: 'warning' },
+  { key: 'failed', label: t('taskBoard.planOverview.statusFailed'), value: summaryStats.value.failed, tone: 'danger' }
 ])
-
-const fileSections = computed(() => {
-  const groups = snapshot.value.fileGroups
-
-  return [
-    { key: 'generated', label: '新增文件', files: groups.generatedFiles },
-    { key: 'modified', label: '修改文件', files: groups.modifiedFiles },
-    { key: 'changed', label: '变更文件', files: groups.changedFiles },
-    { key: 'deleted', label: '删除文件', files: groups.deletedFiles }
-  ].filter(section => section.files.length > 0)
-})
 
 const failureTasks = computed(() =>
   snapshot.value.failedTasks
     .map(task => ({
       id: task.task_id,
       title: task.title,
-      reason: task.last_fail_reason || task.last_result_summary || '失败原因未记录'
+      reason: task.last_fail_reason || task.last_result_summary || t('taskBoard.planOverview.noFailureReason')
     }))
 )
 
@@ -90,43 +81,45 @@ const overviewUpdatedAt = computed(() =>
 
 function formatPlanStatus(status?: string): string {
   switch (status) {
-    case 'draft': return '草稿'
-    case 'planning': return '拆分中'
-    case 'ready': return '已拆分'
-    case 'executing': return '执行中'
-    case 'completed': return '已完成'
-    case 'paused': return '已暂停'
-    default: return status || '未知'
+    case 'draft': return t('taskBoard.planOverview.planStatuses.draft')
+    case 'planning': return t('taskBoard.planOverview.planStatuses.planning')
+    case 'ready': return t('taskBoard.planOverview.planStatuses.ready')
+    case 'executing': return t('taskBoard.planOverview.planStatuses.executing')
+    case 'completed': return t('taskBoard.planOverview.planStatuses.completed')
+    case 'paused': return t('taskBoard.planOverview.planStatuses.paused')
+    default: return status || t('taskBoard.planOverview.planStatuses.unknown')
   }
 }
 
 function formatTaskStatus(status: string): string {
   switch (status) {
-    case 'pending': return '待办'
-    case 'in_progress': return '进行中'
-    case 'completed': return '已完成'
-    case 'blocked': return '阻塞'
-    case 'failed': return '失败'
-    case 'cancelled': return '已取消'
+    case 'pending': return t('taskDetail.statuses.pending')
+    case 'in_progress': return t('taskDetail.statuses.in_progress')
+    case 'completed': return t('taskDetail.statuses.completed')
+    case 'blocked': return t('taskDetail.statuses.blocked')
+    case 'failed': return t('taskDetail.statuses.failed')
+    case 'cancelled': return t('taskDetail.statuses.cancelled')
     default: return status
   }
 }
 
 function formatRelativeTime(date: string | null | undefined): string {
-  if (!date) return '暂无'
+  if (!date) return t('common.none')
 
   const target = new Date(date)
-  if (Number.isNaN(target.getTime())) return '暂无'
+  if (Number.isNaN(target.getTime())) return t('common.none')
 
   const diff = Date.now() - target.getTime()
   const minutes = Math.floor(diff / 60000)
   const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
 
-  if (minutes < 60) return `${minutes} 分钟前`
-  if (hours < 24) return `${hours} 小时前`
-  if (hours < 24) return `${hours} 小时前`
+  if (minutes <= 0) return t('common.justNow')
+  if (minutes < 60) return t('common.minutesAgo', { n: minutes })
+  if (hours < 24) return t('common.hoursAgo', { n: hours })
+  if (days < 7) return t('common.daysAgo', { n: days })
 
-  return target.toLocaleString('zh-CN', {
+  return target.toLocaleString(locale.value === 'zh-CN' ? 'zh-CN' : 'en-US', {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -134,7 +127,7 @@ function formatRelativeTime(date: string | null | undefined): string {
   })
 }
 
-function compactText(content: string | null | undefined, fallback: string = '暂无摘要'): string {
+function compactText(content: string | null | undefined, fallback: string = ''): string {
   const normalized = (content || '').replace(/\s+/g, ' ').trim()
   if (!normalized) return fallback
   return normalized.length > 96 ? `${normalized.slice(0, 96)}...` : normalized
@@ -149,7 +142,7 @@ function resolveAgentLabel(task: PlanExecutionTaskProgress): string {
     return selection.modelId ? `${expert.name} / ${selection.modelId}` : expert.name
   }
   if (!selection.agentId) {
-    return '未指定'
+    return t('taskDetail.unspecified')
   }
 
   const agent = agentStore.agents.find(item => item.id === selection.agentId)
@@ -164,7 +157,12 @@ const taskRows = computed(() =>
     statusLabel: formatTaskStatus(task.status),
     statusClass: `status-${task.status}`,
     agentLabel: resolveAgentLabel(task),
-    summary: compactText(task.last_result_summary, task.status === 'completed' ? '已完成，暂无摘要' : '暂无结果'),
+    summary: compactText(
+      task.last_result_summary,
+      task.status === 'completed'
+        ? t('taskBoard.planOverview.noSummaryCompleted')
+        : t('taskBoard.planOverview.noResult')
+    ),
     failReason: compactText(task.last_fail_reason, ''),
     updatedAt: formatRelativeTime(task.updated_at),
     isActive: snapshot.value.activeTask?.task_id === task.task_id
@@ -183,8 +181,8 @@ async function loadProgress() {
 
 async function handleClearLogs() {
   const confirmed = await confirmDialog.danger(
-    '确定要清除该计划的执行摘要与任务日志吗？此操作不可恢复。',
-    '清除计划进度'
+    t('taskBoard.planOverview.clearProgressConfirm'),
+    t('taskBoard.planOverview.clearProgressTitle')
   )
 
   if (!confirmed) return
@@ -235,10 +233,10 @@ onMounted(async () => {
     <div class="detail-header">
       <div>
         <h4 class="detail-title">
-          计划总览
+          {{ t('taskBoard.planOverview.detailTitle') }}
         </h4>
         <p class="detail-subtitle">
-          {{ plan?.name || '未命名计划' }}
+          {{ plan?.name || t('taskBoard.planOverview.unnamedPlan') }}
         </p>
       </div>
       <div class="header-actions">
@@ -247,14 +245,13 @@ onMounted(async () => {
           :disabled="isLoading"
           @click="loadProgress"
         >
-          刷新
+          {{ t('common.refresh') }}
         </button>
         <button
-          清除进度
           :disabled="isLoading || isClearing || summaryStats.total === 0"
           @click="handleClearLogs"
         >
-          清除进度
+          {{ t('taskBoard.planOverview.clearProgress') }}
         </button>
       </div>
     </div>
@@ -264,9 +261,15 @@ onMounted(async () => {
         <div class="summary-meta">
           <span class="meta-chip">{{ formatPlanStatus(plan?.status) }}</span>
           <span class="meta-chip meta-chip--muted">
-            {{ plan?.executionStatus === 'running' ? '执行中' : plan?.executionStatus === 'completed' ? '执行完成' : '未执行' }}
+            {{
+              plan?.executionStatus === 'running'
+                ? t('taskBoard.planOverview.executionStatuses.running')
+                : plan?.executionStatus === 'completed'
+                  ? t('taskBoard.planOverview.executionStatuses.completed')
+                  : t('taskBoard.planOverview.executionStatuses.idle')
+            }}
           </span>
-          <span class="meta-chip meta-chip--muted">更新于 {{ formatRelativeTime(plan?.updatedAt) }}</span>
+          <span class="meta-chip meta-chip--muted">{{ t('taskBoard.planOverview.updatedAt', { time: formatRelativeTime(plan?.updatedAt) }) }}</span>
         </div>
 
         <div
@@ -274,13 +277,13 @@ onMounted(async () => {
           class="active-task-card"
         >
           <div class="active-task-card__label">
-            当前执行位置
+            {{ t('taskBoard.planOverview.currentPosition') }}
           </div>
           <div class="active-task-card__title">
-            第 {{ snapshot.currentTaskIndex }}/{{ snapshot.totalTasks }} 个任务: {{ snapshot.activeTask.title }}
+            {{ t('taskBoard.planOverview.currentTaskProgress', { current: snapshot.currentTaskIndex, total: snapshot.totalTasks, title: snapshot.activeTask.title }) }}
           </div>
           <div class="active-task-card__hint">
-            当前状态 {{ formatTaskStatus(snapshot.activeTask.status) }}
+            {{ t('taskBoard.planOverview.currentStatus', { status: formatTaskStatus(snapshot.activeTask.status) }) }}
           </div>
         </div>
 
@@ -289,13 +292,13 @@ onMounted(async () => {
           class="active-task-card active-task-card--empty"
         >
           <div class="active-task-card__label">
-            当前执行位置
+            {{ t('taskBoard.planOverview.currentPosition') }}
           </div>
           <div class="active-task-card__title">
-            暂无正在执行的任务
+            {{ t('taskBoard.planOverview.noActiveTask') }}
           </div>
           <div class="active-task-card__hint">
-            点击任务卡片可查看单任务详情与执行日志
+            {{ t('taskBoard.planOverview.taskCardHint') }}
           </div>
         </div>
 
@@ -312,22 +315,22 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="detail-section">
-        <div class="section-header">
-          <h5>执行概述</h5>
-          <span>{{ overviewUpdatedAt ? `更新于 ${formatRelativeTime(overviewUpdatedAt)}` : '暂无' }}</span>
+      <div class="overview-panel">
+        <div class="overview-panel__head">
+          <h5>{{ t('taskBoard.planOverview.title') }}</h5>
+          <span>{{ overviewUpdatedAt ? t('taskBoard.planOverview.updatedAt', { time: formatRelativeTime(overviewUpdatedAt) }) : t('common.none') }}</span>
         </div>
         <div
           v-if="overviewContent"
-          class="overview-card"
+          class="overview-panel__content"
         >
-          <pre class="overview-card__content">{{ overviewContent }}</pre>
+          {{ overviewContent }}
         </div>
         <div
           v-else
-          class="placeholder placeholder--compact"
+          class="overview-panel__empty"
         >
-          任务开始执行后，这里会持续汇总每个任务的结果概述。
+          {{ t('taskBoard.planOverview.emptyOverview') }}
         </div>
       </div>
 
@@ -335,7 +338,7 @@ onMounted(async () => {
         v-if="isLoading"
         class="placeholder"
       >
-        正在加载计划进度...
+        {{ t('taskBoard.planOverview.loadingProgress') }}
       </div>
 
       <template v-else>
@@ -343,7 +346,7 @@ onMounted(async () => {
           v-if="taskRows.length === 0"
           class="placeholder"
         >
-          当前计划还没有任务
+          {{ t('taskBoard.planOverview.emptyTasks') }}
         </div>
 
         <div
@@ -351,8 +354,8 @@ onMounted(async () => {
           class="detail-section"
         >
           <div class="section-header">
-            <h5>任务进度</h5>
-            <span>{{ taskRows.length }} 项</span>
+            <h5>{{ t('taskBoard.planOverview.progressTitle') }}</h5>
+            <span>{{ t('taskBoard.planOverview.itemCount', { count: taskRows.length }) }}</span>
           </div>
 
           <div class="task-list">
@@ -378,7 +381,7 @@ onMounted(async () => {
                   v-if="task.failReason"
                   class="task-row__failure"
                 >
-                  失败原因: {{ task.failReason }}
+                  {{ t('taskBoard.planOverview.failureReason', { reason: task.failReason }) }}
                 </div>
               </div>
               <div class="task-row__meta">
@@ -397,8 +400,8 @@ onMounted(async () => {
           class="detail-section"
         >
           <div class="section-header">
-            <h5>失败任务摘要</h5>
-            <span>{{ failureTasks.length }} 项</span>
+            <h5>{{ t('taskBoard.planOverview.failureTitle') }}</h5>
+            <span>{{ t('taskBoard.planOverview.itemCount', { count: failureTasks.length }) }}</span>
           </div>
           <div class="failure-list">
             <div
@@ -411,37 +414,6 @@ onMounted(async () => {
               </div>
               <div class="failure-item__reason">
                 {{ compactText(item.reason) }}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div
-          v-if="fileSections.length > 0"
-          class="detail-section"
-        >
-          <div class="section-header">
-            <h5>文件变更</h5>
-            <span>{{ fileSections.reduce((count, section) => count + section.files.length, 0) }} 项</span>
-          </div>
-
-          <div class="file-sections">
-            <div
-              v-for="section in fileSections"
-              :key="section.key"
-              class="file-group"
-            >
-              <div class="file-group__label">
-                {{ section.label }}
-              </div>
-              <div class="file-group__files">
-                <span
-                  v-for="file in section.files"
-                  :key="file"
-                  class="file-chip"
-                >
-                  {{ file }}
-                </span>
               </div>
             </div>
           </div>
@@ -530,7 +502,8 @@ onMounted(async () => {
 }
 
 .summary-panel,
-.detail-section {
+.detail-section,
+.overview-panel {
   border: 1px solid color-mix(in srgb, var(--color-border, #e2e8f0) 68%, transparent);
   border-radius: 1rem;
   background: color-mix(in srgb, var(--color-surface, #fff) 94%, #ffffff);
@@ -647,28 +620,52 @@ onMounted(async () => {
 }
 
 .task-list,
-.failure-list,
-.file-sections {
+.failure-list {
   display: flex;
   flex-direction: column;
   gap: 0.7rem;
 }
 
-.overview-card {
-  padding: 0.9rem 0.95rem;
-  border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--color-bg-secondary, #f8fafc) 86%, var(--color-surface, #fff));
-  border: 1px solid color-mix(in srgb, var(--color-border, #e2e8f0) 72%, transparent);
+.overview-panel {
+  padding: 1rem;
 }
 
-.overview-card__content {
+.overview-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.overview-panel__head h5 {
   margin: 0;
-  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #0f172a);
+}
+
+.overview-panel__head span {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary, #64748b);
+}
+
+.overview-panel__content {
+  margin: 0;
   font-size: 0.83rem;
   line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--color-text-primary, #0f172a);
+}
+
+.overview-panel__empty {
+  min-height: 84px;
+  display: flex;
+  align-items: center;
+  color: var(--color-text-secondary, #64748b);
+  font-size: 0.8rem;
+  line-height: 1.6;
 }
 
 .task-row {
@@ -763,38 +760,16 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.failure-item,
-.file-group {
+.failure-item {
   border-radius: 0.85rem;
   padding: 0.75rem 0.85rem;
   background: color-mix(in srgb, var(--color-bg-secondary, #f8fafc) 84%, var(--color-surface, #fff));
 }
 
-.failure-item__title,
-.file-group__label {
+.failure-item__title {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--color-text-primary, #0f172a);
-}
-
-.file-group__files {
-  margin-top: 0.5rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-}
-
-.file-chip {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  padding: 0.28rem 0.58rem;
-  border-radius: 999px;
-  background: rgba(59, 130, 246, 0.1);
-  color: var(--color-primary, #2563eb);
-  font-size: 0.72rem;
-  line-height: 1.4;
-  word-break: break-all;
 }
 
 .placeholder {
@@ -826,18 +801,18 @@ onMounted(async () => {
 [data-theme='dark'] .detail-header,
 [data-theme='dark'] .summary-panel,
 [data-theme='dark'] .detail-section,
+[data-theme='dark'] .overview-panel,
 [data-theme='dark'] .task-row,
 [data-theme='dark'] .failure-item,
-[data-theme='dark'] .file-group,
 [data-theme='dark'] .placeholder {
   border-color: rgba(148, 163, 184, 0.16);
 }
 
 [data-theme='dark'] .summary-panel,
 [data-theme='dark'] .detail-section,
+[data-theme='dark'] .overview-panel,
 [data-theme='dark'] .task-row,
-[data-theme='dark'] .failure-item,
-[data-theme='dark'] .file-group {
+[data-theme='dark'] .failure-item {
   background: rgba(15, 23, 42, 0.72);
   box-shadow: 0 18px 36px rgba(2, 6, 23, 0.28);
 }
@@ -845,15 +820,18 @@ onMounted(async () => {
 [data-theme='dark'] .detail-title,
 [data-theme='dark'] .active-task-card__title,
 [data-theme='dark'] .section-header h5,
+[data-theme='dark'] .overview-panel__head h5,
 [data-theme='dark'] .task-row__title,
-[data-theme='dark'] .failure-item__title,
-[data-theme='dark'] .file-group__label {
+[data-theme='dark'] .failure-item__title {
   color: #f8fafc;
 }
 
 [data-theme='dark'] .detail-subtitle,
 [data-theme='dark'] .meta-chip--muted,
 [data-theme='dark'] .active-task-card__hint,
+[data-theme='dark'] .overview-panel__head span,
+[data-theme='dark'] .overview-panel__content,
+[data-theme='dark'] .overview-panel__empty,
 [data-theme='dark'] .task-row__summary,
 [data-theme='dark'] .task-row__meta,
 [data-theme='dark'] .section-header span,
@@ -877,11 +855,6 @@ onMounted(async () => {
   background: rgba(30, 41, 59, 0.58);
 }
 
-[data-theme='dark'] .file-chip {
-  background: rgba(59, 130, 246, 0.18);
-  color: #bfdbfe;
-}
-
 @container plan-progress-detail (max-width: 430px) {
   .detail-header {
     flex-direction: column;
@@ -899,6 +872,11 @@ onMounted(async () => {
 
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .overview-panel__head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .task-row__meta {

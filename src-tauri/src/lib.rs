@@ -285,6 +285,9 @@ pub fn run() {
             commands::scan::delete_cli_sessions,
             // CLI Config commands
             commands::cli_config::get_cli_config_paths,
+            commands::cli_config::read_default_cli_config_file,
+            commands::cli_config::write_default_cli_config_file,
+            commands::cli_config::format_default_cli_config_content,
             commands::cli_config::read_cli_config,
             commands::cli_config::write_cli_config,
             commands::cli_config::update_cli_mcp_config,
@@ -345,6 +348,7 @@ pub fn run() {
             commands::plan_split::clear_plan_split_session,
             // Task commands
             commands::task::list_tasks,
+            commands::task::list_project_unplanned_tasks,
             commands::task::get_task,
             commands::task::get_task_by_session_id,
             commands::task::get_task_runtime_binding,
@@ -403,6 +407,7 @@ pub fn run() {
             commands::unattended::list_unattended_events,
             commands::unattended::record_unattended_event,
             commands::unattended::send_unattended_text,
+            commands::unattended::process_unattended_structured_intent,
             // Memory commands
             commands::memory::list_memory_libraries,
             commands::memory::get_memory_library,

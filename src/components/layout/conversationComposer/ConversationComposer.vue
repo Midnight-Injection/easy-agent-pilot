@@ -307,13 +307,6 @@ defineExpose({
         :default-collapsed="true"
       />
 
-      <ConversationComposerAttachments
-        v-if="isMainPanel"
-        :images="pendingImages"
-        :main="true"
-        :remove-image="removeImage"
-      />
-
       <div
         v-if="queuedMessages.length > 0"
         class="conversation-composer__queue"
@@ -430,6 +423,13 @@ defineExpose({
           </div>
         </div>
       </div>
+
+      <ConversationComposerAttachments
+        v-if="isMainPanel"
+        :images="pendingImages"
+        :main="true"
+        :remove-image="removeImage"
+      />
 
       <div
         v-if="isMainPanel"
@@ -548,13 +548,6 @@ defineExpose({
         @change="handleImageFileChange"
       >
 
-      <ConversationComposerAttachments
-        v-if="!isMainPanel"
-        :images="pendingImages"
-        :main="false"
-        :remove-image="removeImage"
-      />
-
       <ConversationComposerMemoryAssist
         :t="t"
         :is-main-panel="isMainPanel"
@@ -573,6 +566,13 @@ defineExpose({
         :dismiss-memory-suggestion="dismissMemorySuggestion"
         :insert-memory-reference="insertMemoryReference"
         :remove-memory-reference-from-draft="removeMemoryReferenceFromDraft"
+      />
+
+      <ConversationComposerAttachments
+        v-if="!isMainPanel"
+        :images="pendingImages"
+        :main="false"
+        :remove-image="removeImage"
       />
 
       <div class="conversation-composer__editor-stack">

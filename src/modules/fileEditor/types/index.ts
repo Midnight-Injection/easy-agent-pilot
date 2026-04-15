@@ -8,6 +8,7 @@ export type MonacoLanguageId =
   | 'java'
   | 'rust'
   | 'html'
+  | 'vue'
   | 'css'
   | 'shell'
   | 'yaml'

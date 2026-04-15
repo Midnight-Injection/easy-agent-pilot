@@ -330,9 +330,7 @@ pub fn run_cli_command(cli_path: &Path, args: &[&str]) -> std::io::Result<Output
 #[cfg(target_os = "windows")]
 pub fn build_tokio_cli_command(cli_path: &str, args: &[String]) -> TokioCommand {
     let raw_path = Path::new(cli_path);
-    let resolved_cli_path = resolve_command_path(raw_path)
-        .to_string_lossy()
-        .to_string();
+    let resolved_cli_path = resolve_command_path(raw_path).to_string_lossy().to_string();
     let extension = raw_path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -438,7 +436,11 @@ pub fn get_cli_version(cli_path: &Path) -> Option<String> {
         return None;
     }
 
-    for args in [["--version"].as_slice(), ["-v"].as_slice(), ["version"].as_slice()] {
+    for args in [
+        ["--version"].as_slice(),
+        ["-v"].as_slice(),
+        ["version"].as_slice(),
+    ] {
         let Ok(output) = run_cli_command(cli_path, args) else {
             continue;
         };
@@ -531,8 +533,11 @@ mod tests {
         let fake_node_path = temp_root.join("node");
         let fake_cli_path = temp_root.join("codex");
 
-        fs::write(&fake_node_path, "#!/bin/sh\necho \"codex-cli 9.9.9-test\"\n")
-            .expect("write fake node");
+        fs::write(
+            &fake_node_path,
+            "#!/bin/sh\necho \"codex-cli 9.9.9-test\"\n",
+        )
+        .expect("write fake node");
         fs::write(&fake_cli_path, "#!/usr/bin/env node\n").expect("write fake cli");
 
         let executable_mode = fs::Permissions::from_mode(0o755);

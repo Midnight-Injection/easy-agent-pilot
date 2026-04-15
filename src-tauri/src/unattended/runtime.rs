@@ -14,8 +14,7 @@ use super::constants::{
 };
 use super::repository;
 use super::types::{
-    RecordUnattendedEventInput, RuntimeStatusEvent, UnattendedInboundMessage,
-    WeixinMessage,
+    RecordUnattendedEventInput, RuntimeStatusEvent, UnattendedInboundMessage, WeixinMessage,
 };
 
 #[derive(Default)]
@@ -138,17 +137,18 @@ async fn run_weixin_loop(
 ) -> Result<(), String> {
     let client = WeixinClient::with_base_url(base_url).map_err(|e| e.to_string())?;
     let (final_status, final_error) = loop {
-        match client
-            .get_updates(&bot_token, sync_cursor.as_deref())
-            .await
-        {
+        match client.get_updates(&bot_token, sync_cursor.as_deref()).await {
             Ok((next_cursor, messages)) => {
                 if let Some(cursor) = next_cursor.clone() {
                     repository::update_account_sync_cursor(&account_row_id, Some(&cursor))?;
                     sync_cursor = Some(cursor);
                 }
 
-                repository::update_account_runtime_status(&account_row_id, RUNTIME_STATUS_LISTENING, None)?;
+                repository::update_account_runtime_status(
+                    &account_row_id,
+                    RUNTIME_STATUS_LISTENING,
+                    None,
+                )?;
 
                 for message in messages {
                     handle_incoming_message(&app, &channel_id, &account_row_id, message).await?;
@@ -269,7 +269,8 @@ pub async fn send_text(
     correlation_id: Option<&str>,
 ) -> Result<(), String> {
     let account = repository::get_account(channel_account_id)?;
-    let client = WeixinClient::with_base_url(account.base_url.clone()).map_err(|e| e.to_string())?;
+    let client =
+        WeixinClient::with_base_url(account.base_url.clone()).map_err(|e| e.to_string())?;
     let message = client
         .send_text_message(&account.bot_token, peer_id, context_token, text)
         .await

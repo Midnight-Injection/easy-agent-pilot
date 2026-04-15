@@ -2,6 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   CreateUnattendedChannelInput,
   ListUnattendedEventsInput,
+  ProcessUnattendedStructuredIntentInput,
+  ProcessUnattendedStructuredIntentResult,
   RecordUnattendedEventInput,
   RuntimeStatusSummary,
   UnattendedChannel,
@@ -116,6 +118,13 @@ class UnattendedService {
         correlationId: correlationId ?? null
       }
     })
+  }
+
+  async processStructuredIntent(
+    input: ProcessUnattendedStructuredIntentInput
+  ): Promise<ProcessUnattendedStructuredIntentResult> {
+    const result = await invoke<unknown>('process_unattended_structured_intent', { input })
+    return transformResult<ProcessUnattendedStructuredIntentResult>(result)
   }
 }
 

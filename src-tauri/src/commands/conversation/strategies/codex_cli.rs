@@ -134,7 +134,6 @@ fn should_treat_process_failure_as_success(
         && !stderr_outcome.emitted_error
 }
 
-
 struct TempSchemaFile {
     path: PathBuf,
 }
@@ -888,20 +887,22 @@ fn parse_codex_json_output(session_id: &str, json: &serde_json::Value) -> Option
         .unwrap_or_default();
 
     let event = match event_type {
-        "session_meta" => extract_external_session_id(json).map(|external_session_id| CliStreamEvent {
-            event_type: "message_start".to_string(),
-            session_id: session_id.to_string(),
-            content: None,
-            tool_name: None,
-            tool_call_id: None,
-            tool_input: None,
-            tool_result: None,
-            error: None,
-            input_tokens: None,
-            output_tokens: None,
-            model: None,
-            external_session_id: Some(external_session_id),
-        }),
+        "session_meta" => {
+            extract_external_session_id(json).map(|external_session_id| CliStreamEvent {
+                event_type: "message_start".to_string(),
+                session_id: session_id.to_string(),
+                content: None,
+                tool_name: None,
+                tool_call_id: None,
+                tool_input: None,
+                tool_result: None,
+                error: None,
+                input_tokens: None,
+                output_tokens: None,
+                model: None,
+                external_session_id: Some(external_session_id),
+            })
+        }
         "system" => extract_runtime_system_notice(json)
             .map(|content| build_system_event(session_id, content)),
         // === Codex CLI 特有事件类型 ===

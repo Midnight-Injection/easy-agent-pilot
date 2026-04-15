@@ -152,5 +152,9 @@ export function isInvalidCliResumeError(
     return /codex/i.test(error) && (hasResumeKeyword || hasIdKeyword) && hasInvalidKeyword
   }
 
+  if (runtimeKey === 'opencode-cli') {
+    return /opencode/i.test(error) && (hasResumeKeyword || hasIdKeyword) && hasInvalidKeyword
+  }
+
   return false
 }

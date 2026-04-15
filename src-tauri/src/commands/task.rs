@@ -12,6 +12,7 @@ use super::support::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
+    pub project_id: Option<String>,
     pub plan_id: String,
     pub parent_id: Option<String>,
     pub title: String,
@@ -58,6 +59,7 @@ pub struct TaskRuntimeBinding {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RustTask {
     pub id: String,
+    pub project_id: Option<String>,
     pub plan_id: String,
     pub parent_id: Option<String>,
     pub title: String,
@@ -266,10 +268,7 @@ fn replace_task_memory_libraries(
     Ok(())
 }
 
-fn list_task_memory_library_ids(
-    conn: &Connection,
-    task_id: &str,
-) -> Result<Vec<String>, String> {
+fn list_task_memory_library_ids(conn: &Connection, task_id: &str) -> Result<Vec<String>, String> {
     let mut stmt = conn
         .prepare(
             r#"
@@ -290,7 +289,7 @@ fn list_task_memory_library_ids(
 }
 
 const TASK_SELECT_BY_ID_SQL: &str = r#"
-    SELECT id, plan_id, parent_id, title, description, status, priority,
+    SELECT id, project_id, plan_id, parent_id, title, description, status, priority,
            assignee, expert_id, agent_id, model_id, session_id, cli_session_provider, progress_file, dependencies, task_order,
            retry_count, max_retries, error_message,
            implementation_steps, test_steps, acceptance_criteria, memory_library_ids,
@@ -300,7 +299,7 @@ const TASK_SELECT_BY_ID_SQL: &str = r#"
     WHERE id = ?1
 "#;
 const TASK_SELECT_BY_PLAN_SQL: &str = r#"
-    SELECT id, plan_id, parent_id, title, description, status, priority,
+    SELECT id, project_id, plan_id, parent_id, title, description, status, priority,
            assignee, expert_id, agent_id, model_id, session_id, cli_session_provider, progress_file, dependencies, task_order,
            retry_count, max_retries, error_message,
            implementation_steps, test_steps, acceptance_criteria, memory_library_ids,
@@ -310,8 +309,27 @@ const TASK_SELECT_BY_PLAN_SQL: &str = r#"
     WHERE plan_id = ?1
     ORDER BY task_order ASC, created_at ASC
 "#;
+const TASK_SELECT_BY_PROJECT_UNPLANNED_SQL: &str = r#"
+    SELECT id, project_id, plan_id, parent_id, title, description, status, priority,
+           assignee, expert_id, agent_id, model_id, session_id, cli_session_provider, progress_file, dependencies, task_order,
+           retry_count, max_retries, error_message,
+           implementation_steps, test_steps, acceptance_criteria, memory_library_ids,
+           block_reason, input_request, input_response,
+           created_at, updated_at
+    FROM tasks
+    WHERE project_id = ?1
+      AND (
+        trim(COALESCE(plan_id, '')) = ''
+        OR NOT EXISTS (
+          SELECT 1
+          FROM plans
+          WHERE plans.id = tasks.plan_id
+        )
+      )
+    ORDER BY task_order ASC, created_at ASC
+"#;
 const TASK_SELECT_BY_PARENT_SQL: &str = r#"
-    SELECT id, plan_id, parent_id, title, description, status, priority,
+    SELECT id, project_id, plan_id, parent_id, title, description, status, priority,
            assignee, expert_id, agent_id, model_id, session_id, cli_session_provider, progress_file, dependencies, task_order,
            retry_count, max_retries, error_message,
            implementation_steps, test_steps, acceptance_criteria, memory_library_ids,
@@ -322,7 +340,7 @@ const TASK_SELECT_BY_PARENT_SQL: &str = r#"
     ORDER BY task_order ASC, created_at ASC
 "#;
 const TASK_SELECT_BY_SESSION_SQL: &str = r#"
-    SELECT id, plan_id, parent_id, title, description, status, priority,
+    SELECT id, project_id, plan_id, parent_id, title, description, status, priority,
            assignee, expert_id, agent_id, model_id, session_id, cli_session_provider, progress_file, dependencies, task_order,
            retry_count, max_retries, error_message,
            implementation_steps, test_steps, acceptance_criteria, memory_library_ids,
@@ -336,52 +354,49 @@ const TASK_SELECT_BY_SESSION_SQL: &str = r#"
 fn map_rust_task_row(row: &Row<'_>) -> rusqlite::Result<RustTask> {
     Ok(RustTask {
         id: row.get(0)?,
-        plan_id: row.get(1)?,
-        parent_id: row.get(2)?,
-        title: row.get(3)?,
-        description: row.get(4)?,
-        status: row.get(5)?,
-        priority: row.get(6)?,
-        assignee: row.get(7)?,
-        expert_id: row.get(8)?,
-        agent_id: row.get(9)?,
-        model_id: row.get(10)?,
-        session_id: row.get(11)?,
-        cli_session_provider: row.get(12)?,
-        progress_file: row.get(13)?,
-        dependencies: row.get(14)?,
-        task_order: row.get(15)?,
-        retry_count: row.get(16)?,
-        max_retries: row.get(17)?,
-        error_message: row.get(18)?,
-        implementation_steps: row.get(19)?,
-        test_steps: row.get(20)?,
-        acceptance_criteria: row.get(21)?,
-        memory_library_ids: row.get(22)?,
-        block_reason: row.get(23)?,
-        input_request: row.get(24)?,
-        input_response: row.get(25)?,
-        created_at: row.get(26)?,
-        updated_at: row.get(27)?,
+        project_id: row.get(1)?,
+        plan_id: row.get(2)?,
+        parent_id: row.get(3)?,
+        title: row.get(4)?,
+        description: row.get(5)?,
+        status: row.get(6)?,
+        priority: row.get(7)?,
+        assignee: row.get(8)?,
+        expert_id: row.get(9)?,
+        agent_id: row.get(10)?,
+        model_id: row.get(11)?,
+        session_id: row.get(12)?,
+        cli_session_provider: row.get(13)?,
+        progress_file: row.get(14)?,
+        dependencies: row.get(15)?,
+        task_order: row.get(16)?,
+        retry_count: row.get(17)?,
+        max_retries: row.get(18)?,
+        error_message: row.get(19)?,
+        implementation_steps: row.get(20)?,
+        test_steps: row.get(21)?,
+        acceptance_criteria: row.get(22)?,
+        memory_library_ids: row.get(23)?,
+        block_reason: row.get(24)?,
+        input_request: row.get(25)?,
+        input_response: row.get(26)?,
+        created_at: row.get(27)?,
+        updated_at: row.get(28)?,
     })
 }
 
-fn map_rust_task_with_conn(
-    conn: &Connection,
-    row: &Row<'_>,
-) -> rusqlite::Result<RustTask> {
+fn map_rust_task_with_conn(conn: &Connection, row: &Row<'_>) -> rusqlite::Result<RustTask> {
     let task_id: String = row.get(0)?;
-    let memory_library_ids = list_task_memory_library_ids(conn, &task_id)
-        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
+    let memory_library_ids = list_task_memory_library_ids(conn, &task_id).map_err(|error| {
+        rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::new(
             std::io::ErrorKind::Other,
             error,
-        ))))?;
+        )))
+    })?;
 
     let mut task = map_rust_task_row(row)?;
-    task.memory_library_ids = Some(
-        serde_json::to_string(&memory_library_ids)
-            .unwrap_or_else(|_| "[]".to_string()),
-    );
+    task.memory_library_ids =
+        Some(serde_json::to_string(&memory_library_ids).unwrap_or_else(|_| "[]".to_string()));
     Ok(task)
 }
 
@@ -443,13 +458,17 @@ fn cleanup_deleted_task_references(
         "UPDATE plans SET current_task_id = NULL, updated_at = ?1 WHERE current_task_id IN ({})",
         placeholders
     );
-    let mut clear_current_task_params: Vec<&dyn ToSql> = Vec::with_capacity(deleted_task_ids.len() + 1);
+    let mut clear_current_task_params: Vec<&dyn ToSql> =
+        Vec::with_capacity(deleted_task_ids.len() + 1);
     clear_current_task_params.push(&now);
     for task_id in deleted_task_ids {
         clear_current_task_params.push(task_id);
     }
-    tx.execute(&clear_current_task_sql, rusqlite::params_from_iter(clear_current_task_params))
-        .map_err(|e| e.to_string())?;
+    tx.execute(
+        &clear_current_task_sql,
+        rusqlite::params_from_iter(clear_current_task_params),
+    )
+    .map_err(|e| e.to_string())?;
 
     let dependency_rows = {
         let mut stmt = tx
@@ -481,7 +500,8 @@ fn cleanup_deleted_task_references(
             continue;
         };
 
-        let dependencies: Vec<String> = serde_json::from_str(&dependencies_json).unwrap_or_default();
+        let dependencies: Vec<String> =
+            serde_json::from_str(&dependencies_json).unwrap_or_default();
         if dependencies.is_empty() {
             continue;
         }
@@ -546,9 +566,16 @@ fn serialize_json_option<T: Serialize>(value: Option<&T>, fallback: &str) -> Opt
     value.map(|value| serde_json::to_string(value).unwrap_or_else(|_| fallback.to_string()))
 }
 
-fn map_task_runtime_binding_row(
-    row: &Row<'_>,
-) -> rusqlite::Result<TaskRuntimeBinding> {
+fn resolve_task_project_id(conn: &Connection, plan_id: &str) -> Result<String, String> {
+    conn.query_row(
+        "SELECT project_id FROM plans WHERE id = ?1",
+        [plan_id],
+        |row| row.get::<_, String>(0),
+    )
+    .map_err(|_| format!("Plan not found for task: {}", plan_id))
+}
+
+fn map_task_runtime_binding_row(row: &Row<'_>) -> rusqlite::Result<TaskRuntimeBinding> {
     Ok(TaskRuntimeBinding {
         task_id: row.get(0)?,
         runtime_key: row.get(1)?,
@@ -604,6 +631,7 @@ fn transform_task(rust_task: RustTask) -> Task {
 
     Task {
         id: rust_task.id,
+        project_id: rust_task.project_id,
         plan_id: rust_task.plan_id,
         parent_id: rust_task.parent_id,
         title: rust_task.title,
@@ -642,6 +670,15 @@ pub fn list_tasks(plan_id: String) -> Result<Vec<Task>, String> {
     collect_tasks(&conn, TASK_SELECT_BY_PLAN_SQL, [&plan_id])
 }
 
+/// 获取项目下未挂载到有效计划的任务。
+/// 用途：支持计划页在“未选择计划”时展示项目级直接待办任务或历史脏数据任务。
+#[tauri::command]
+pub fn list_project_unplanned_tasks(project_id: String) -> Result<Vec<Task>, String> {
+    let conn = open_db_connection().map_err(|e| e.to_string())?;
+
+    collect_tasks(&conn, TASK_SELECT_BY_PROJECT_UNPLANNED_SQL, [&project_id])
+}
+
 /// 获取单个任务
 #[tauri::command]
 pub fn get_task(id: String) -> Result<Task, String> {
@@ -654,6 +691,7 @@ pub fn get_task(id: String) -> Result<Task, String> {
 #[tauri::command]
 pub fn create_task(input: CreateTaskInput) -> Result<Task, String> {
     let conn = open_db_connection().map_err(|e| e.to_string())?;
+    let project_id = resolve_task_project_id(&conn, &input.plan_id)?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let now = now_rfc3339();
@@ -665,8 +703,7 @@ pub fn create_task(input: CreateTaskInput) -> Result<Task, String> {
         serialize_json_option(input.implementation_steps.as_ref(), "[]");
     let test_steps_json = serialize_json_option(input.test_steps.as_ref(), "[]");
     let acceptance_criteria_json = serialize_json_option(input.acceptance_criteria.as_ref(), "[]");
-    let memory_library_ids_json =
-        serialize_json_option(input.memory_library_ids.as_ref(), "[]");
+    let memory_library_ids_json = serialize_json_option(input.memory_library_ids.as_ref(), "[]");
 
     // 如果没有指定顺序，获取当前最大顺序 + 1
     let task_order = match input.order {
@@ -684,14 +721,15 @@ pub fn create_task(input: CreateTaskInput) -> Result<Task, String> {
     };
 
     conn.execute(
-        "INSERT INTO tasks (id, plan_id, parent_id, title, description, status, priority,
+        "INSERT INTO tasks (id, project_id, plan_id, parent_id, title, description, status, priority,
          assignee, expert_id, agent_id, model_id, session_id, cli_session_provider, progress_file, dependencies, task_order,
          retry_count, max_retries, error_message,
          implementation_steps, test_steps, acceptance_criteria, memory_library_ids,
          created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
         rusqlite::params![
             &id,
+            &project_id,
             &input.plan_id,
             &input.parent_id,
             &input.title,
@@ -736,6 +774,7 @@ pub fn create_task(input: CreateTaskInput) -> Result<Task, String> {
 
     Ok(Task {
         id,
+        project_id: Some(project_id),
         plan_id: input.plan_id,
         parent_id: input.parent_id,
         title: input.title,
@@ -757,9 +796,9 @@ pub fn create_task(input: CreateTaskInput) -> Result<Task, String> {
         implementation_steps: input.implementation_steps,
         test_steps: input.test_steps,
         acceptance_criteria: input.acceptance_criteria,
-        memory_library_ids: Some(
-            normalize_memory_library_ids(input.memory_library_ids.as_deref().unwrap_or(&[])),
-        ),
+        memory_library_ids: Some(normalize_memory_library_ids(
+            input.memory_library_ids.as_deref().unwrap_or(&[]),
+        )),
         block_reason: None,
         input_request: None,
         input_response: None,
@@ -785,7 +824,11 @@ pub fn update_task(id: String, input: UpdateTaskInput) -> Result<Task, String> {
     push_update(&mut updates, "agent_id", &input.agent_id);
     push_update(&mut updates, "model_id", &input.model_id);
     push_update(&mut updates, "session_id", &input.session_id);
-    push_update(&mut updates, "cli_session_provider", &input.cli_session_provider);
+    push_update(
+        &mut updates,
+        "cli_session_provider",
+        &input.cli_session_provider,
+    );
     push_update(&mut updates, "progress_file", &input.progress_file);
     push_update(&mut updates, "dependencies", &input.dependencies);
     push_update(&mut updates, "task_order", &input.order);
@@ -925,7 +968,9 @@ pub fn delete_task(id: String) -> Result<(), String> {
     }
 
     let plan_id: String = conn
-        .query_row("SELECT plan_id FROM tasks WHERE id = ?1", [&id], |row| row.get(0))
+        .query_row("SELECT plan_id FROM tasks WHERE id = ?1", [&id], |row| {
+            row.get(0)
+        })
         .map_err(|e| e.to_string())?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -1050,10 +1095,7 @@ pub fn upsert_task_runtime_binding(
 
 /// 删除任务在某个运行时下的恢复绑定。
 #[tauri::command]
-pub fn delete_task_runtime_binding(
-    task_id: String,
-    runtime_key: String,
-) -> Result<(), String> {
+pub fn delete_task_runtime_binding(task_id: String, runtime_key: String) -> Result<(), String> {
     let conn = open_db_connection().map_err(|e| e.to_string())?;
     conn.execute(
         "DELETE FROM task_runtime_bindings WHERE task_id = ?1 AND runtime_key = ?2",
@@ -1070,6 +1112,7 @@ pub fn batch_create_tasks(
     tasks: Vec<CreateTaskInput>,
 ) -> Result<Vec<Task>, String> {
     let conn = open_db_connection().map_err(|e| e.to_string())?;
+    let project_id = resolve_task_project_id(&conn, &plan_id)?;
 
     let now = now_rfc3339();
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
@@ -1106,14 +1149,15 @@ pub fn batch_create_tasks(
         let task_order = task_input.order.unwrap_or(max_order);
 
         tx.execute(
-            "INSERT INTO tasks (id, plan_id, parent_id, title, description, status, priority,
+            "INSERT INTO tasks (id, project_id, plan_id, parent_id, title, description, status, priority,
              assignee, expert_id, agent_id, model_id, session_id, cli_session_provider, progress_file, dependencies, task_order,
              retry_count, max_retries, error_message,
              implementation_steps, test_steps, acceptance_criteria, memory_library_ids,
              created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
             rusqlite::params![
                 &id,
+                &project_id,
                 &plan_id,
                 &task_input.parent_id,
                 &task_input.title,
@@ -1151,6 +1195,7 @@ pub fn batch_create_tasks(
 
         created_tasks.push(Task {
             id,
+            project_id: Some(project_id.clone()),
             plan_id: plan_id.clone(),
             parent_id: task_input.parent_id,
             title: task_input.title,

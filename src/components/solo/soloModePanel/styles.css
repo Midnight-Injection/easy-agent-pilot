@@ -241,6 +241,92 @@
   gap: 10px;
 }
 
+.solo-history-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 10px;
+}
+
+.solo-history-card {
+  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  border-radius: 24px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--color-surface) 94%, transparent);
+}
+
+.solo-history-card header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.solo-history-card header span,
+.solo-history-card__item span {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.solo-history-card header small {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.solo-history-card__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.solo-history-card__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--color-surface-hover) 82%, transparent);
+}
+
+.solo-history-card__item strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.solo-history-card--highlight {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 8%, transparent) 0%, color-mix(in srgb, var(--color-surface) 94%, transparent) 100%);
+}
+
+.solo-history-card__summary {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.solo-history-card__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.solo-history-card__metrics span {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface-hover) 82%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
 .solo-brief-card {
   padding: 10px 12px;
 }
@@ -431,6 +517,8 @@
   margin: 4px 0 0;
   font-size: 16px;
   color: var(--color-text-primary);
+  line-height: 1.4;
+  word-break: break-word;
 }
 
 .solo-step-card__status {
@@ -474,7 +562,35 @@
   }
 
   .solo-summary-card,
-  .solo-brief-grid {
+  .solo-brief-grid,
+  .solo-history-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1180px) {
+  .solo-mode-panel {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(280px, 34vh) minmax(0, 1fr) minmax(300px, 38vh);
+  }
+
+  .solo-mode-panel__list,
+  .solo-mode-panel__main {
+    border-right: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
+  }
+}
+
+@media (max-width: 860px) {
+  .solo-run-header,
+  .solo-timeline__header,
+  .solo-step-card__top,
+  .solo-history-card header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .solo-history-card__grid {
     grid-template-columns: 1fr;
   }
 }
@@ -498,8 +614,14 @@
 
 [data-theme='dark'] .solo-run-header,
 [data-theme='dark'] .solo-summary-card,
+.dark .solo-run-header,
+.dark .solo-summary-card,
 [data-theme='dark'] .solo-brief-card,
-[data-theme='dark'] .solo-timeline {
+.dark .solo-brief-card,
+[data-theme='dark'] .solo-timeline,
+.dark .solo-timeline,
+[data-theme='dark'] .solo-history-card,
+.dark .solo-history-card {
   border-color: color-mix(in srgb, var(--color-border) 58%, rgba(148, 163, 184, 0.24) 42%);
   background: color-mix(in srgb, var(--color-surface) 86%, #020617 14%);
 }
@@ -512,6 +634,11 @@
 
 [data-theme='dark'] .solo-brief-card--experts {
   background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 14%, #020617 16%) 0%, color-mix(in srgb, var(--color-surface) 88%, #020617 12%) 100%);
+}
+
+[data-theme='dark'] .solo-history-card--highlight,
+.dark .solo-history-card--highlight {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 16%, #020617 14%) 0%, color-mix(in srgb, var(--color-surface) 88%, #020617 12%) 100%);
 }
 
 [data-theme='dark'] .solo-run-header__button--secondary {

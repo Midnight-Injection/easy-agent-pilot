@@ -1,7 +1,9 @@
 use anyhow::Result;
 use rusqlite::{params, OptionalExtension};
 
-use crate::commands::support::{now_rfc3339, open_db_connection, open_db_connection_with_foreign_keys};
+use crate::commands::support::{
+    now_rfc3339, open_db_connection, open_db_connection_with_foreign_keys,
+};
 
 use super::constants::{
     AUTH_MODE_ALLOW_ALL, LOGIN_STATUS_CONNECTED, REPLY_STYLE_FINAL_ONLY, RUNTIME_STATUS_IDLE,
@@ -14,7 +16,11 @@ use super::types::{
 };
 
 fn bool_to_int(value: bool) -> i32 {
-    if value { 1 } else { 0 }
+    if value {
+        1
+    } else {
+        0
+    }
 }
 
 fn normalize_optional_text(value: Option<String>) -> Option<String> {
@@ -109,7 +115,8 @@ pub fn list_channels() -> Result<Vec<UnattendedChannel>, String> {
         )
         .map_err(|e| e.to_string())?;
 
-    let channels = stmt.query_map([], map_channel)
+    let channels = stmt
+        .query_map([], map_channel)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
@@ -154,7 +161,10 @@ pub fn create_channel(input: CreateUnattendedChannelInput) -> Result<UnattendedC
 }
 
 /// 更新无人值守渠道配置。
-pub fn update_channel(id: String, input: UpdateUnattendedChannelInput) -> Result<UnattendedChannel, String> {
+pub fn update_channel(
+    id: String,
+    input: UpdateUnattendedChannelInput,
+) -> Result<UnattendedChannel, String> {
     let conn = open_db_connection_with_foreign_keys().map_err(|e| e.to_string())?;
     let current = get_channel(&id)?;
     let now = now_rfc3339();
@@ -247,7 +257,8 @@ pub fn list_accounts(channel_id: Option<String>) -> Result<Vec<UnattendedChannel
     }
     .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 /// 获取单个账号。
@@ -361,7 +372,10 @@ pub fn update_account_runtime_status(
 }
 
 /// 更新账号同步游标。
-pub fn update_account_sync_cursor(account_row_id: &str, sync_cursor: Option<&str>) -> Result<(), String> {
+pub fn update_account_sync_cursor(
+    account_row_id: &str,
+    sync_cursor: Option<&str>,
+) -> Result<(), String> {
     let conn = open_db_connection().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE unattended_channel_accounts
@@ -374,7 +388,9 @@ pub fn update_account_sync_cursor(account_row_id: &str, sync_cursor: Option<&str
 }
 
 /// 查询运行时状态。
-pub fn list_runtime_status(channel_id: Option<String>) -> Result<Vec<RuntimeStatusSummary>, String> {
+pub fn list_runtime_status(
+    channel_id: Option<String>,
+) -> Result<Vec<RuntimeStatusSummary>, String> {
     let accounts = list_accounts(channel_id)?;
     Ok(accounts
         .into_iter()
@@ -419,18 +435,16 @@ pub fn upsert_thread(
                  last_message_at = ?3,
                  updated_at = ?4
              WHERE id = ?5",
-            params![
-                peer_name_snapshot,
-                context_token,
-                &now,
-                &now,
-                &existing.id
-            ],
+            params![peer_name_snapshot, context_token, &now, &now, &existing.id],
         )
         .map_err(|e| e.to_string())?;
         UnattendedThread {
-            peer_name_snapshot: peer_name_snapshot.map(|value| value.to_string()).or(existing.peer_name_snapshot),
-            last_context_token: context_token.map(|value| value.to_string()).or(existing.last_context_token),
+            peer_name_snapshot: peer_name_snapshot
+                .map(|value| value.to_string())
+                .or(existing.peer_name_snapshot),
+            last_context_token: context_token
+                .map(|value| value.to_string())
+                .or(existing.last_context_token),
             last_message_at: Some(now.clone()),
             updated_at: now.clone(),
             ..existing
@@ -493,7 +507,8 @@ pub fn list_threads(channel_id: Option<String>) -> Result<Vec<UnattendedThread>,
     }
     .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 /// 更新线程上下文。
@@ -586,7 +601,9 @@ pub fn record_event(input: RecordUnattendedEventInput) -> Result<UnattendedEvent
 }
 
 /// 列出审计事件。
-pub fn list_events(input: Option<ListUnattendedEventsInput>) -> Result<Vec<UnattendedEventRecord>, String> {
+pub fn list_events(
+    input: Option<ListUnattendedEventsInput>,
+) -> Result<Vec<UnattendedEventRecord>, String> {
     let conn = open_db_connection().map_err(|e| e.to_string())?;
     let filter = input.unwrap_or(ListUnattendedEventsInput {
         channel_account_id: None,
@@ -603,7 +620,10 @@ pub fn list_events(input: Option<ListUnattendedEventsInput>) -> Result<Vec<Unatt
     );
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     if let Some(channel_account_id) = filter.channel_account_id {
-        sql.push_str(&format!(" AND channel_account_id = ?{}", params_vec.len() + 1));
+        sql.push_str(&format!(
+            " AND channel_account_id = ?{}",
+            params_vec.len() + 1
+        ));
         params_vec.push(Box::new(channel_account_id));
     }
     if let Some(thread_id) = filter.thread_id {
@@ -614,7 +634,10 @@ pub fn list_events(input: Option<ListUnattendedEventsInput>) -> Result<Vec<Unatt
         sql.push_str(&format!(" AND event_type = ?{}", params_vec.len() + 1));
         params_vec.push(Box::new(event_type));
     }
-    sql.push_str(&format!(" ORDER BY created_at DESC LIMIT ?{}", params_vec.len() + 1));
+    sql.push_str(&format!(
+        " ORDER BY created_at DESC LIMIT ?{}",
+        params_vec.len() + 1
+    ));
     params_vec.push(Box::new(limit));
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -623,7 +646,8 @@ pub fn list_events(input: Option<ListUnattendedEventsInput>) -> Result<Vec<Unatt
         .map(|value| value.as_ref() as &dyn rusqlite::ToSql)
         .collect::<Vec<_>>();
 
-    let events = stmt.query_map(refs.as_slice(), map_event)
+    let events = stmt
+        .query_map(refs.as_slice(), map_event)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;

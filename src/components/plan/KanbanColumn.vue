@@ -12,9 +12,11 @@ const props = withDefaults(defineProps<{
   color: string
   tasks: Task[]
   globalPaused?: boolean
+  executionEnabled?: boolean
 }>(), {
   tasks: () => [],
-  globalPaused: false
+  globalPaused: false,
+  executionEnabled: true
 })
 
 const emit = defineEmits<{
@@ -144,7 +146,7 @@ function handleAddTask() {
       </div>
       <div class="header-right">
         <button
-          v-if="status === 'pending'"
+          v-if="props.executionEnabled && status === 'pending'"
           class="btn-header btn-add"
           :title="t('taskBoard.tooltips.addTask')"
           @click="handleAddTask"
@@ -162,7 +164,7 @@ function handleAddTask() {
           <span>{{ t('taskBoard.actions.addTask') }}</span>
         </button>
         <button
-          v-if="status === 'pending' && tasks.length > 0"
+          v-if="props.executionEnabled && status === 'pending' && tasks.length > 0"
           class="btn-header btn-execute-all"
           :title="t('taskBoard.tooltips.executeAll')"
           @click="handleExecuteAll"
@@ -181,7 +183,7 @@ function handleAddTask() {
         </button>
         <!-- 进行中列：开始执行按钮 -->
         <button
-          v-if="status === 'in_progress' && tasks.length > 0 && props.globalPaused"
+          v-if="props.executionEnabled && status === 'in_progress' && tasks.length > 0 && props.globalPaused"
           class="btn-header btn-start"
           :title="t('taskBoard.tooltips.startExecution')"
           @click="handleStartExecution"
@@ -199,7 +201,7 @@ function handleAddTask() {
           <span>{{ t('taskBoard.actions.startExecution') }}</span>
         </button>
         <button
-          v-if="status === 'in_progress' && tasks.length > 0 && !props.globalPaused"
+          v-if="props.executionEnabled && status === 'in_progress' && tasks.length > 0 && !props.globalPaused"
           class="btn-header"
           :class="props.globalPaused ? 'btn-resume-flow' : 'btn-stop-flow'"
           :title="props.globalPaused ? t('taskBoard.tooltips.resumeExecutionFlow') : t('taskBoard.tooltips.pauseExecutionFlow')"

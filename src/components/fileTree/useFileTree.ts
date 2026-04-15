@@ -21,6 +21,10 @@ export type FileTreeEmits = {
   (event: 'fileSelect', path: string): void
 }
 
+interface LoadTreeDataOptions {
+  resetChildCache?: boolean
+}
+
 const DRAG_AUTO_EXPAND_DELAY_MS = 420
 
 /**
@@ -49,6 +53,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
   const batchDeleteConfirmVisible = ref(false)
   const isLoading = ref(false)
   const pendingReload = ref(false)
+  const pendingResetChildCache = ref(false)
   const unwatchFileTree = ref<UnwatchFn | null>(null)
   const reloadTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const directoryChildrenCache = ref<Map<string, FileTreeNode[]>>(new Map())
@@ -199,14 +204,19 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
     emit('fileSelect', node.key)
   }
 
-  async function loadTreeData() {
+  async function loadTreeData(options: LoadTreeDataOptions = {}) {
     if (isLoading.value) {
       pendingReload.value = true
+      pendingResetChildCache.value = pendingResetChildCache.value || Boolean(options.resetChildCache)
       return
     }
 
     isLoading.value = true
     try {
+      if (options.resetChildCache && directoryChildrenCache.value.size > 0) {
+        directoryChildrenCache.value = new Map()
+      }
+
       const result = await invoke<FileTreeNode[]>('list_project_files', {
         projectPath: props.projectPath
       })
@@ -228,8 +238,10 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
       isLoading.value = false
 
       if (pendingReload.value) {
+        const shouldResetChildCache = pendingResetChildCache.value
         pendingReload.value = false
-        await loadTreeData()
+        pendingResetChildCache.value = false
+        await loadTreeData({ resetChildCache: shouldResetChildCache })
       }
     }
   }
@@ -266,7 +278,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
 
     reloadTimer.value = setTimeout(() => {
       reloadTimer.value = null
-      void loadTreeData()
+      void loadTreeData({ resetChildCache: true })
     }, 250)
   }
 
@@ -345,7 +357,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
     return null
   }
 
-  async function loadChildrenForNode(node: TreeOption, forceRefresh = true): Promise<void> {
+  async function loadChildrenForNode(node: TreeOption, forceRefresh = false): Promise<void> {
     const nodePath = node.key as string
     const cachedChildren = directoryChildrenCache.value.get(nodePath)
     const children = !forceRefresh && cachedChildren
@@ -491,7 +503,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
   async function confirmRename(oldPath: string, newName: string) {
     const result = await renameFile(oldPath, newName)
     if (result?.success) {
-      await loadTreeData()
+      await loadTreeData({ resetChildCache: true })
     }
   }
 
@@ -519,7 +531,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
       if (!node.isRoot && node.nodeType === 'directory') {
         await ensureExpanded(node.key)
       }
-      await loadTreeData()
+      await loadTreeData({ resetChildCache: true })
     }
   }
 
@@ -568,7 +580,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
       if (anchorPath.value === deleteNode.value.key) {
         anchorPath.value = null
       }
-      await loadTreeData()
+      await loadTreeData({ resetChildCache: true })
     }
 
     deleteConfirmVisible.value = false
@@ -580,7 +592,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
     const result = await batchDeleteFiles(paths)
     if (result?.success) {
       clearSelectionState()
-      await loadTreeData()
+      await loadTreeData({ resetChildCache: true })
     }
 
     batchDeleteConfirmVisible.value = false
@@ -711,7 +723,7 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
 
     if (results.every(result => result?.success)) {
       clearSelectionState()
-      await loadTreeData()
+      await loadTreeData({ resetChildCache: true })
     }
   }
 
@@ -830,10 +842,11 @@ export function useFileTree(props: FileTreeProps, emit: FileTreeEmits) {
       }
 
       directoryChildrenCache.value = new Map()
+      pendingResetChildCache.value = false
       clearSelectionState()
       closeContextMenu()
       clearDragState()
-      await loadTreeData()
+      await loadTreeData({ resetChildCache: true })
       await startFileWatcher(newPath)
     }
   )

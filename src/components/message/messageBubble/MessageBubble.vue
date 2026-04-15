@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ImageHoverPreview } from '@/components/common'
 import StructuredContentRenderer from '../StructuredContentRenderer.vue'
 import ToolCallDisplay from '../ToolCallDisplay.vue'
 import ThinkingDisplay from '../ThinkingDisplay.vue'
@@ -15,6 +16,21 @@ const props = withDefaults(defineProps<MessageBubbleProps>(), {
   hideContextStrategyNotice: false
 })
 const emit = defineEmits<MessageBubbleEmits>()
+const messageAttachmentWrapperStyle = {
+  width: '84px',
+  height: '84px',
+  overflow: 'hidden',
+  borderRadius: '16px',
+  border: '1px solid color-mix(in srgb, var(--color-border) 76%, transparent)',
+  background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.96))',
+  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.08)'
+} satisfies Record<string, string>
+
+const messageAttachmentImageStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover'
+} as const
 
 const {
   t,
@@ -146,14 +162,19 @@ const {
           v-if="isUser && messageAttachmentPreviews.length > 0"
           class="message-bubble__attachments"
         >
-          <img
+          <ImageHoverPreview
             v-for="attachment in messageAttachmentPreviews"
             :key="attachment.id"
             :src="attachment.previewUrl"
             :alt="attachment.name"
             :title="attachment.name"
-            class="message-bubble__attachment-image"
-          >
+            wrapper-class="message-bubble__attachment"
+            image-class="message-bubble__attachment-image"
+            :wrapper-style="messageAttachmentWrapperStyle"
+            :image-style="messageAttachmentImageStyle"
+            :preview-max-width="460"
+            :preview-max-height="520"
+          />
         </div>
         <span
           v-if="isStreaming"
